@@ -34,7 +34,17 @@ let scene = null;
 let camera = null;
 const actors = new Set();
 
+let notify = () => {};
+export function onNote(fn) { notify = fn; }
+
 function initRenderer(canvas) {
+  // Reset GPU driveru u kiosku je realny scenar; bez preventDefault() se
+  // kontext uz nikdy neobnovi, tak se scena radsi cela nacte znovu.
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    notify('Grafika se restartovala, scéna se za chvíli načte znovu…');
+    setTimeout(() => location.reload(), 3000);
+  });
   renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.setClearAlpha(0);
@@ -75,21 +85,47 @@ export function resize(W, H) {
 }
 
 function texture(url) {
-  let tex = texCache.get(url);
-  if (!tex) {
-    tex = textureLoader.load(url);
+  let e = texCache.get(url);
+  if (!e) {
+    const tex = textureLoader.load(url, undefined, undefined, () => {
+      // nahradni jednobarevna textura: tvor je videt a chyba je nahlasena,
+      // misto tichoucke bile siluety
+      const c = document.createElement('canvas');
+      c.width = c.height = 1;
+      const g = c.getContext('2d');
+      g.fillStyle = '#c9c9c9';
+      g.fillRect(0, 0, 1, 1);
+      tex.image = c;
+      tex.needsUpdate = true;
+      notify('textura se nenačetla: ' + url);
+    });
     tex.flipY = false;                       // glTF ma pocatek UV vlevo nahore
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    texCache.set(url, tex);
+    // katalogove textury sdili vsichni ambientni tvori a drzi se trvale;
+    // textura ulovku zije jen dokud je jeji tvor ve scene (refcount)
+    e = { tex, refs: 0, keep: url.startsWith('/models3d/') };
+    texCache.set(url, e);
   }
-  return tex;
+  e.refs++;
+  return e.tex;
+}
+
+function dropTexture(url) {
+  const e = texCache.get(url);
+  if (!e) return;
+  e.refs--;
+  if (e.refs <= 0 && !e.keep) {
+    e.tex.dispose();
+    texCache.delete(url);
+  }
 }
 
 function source(url) {
   let p = glbCache.get(url);
   if (!p) {
     p = new Promise((ok, bad) => loader.load(url, ok, undefined, bad));
+    p.catch(() => glbCache.delete(url));     // at jeden sitovy zadrhel druh nezabije
     glbCache.set(url, p);
   }
   return p;
@@ -263,7 +299,7 @@ export async function spawn(entry) {
 
   const handle = {
     id: entry.id, motion: entry.motion, root, spin, yaw, bank,
-    length, height,
+    length, height, texUrl: entry.texture,
     // Meritko se vaze na plochu siluety, ne na delku. Kdyby vsichni meli stejnou
     // delku, apatosaurus — samy krk a ocas — by vedle tyranosaura vypadal jako
     // jesterka.
@@ -362,10 +398,18 @@ export function remove(handle) {
   if (!handle) return;
   actors.delete(handle);
   handle.mixer.stopAllAction();
+  handle.mixer.uncacheRoot(handle.mixer.getRoot());
   scene.remove(handle.root);
   handle.root.traverse((o) => {
-    if (o.isMesh) o.material.dispose();      // geometrie i textura jsou sdilene
+    if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();  // bone textura
+    if (o.isMesh) o.material.dispose();      // geometrie je sdilena z glbCache
   });
+  dropTexture(handle.texUrl);
+}
+
+/* Diagnostika GPU pameti (pocty textur/geometrii), pro testy a kiosk. */
+export function info() {
+  return renderer ? { ...renderer.info.memory } : null;
 }
 
 export function render(dt) {

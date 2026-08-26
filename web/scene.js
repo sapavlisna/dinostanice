@@ -119,6 +119,12 @@ function span([lo, hi]) {
 }
 
 function addActor(what, opts) {
+  // dedup podle id: race pri startu (connect bezi soubezne s restoreCast) nebo
+  // rekonciliace po reconnectu nesmi privest tehoz tvora dvakrat
+  if (what.id && actors.some(a => a.id === what.id)) {
+    if (what.m3) Scene3D.remove(what.m3);    // uz nacteny klon nesmi leaknout
+    return null;
+  }
   const motion = what.motion || 'walk';
   const far = motion === 'walk' && Math.random() < 0.35;
   const z = zone(motion, far);
@@ -167,7 +173,11 @@ function addActor(what, opts) {
   }
   applyGait(actor);
   actors.push(actor);
-  while (actors.length > MAX_ACTORS) dropActor(0);
+  while (actors.length > MAX_ACTORS) {
+    // nejdriv odejde doplnek z katalogu, teprve pak nejstarsi ulovek
+    const amb = actors.findIndex(a => a.ambient);
+    dropActor(amb >= 0 ? amb : 0);
+  }
   Roster.event('in', actor.label, actor.who);
   Roster.cast(actors);
   return actor;
@@ -205,18 +215,25 @@ function nextAmbient() {
   return ambientQueue.shift();
 }
 
+let topping = false;
+
 async function topUp() {
-  if (!has3D || !byKey.size) return;
-  while (actors.length < AMBIENT_MIN) {
-    const spec = nextAmbient();
-    try {
-      await loadModel({ kind: 'model', creature: spec.key, texture: spec.texture,
-                        id: `katalog-${spec.key}-${ambientSeq++}` },
-                      { silent: true, ambient: true });
-    } catch (e) {
-      note('katalog: ' + e.message);
-      return;
+  if (topping || !has3D || !byKey.size) return;  // dve soubezna volani by prelila AMBIENT_MIN
+  topping = true;
+  try {
+    while (actors.length < AMBIENT_MIN) {
+      const spec = nextAmbient();
+      try {
+        await loadModel({ kind: 'model', creature: spec.key, texture: spec.texture,
+                          id: `katalog-${spec.key}-${ambientSeq++}` },
+                        { silent: true, ambient: true });
+      } catch (e) {
+        note('katalog: ' + e.message);
+        return;
+      }
     }
+  } finally {
+    topping = false;
   }
 }
 
@@ -320,7 +337,11 @@ function update(dt) {
 let fatal = false;
 
 function note(msg) {
-  if (!fatal) errEl.textContent = msg;
+  if (fatal) return;
+  errEl.textContent = msg;
+  clearTimeout(note._t);
+  // bezna stiznost nema na televizi svitit navzdy; fatalni z die() zustava
+  note._t = setTimeout(() => { if (!fatal) errEl.textContent = ''; }, 15000);
 }
 
 function die(msg) {
@@ -370,13 +391,24 @@ function draw(dt) {
   if (window.Backdrop && Backdrop.drawFront) Backdrop.drawFront(fxCtx, W, H, sceneTime);
 }
 
+let frameErrors = 0;
+
 function frame(now) {
-  const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
-  lastFrame = now;
-  sceneTime += dt;
-  update(dt);
-  draw(dt);
+  // preplanovat driv, nez muze cokoli spadnout — jedna vyjimka nesmi scenu
+  // na televizi zastavit navzdy
   requestAnimationFrame(frame);
+  try {
+    const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
+    lastFrame = now;
+    sceneTime += dt;
+    update(dt);
+    draw(dt);
+    frameErrors = 0;
+  } catch (e) {
+    note('snímek: ' + (e && e.message || e));
+    // opakovana chyba v kazdem snimku se sama nespravi; reload je posledni pomoc
+    if (++frameErrors >= 30) location.reload();
+  }
 }
 
 function toast(text) {
@@ -422,12 +454,19 @@ async function catalogue() {
   }
 }
 
+async function fetchCast() {
+  const res = await fetch('/api/rigs');
+  if (!res.ok) return null;
+  const data = await res.json();
+  // server zatim limit neumi; po tydnech provozu by scena bootovala minuty
+  // a drzela vsechny textury, tak se bere jen cerstvy konec seznamu
+  return (data.rigs || data).slice(-MAX_ACTORS);
+}
+
 async function restoreCast() {
   try {
-    const res = await fetch('/api/rigs');
-    if (!res.ok) return;
-    const data = await res.json();
-    for (const item of (data.rigs || data)) {
+    const items = await fetchCast();
+    for (const item of (items || [])) {
       try {
         await arrive(item, { silent: true, who: item.name });
       } catch (e) {
@@ -439,28 +478,76 @@ async function restoreCast() {
   }
 }
 
+/* Události z výpadku WS jsou ztracené, tak se po (re)connectu stav srovná se
+   serverem podle id: chybějící úlovky se přivedou, úlovky, které server už
+   nezná, odejdou. Katalogových (ambientních) tvorů se rekonciliace netýká. */
+async function reconcile() {
+  let items;
+  try {
+    items = await fetchCast();
+  } catch (e) {
+    return;
+  }
+  if (!items) return;
+  const known = new Set(items.map(i => i.id));
+  for (let i = actors.length - 1; i >= 0; i--) {
+    if (!actors[i].ambient && !known.has(actors[i].id)) dropActor(i);
+  }
+  for (const item of items) {
+    if (actors.some(a => a.id === item.id)) continue;
+    try {
+      await arrive(item, { silent: true, who: item.name });
+      makeRoom();
+    } catch (e) {
+      note('úlovek: ' + e.message);
+    }
+  }
+  topUp();
+}
+
+let wsDelay = 3000;
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const ws = new WebSocket(proto + '://' + location.host + '/ws');
+  let ping = 0;
+  ws.onopen = () => {
+    wsDelay = 3000;
+    // Keepalive: server na ping neodpovida, takze watchdog na prijate zpravy
+    // by zabijel zdrava, jen ticha spojeni. Pravidelny send ale drzi NAT pri
+    // zivote a na mrtvem TCP spojeni se neodeslana data nahromadi, az OS
+    // socket zavre — onclose pak spusti reconnect a rekonciliaci.
+    ping = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+    }, 25000);
+    reconcile();
+  };
   ws.onmessage = async (ev) => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'add') {
       try {
         const a = await arrive(msg, { who: msg.name });
-        makeRoom();
-        toast(msg.name ? msg.name + ' přivádí: ' + a.label + '!'
-                       : 'Nový ' + a.label + ' dorazil!');
+        if (a) {
+          makeRoom();
+          toast(msg.name ? msg.name + ' přivádí: ' + a.label + '!'
+                         : 'Nový ' + a.label + ' dorazil!');
+        }
       } catch (e) {
         note('add: ' + e.message);
       }
     } else if (msg.type === 'remove') {
-      const i = actors.findIndex(a => a.id === msg.id);
-      if (i >= 0) dropActor(i);
+      for (let i = actors.length - 1; i >= 0; i--) {
+        if (actors[i].id === msg.id) dropActor(i);
+      }
       topUp();
     }
   };
-  ws.onclose = () => setTimeout(connect, 3000);
+  ws.onclose = () => {
+    clearInterval(ping);
+    setTimeout(connect, wsDelay);
+    wsDelay = Math.min(30000, wsDelay * 2);
+  };
   ws.onerror = () => ws.close();
 }
 
@@ -505,6 +592,10 @@ document.addEventListener('keydown', (e) => {
 window.DinoScene = {
   actors,
   add: arrive,                 // rucni pridani tvora, pro tools/shot_scene.py
+  drop: (id) => {              // rucni odebrani, zrcadli WS remove (pro testy)
+    for (let i = actors.length - 1; i >= 0; i--) if (actors[i].id === id) dropActor(i);
+  },
+  gpu: () => Scene3D.info(),
   where: () => actors.map(a => ({
     label: a.label, key: a.key, motion: a.motion, far: a.far,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
@@ -521,6 +612,7 @@ qr.src = '/api/qr';
 qr.onerror = () => { hintEl.style.display = 'none'; };
 
 Roster.init();
+Scene3D.onNote(note);
 const glError = Scene3D.init(gl);
 has3D = !glError;
 if (glError) {
