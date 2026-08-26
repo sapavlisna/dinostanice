@@ -74,6 +74,8 @@ def build_one(spec: Model3D, anim: str | None = None, time: float | None = None)
     if anim:
         clip = model.clip(anim)
         t = time if time is not None else (spec.time or 0.0)
+    elif spec.anim and spec.time is not None:
+        clip, t = model.clip(spec.anim), spec.time
     else:
         clip, t = ms.best_pose(model, spec.candidates(model), axes=spec.axes, flip=spec.flip)
         t = time if time is not None else t

@@ -18,11 +18,17 @@ import numpy as np
 from .gltf import Model
 from . import orthoview as ov
 from .shapes import SHEET_W_MM, SHEET_H_MM
+from .template import LINE_MM
 
 DRAW_MARGIN_X_MM = 32.0   # znacky v rozich zabiraji 9 + 16 mm
 DRAW_MARGIN_Y_MM = 30.0
 MIN_REGION_MM2 = 3.0
 SIMPLIFY_MM = 0.35
+# Tisteny obrys je o chlup vetsi nez projekce modelu: dite pri vybarvovani
+# nedojede presne k lince a model by mel bily lem. Vnitrni oblasti i UV
+# zustavaji na presne projekci, takze hrana modelu vzorkuje ~1,5 mm uvnitr
+# vybarvene plochy.
+OUTLINE_GROW_MM = 1.5
 
 
 @dataclass
@@ -94,10 +100,12 @@ def _trace(mask: np.ndarray, ppm: float, origin_px: np.ndarray, offset_mm: np.nd
     out = []
     cnts, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     for c in cnts:
-        if cv2.contourArea(c) / (ppm ** 2) < min_area_mm2:
-            continue
         c = cv2.approxPolyDP(c, SIMPLIFY_MM * ppm, True).reshape(-1, 2).astype(float)
         if len(c) < 3:
+            continue
+        # plocha az po zjednoduseni: uzka trhlina ma pred approxPolyDP plochu
+        # nafouknutou o pilovity okraj a proklouzne filtrem jako artefakt
+        if cv2.contourArea(c.astype(np.float32)) / (ppm ** 2) < min_area_mm2:
             continue
         pts = (c - origin_px) / ppm + offset_mm
         # zaoblovat jen mekke tvary; pila zubu ma kratke segmenty a Chaikin by
@@ -156,12 +164,14 @@ def _head_vertices(model: Model, joint: str) -> np.ndarray:
 
 def auto_eye(model: Model, place: Placement, verts: np.ndarray, mask: np.ndarray,
              joint: str = "Head", forward: float = 0.68, down: float = 0.34,
-             r_mm: float = 2.4) -> tuple | None:
+             r_mm: float = 2.4, centre_x: bool = False) -> tuple | None:
     """Oko odvozene z obalky hlavy na listu.
 
     Modely oko nemaji — nese ho materialova barva, ne geometrie. Pozice se
-    proto bere z obdelnika, do ktereho se hlava na listu vejde, a nakonec se
-    zkontroluje, ze bod skutecne lezi v kresbe.
+    proto bere z obdelnika, do ktereho se hlava na listu vejde, a bod se
+    posouva k teziti hlavy, dokud se krouzek oka nevejde dovnitr obrysu.
+    `centre_x` klade oko na osu soumernosti listu — letci kresleni shora ji
+    maji po fitu vzdy uprostred, zatimco bbox hlavy muze byt nesoumerny.
     """
     idx = _head_vertices(model, joint)
     if len(idx) == 0:
@@ -172,17 +182,34 @@ def auto_eye(model: Model, place: Placement, verts: np.ndarray, mask: np.ndarray
 
     facing_right = head_mm[:, 0].mean() > body_mm[:, 0].mean()
     fx = forward if facing_right else 1.0 - forward
-    x = lo[0] + fx * (hi[0] - lo[0])
+    x = SHEET_W_MM / 2 if centre_x else lo[0] + fx * (hi[0] - lo[0])
     y = lo[1] + down * (hi[1] - lo[1])
 
+    # oko i obrys se tisknou linkou LINE_MM: aby se krouzek oka obrysu ani
+    # nedotkl, musi byt jeho stred r + pul linky oka + pul linky obrysu hluboko
+    clear_mm = r_mm + LINE_MM
+    ppm_x = mask.shape[1] / SHEET_W_MM
+    ppm_y = mask.shape[0] / SHEET_H_MM
+    dist = cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5)
+
     centre = head_mm.mean(0)
-    for step in np.linspace(0.0, 1.0, 12):
+    if centre_x:
+        centre = np.array([x, centre[1]])
+    best = None
+    for step in np.linspace(0.0, 1.0, 24):
         px = x + (centre[0] - x) * step
         py = y + (centre[1] - y) * step
-        col = int(round(px * mask.shape[1] / SHEET_W_MM))
-        row = int(round(py * mask.shape[0] / SHEET_H_MM))
-        if 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1] and mask[row, col]:
+        col = int(round(px * ppm_x))
+        row = int(round(py * ppm_y))
+        if not (0 <= row < mask.shape[0] and 0 <= col < mask.shape[1]):
+            continue
+        d = dist[row, col] / ppm_x
+        if d >= clear_mm:
             return (float(px), float(py), r_mm)
+        if best is None or d > best[2]:
+            best = (px, py, d)
+    if best is not None and best[2] > 0:
+        return (float(best[0]), float(best[1]), r_mm)
     return None
 
 
@@ -221,7 +248,17 @@ def build(
     origin_px = np.zeros(2)
     offset_mm = np.array([off_x, off_y])
 
-    outline = _trace(view.mask, px_per_mm, origin_px, offset_mm, MIN_REGION_MM2 * 4)
+    # vnejsi obrys se trasuje ze zvetsene masky (OUTLINE_GROW_MM); vnitrni
+    # oblasti i Placement/UV zustavaji na presne projekci modelu. Rastr masky
+    # konci presne na bboxu, takze pred dilataci je treba pridat okraj, jinak
+    # by se zvetseny obrys na krajich seriznul.
+    pad = int(round(OUTLINE_GROW_MM * px_per_mm))
+    k = 2 * pad + 1
+    grown = cv2.dilate(
+        cv2.copyMakeBorder(view.mask.astype(np.uint8), pad, pad, pad, pad,
+                           cv2.BORDER_CONSTANT, value=0),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    outline = _trace(grown, px_per_mm, origin_px + pad, offset_mm, MIN_REGION_MM2 * 4)
 
     # oblasti k vybarveni: co nerozdeluje hranice materialu ani skok v hloubce
     border = layers["material"] | layers["depth"]

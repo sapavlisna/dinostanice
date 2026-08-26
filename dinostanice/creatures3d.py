@@ -43,15 +43,21 @@ CATALOGUE = [
     Model3D("apatosaurus3d", "Apatosaurus", "apatosaurus.glb", 13),
     # Letec se kresli shora a natoceny tak, aby rozpeti kridel — jeho nejvetsi
     # rozmer — leželo po sirce listu.
-    # Letci se kresli shora, takze oko nelezi pred telem, ale na ose soumernosti
-    # (forward 0.5); auto_eye jinak miri do strany od hlavy, tedy mimo kresbu.
+    # Letci se kresli shora, takze oko nelezi pred telem, ale na ose
+    # soumernosti listu (centre_x) — bbox hlavy je kvuli hrebeni ci rohum
+    # nesoumerny a forward=0.5 by oko poslal mimo osu.
+    # Drak ma pozu natvrdo: best_pose vybira podle vyplneni listu a trefi
+    # kridla uprostred mavnuti, ze kterych dite draka nepozna. Flying_Idle
+    # v t=0.125 je okamzik s nejvetsim rozpetim — kridla vodorovne
+    # rozprostrena, membrany viditelne shora.
     Model3D("drak3d", "Drak", "dragon.glb", 14, motion="fly",
-            axes=(0, 2, 1), flip=(1, 1, -1), poses=("Fast_Flying", "Flying_Idle"),
-            eye_bias={"forward": 0.5, "down": 0.3}),
+            axes=(0, 2, 1), flip=(1, 1, -1), poses=("Flying_Idle",),
+            anim="Flying_Idle", time=0.125,
+            eye_bias={"centre_x": True, "down": 0.3}),
     # Ptakojester prisel bez kostry, tu mu dopisuje tools/make_pteranodon.py
     Model3D("pteranodon3d", "Pteranodon", "pteranodon.glb", 15, motion="fly",
             axes=(0, 2, 1), flip=(1, -1, -1), poses=("Flying",),
-            eye_bias={"forward": 0.5, "down": 0.55}),
+            eye_bias={"centre_x": True, "down": 0.55}),
 ]
 
 BY_KEY = {m.key: m for m in CATALOGUE}
