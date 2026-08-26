@@ -20,7 +20,7 @@ from dinostanice.raster import creature_mask
 from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM, body_centerline, resample_profile
 
 PPM = WARP_PPM
-SPINE_BODIED = [c for c in cr.CATALOGUE if c.outline is None]  # everything but the rigid ship
+SPINE_BODIED = [c for c in cr.CATALOGUE if not c.rigid]  # everything but the rigid ship
 
 # one warped pixel is 1/PPM mm; allow a couple of pixels of slack for the paint
 # circle's own radius, remap interpolation and integer scatter rounding.
@@ -73,8 +73,11 @@ def test_unwrap_roundtrip_preserves_dot_positions(creature):
     sheet = np.zeros((H, W, 4), np.uint8)
 
     n = len(radii)
-    candidates = [int(n * f) for f in (0.12, 0.35, 0.6, 0.85)]
-    sample_cols = [c for c in candidates if c < n and radii[c] > 3.0]
+    # sample where the body is wide enough for a dot; fixed fractions would
+    # miss top-view creatures (pteranodon) whose spine profile is mostly thin
+    wide = np.flatnonzero(radii > 3.0)
+    assert len(wide) >= 4, "creature profile too thin to place safe test dots"
+    sample_cols = sorted({int(wide[int((len(wide) - 1) * f)]) for f in (0.12, 0.35, 0.6, 0.85)})
     assert len(sample_cols) >= 3, "creature profile too thin to place safe test dots"
     colors = [(255, 40, 40, 255), (40, 220, 40, 255), (40, 40, 255, 255), (40, 220, 220, 255)]
 
