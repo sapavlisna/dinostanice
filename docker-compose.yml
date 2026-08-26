@@ -16,3 +16,6 @@ services:
       DINO_HOST: "${DINO_HOST:-}"
       DINO_PORT: "${DINO_PORT:-8100}"
     restart: unless-stopped
+    # pipeline ma peak ~300 MB na beh a soubezne bezi max 2 (PROCESS_SEM);
+    # kdyby preci jen neco uteklo, at to nepotopi hostitele
+    mem_limit: 2g

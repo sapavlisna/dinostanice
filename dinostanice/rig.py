@@ -17,6 +17,7 @@ from .shapes import (SHEET_W_MM, SHEET_H_MM, body_centerline,
                      limb_joints, resample_profile, tube_outline)
 from .capture import WARP_PPM
 from .raster import body_mask
+from .store import write_image
 from .template import LINE_MM
 
 STRIP_MIN_SAMPLES = 256
@@ -255,8 +256,8 @@ def build_rig(rgba_sheet, creature, out_dir, name, ppm=WARP_PPM):
         strip, meta = rigid_body(rgba_sheet, creature, ppm)
     else:
         strip, meta = unwrap_body(rgba_sheet, creature, ppm)
-    cv2.imwrite(os.path.join(out_dir, "body.png"), strip)
-    cv2.imwrite(os.path.join(out_dir, "sheet.png"), sheet_for_texture(rgba_sheet, ppm))
+    write_image(os.path.join(out_dir, "body.png"), strip)
+    write_image(os.path.join(out_dir, "sheet.png"), sheet_for_texture(rgba_sheet, ppm))
 
     limbs = []
     for idx, limb in enumerate(creature.limbs):
@@ -267,7 +268,7 @@ def build_rig(rgba_sheet, creature, out_dir, name, ppm=WARP_PPM):
             # the index belongs in the name: both legs of a pair share a
             # name, and without it the second one overwrites the first
             fname = f"limb_{idx}_{limb.name}_{i}.png"
-            cv2.imwrite(os.path.join(out_dir, fname), s["image"])
+            write_image(os.path.join(out_dir, fname), s["image"])
             entry["segments"].append({
                 "image": fname,
                 "origin_mm": [round(v, 2) for v in s["origin_mm"]],

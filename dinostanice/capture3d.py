@@ -15,6 +15,7 @@ import numpy as np
 
 from . import capture
 from .modelsheet import SheetShape, to_texture
+from .store import write_image
 from .shapes import SHEET_H_MM, SHEET_W_MM
 
 TEXTURE_PPM = 6.0        # jemnejsi nez WARP_PPM uz nema z ceho brat detail
@@ -52,7 +53,7 @@ def save_catch(out_dir: str | Path, warped: np.ndarray, shape: SheetShape,
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     texture = build_texture(warped, shape)
-    cv2.imwrite(str(out / "texture.png"), texture)
+    write_image(out / "texture.png", texture)
 
     doc = {
         "key": spec.key,

@@ -7,6 +7,7 @@ scene about the new arrival over a WebSocket.
 import asyncio
 import io
 import json
+import logging
 import os
 import socket
 import time
@@ -14,7 +15,7 @@ import time
 import cv2
 import numpy as np
 import qrcode
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 from fastapi import (FastAPI, File, Form, Request, UploadFile, WebSocket,
                      WebSocketDisconnect)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
@@ -37,14 +38,29 @@ TEMPLATES_DIR = os.path.join(ROOT, "data", "templates")
 SHAPES3D_DIR = os.path.join(ROOT, "data", "shapes3d")
 
 MAX_UPLOAD = 25 * 1024 * 1024
+MAX_BODY = MAX_UPLOAD + 1024 * 1024   # rezerva na multipart obálku okolo fotky
+MAX_PIXELS = 40_000_000  # rozumny strop; nad tim uz jde o dekompresni bombu, ne fotku
+MAX_ASPECT = 4.0         # bezny telefon foti 4:3 az 16:9; extremni pomer neni list
+MAX_CONCURRENT = 2       # exponat obsluhuje jedno dite po druhem, fronta je spravne
 MAX_SIDE = 4000          # detection gains nothing above this, but the warp costs a lot
 MIN_SIDE = 400
 TRIM_MM = 0.6            # pull the cut inside the printed outline so the black line is gone
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("dinostanice")
+
+cv2.setNumThreads(2)     # kazdy bezici pipeline krok si jinak bere vsechna jadra
 
 os.makedirs(WEB_DIR, exist_ok=True)
 os.makedirs(MODELS3D_DIR, exist_ok=True)
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 store.ensure_root()
+_leftover = store.purge_deleted()
+if _leftover:
+    log.warning("po startu zbylo %d nedomazaných úlovků (*.deleted)", _leftover)
+
+PROCESS_SEM = asyncio.Semaphore(MAX_CONCURRENT)
 
 app = FastAPI(title="DinoStanice")
 app.mount("/catch", StaticFiles(directory=store.CATCH_ROOT), name="catch")
@@ -67,16 +83,45 @@ class Hub:
             self.clients.discard(ws)
 
     async def broadcast(self, message):
+        # Paralelne a s timeoutem: televize v suspendu drzi half-open TCP a
+        # seriove `await send_json` by povesilo odpoved na upload.
         async with self.lock:
             targets = list(self.clients)
-        for ws in targets:
-            try:
-                await ws.send_json(message)
-            except Exception:
+        if not targets:
+            return
+        results = await asyncio.gather(
+            *[asyncio.wait_for(ws.send_json(message), timeout=2.0) for ws in targets],
+            return_exceptions=True)
+        for ws, res in zip(targets, results):
+            if isinstance(res, BaseException):
+                log.warning("broadcast klientovi selhal (%s), odpojuji ho",
+                            type(res).__name__)
                 await self.drop(ws)
 
 
 hub = Hub()
+
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Odmítne obří upload podle Content-Length dřív, než Starlette začne
+    multipart sypat do temp souboru — parser sám žádný limit na soubor nemá."""
+    if request.method == "POST" and request.url.path == "/api/upload":
+        length = request.headers.get("content-length")
+        if length is None:
+            return JSONResponse(
+                {"ok": False, "error": "nahrávání bez udané velikosti nebereme — "
+                                       "zkus fotku poslat znovu"},
+                status_code=413)
+        try:
+            too_big = int(length) > MAX_BODY
+        except ValueError:
+            too_big = True
+        if too_big:
+            return JSONResponse(
+                {"ok": False, "error": "fotka je moc velká (max 25 MB)"},
+                status_code=413)
+    return await call_next(request)
 
 
 IN_CONTAINER = os.path.exists("/.dockerenv")
@@ -97,15 +142,30 @@ def lan_ip():
 
 def decode_photo(data):
     """Bytes -> BGR array, with the phone's EXIF rotation already applied."""
+    too_many_px = ("fotka má příliš vysoké rozlišení — vyfoť list znovu, nebo pošli "
+                   "fotku v menší velikosti")
     bgr = None
     try:
         img = Image.open(io.BytesIO(data))
+        # rozmery zna uz hlavicka; kontrola PRED convert(), aby dekompresni
+        # bomba nikdy nedosla k plne alokaci
+        w, h = img.size
+        if w * h > MAX_PIXELS:
+            raise CaptureError(too_many_px)
         img = ImageOps.exif_transpose(img)
         bgr = cv2.cvtColor(np.asarray(img.convert("RGB")), cv2.COLOR_RGB2BGR)
-    except Exception:
+    except CaptureError:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        # nesmi propadnout do cv2 fallbacku — imdecode zadny limit nema
+        raise CaptureError(too_many_px)
+    except UnidentifiedImageError:
+        # format, ktery PIL nezna; cv2 jich umi vic
         raw = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if raw is not None:
             bgr = raw
+    except Exception:
+        bgr = None
     if bgr is None or bgr.size == 0:
         raise CaptureError("soubor se nepodařilo přečíst jako obrázek — pošli běžnou "
                            "fotku ve formátu JPEG nebo PNG")
@@ -113,9 +173,13 @@ def decode_photo(data):
     h, w = bgr.shape[:2]
     if max(h, w) < MIN_SIDE:
         raise CaptureError("fotka je moc malá, značky v rozích nejdou rozpoznat")
+    if max(h, w) > MAX_ASPECT * min(h, w):
+        raise CaptureError("fotka má nezvyklý poměr stran — na fotce nejspíš není "
+                           "celý list, vyfoť ho znovu")
     if max(h, w) > MAX_SIDE:
         scale = MAX_SIDE / max(h, w)
-        bgr = cv2.resize(bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        bgr = cv2.resize(bgr, (max(1, int(w * scale)), max(1, int(h * scale))),
+                         interpolation=cv2.INTER_AREA)
     return bgr
 
 
@@ -260,6 +324,10 @@ def api_template_texture(key: str):
         cv2.polylines(img, [np.round(c * ppm).astype(np.int32)], True, (60, 60, 60),
                       max(1, int(round(0.9 * ppm))), cv2.LINE_AA)
     ok, buf = cv2.imencode(".png", img)
+    if not ok:
+        log.error("imencode šablony %s selhal", key)
+        return JSONResponse({"ok": False, "error": "náhled se nepodařilo vykreslit"},
+                            status_code=500)
     return Response(buf.tobytes(), media_type="image/png",
                     headers={"Cache-Control": "no-store"})
 
@@ -267,6 +335,13 @@ def api_template_texture(key: str):
 @app.get("/favicon.ico")
 def favicon():
     return Response(status_code=204)
+
+
+def _keep_rejected(data, reason):
+    try:
+        store.save_rejected(data, reason)
+    except OSError:
+        log.exception("odmítnutou fotku se nepodařilo uložit")
 
 
 @app.post("/api/upload")
@@ -280,14 +355,22 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form("")):
                             status_code=413)
 
     try:
-        meta = await run_in_threadpool(process, data, clean_name(name))
+        async with PROCESS_SEM:
+            meta = await run_in_threadpool(process, data, clean_name(name))
     except CaptureError as e:
+        log.warning("upload odmítnut: %s", e)
+        _keep_rejected(data, str(e))
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     except Exception as e:
+        log.exception("zpracování fotky selhalo")
+        _keep_rejected(data, type(e).__name__)
         return JSONResponse(
             {"ok": False, "error": f"zpracování fotky selhalo ({type(e).__name__})"},
             status_code=500)
 
+    log.info("úlovek %s: %s kind=%s markers=%s coverage=%.3f took_ms=%s",
+             meta["id"], meta["creature"], meta.get("kind"), meta.get("markers"),
+             meta.get("coverage", 0.0), meta.get("took_ms"))
     await hub.broadcast({"type": "add", "url": meta["url"], "id": meta["id"],
                          "label": meta["label"], "name": meta["name"],
                          "creature": meta["creature"],
@@ -306,10 +389,20 @@ async def api_delete(catch_id: str):
         removed = store.delete_catch(catch_id)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    except OSError:
+        log.exception("odstavení úlovku %s selhalo", catch_id)
+        return JSONResponse({"ok": False, "error": "úlovek se nepodařilo smazat, "
+                                                   "zkus to za chvíli"},
+                            status_code=500)
     if not removed:
         return JSONResponse({"ok": False, "error": "takový úlovek tu není"},
                             status_code=404)
+    log.info("úlovek %s smazán", catch_id)
     await hub.broadcast({"type": "remove", "id": catch_id})
+    leftover = await run_in_threadpool(store.purge_deleted)
+    if leftover:
+        log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
+                    leftover)
     return {"ok": True, "id": catch_id}
 
 

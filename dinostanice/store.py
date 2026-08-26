@@ -10,12 +10,22 @@ import os
 import re
 import secrets
 import shutil
+import unicodedata
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATCH_ROOT = os.path.join(ROOT, "data", "catch")
+REJECTED_ROOT = os.path.join(ROOT, "data", "rejected")
+REJECTED_KEEP = 50
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,23}-[0-9a-f]{4}$")
+
+
+def write_image(path, img):
+    """cv2.imwrite tise vraci False (plny disk, spatna cesta) — tady je z toho vyjimka."""
+    import cv2
+    if not cv2.imwrite(str(path), img):
+        raise OSError(f"zápis obrázku selhal: {path}")
 
 
 def ensure_root():
@@ -115,8 +125,45 @@ def list_catches():
 
 
 def delete_catch(catch_id):
+    """Atomicky odstaví úlovek na <id>.deleted (ID_RE ho pak nevidí); skutečné
+    smazání dělá purge_deleted() — na Windows může StaticFiles držet otevřený
+    soubor a rmtree by nechal adresář v půlrozpadlém stavu."""
     path = catch_dir(catch_id)
     if not os.path.isdir(path):
         return False
-    shutil.rmtree(path, ignore_errors=True)
-    return not os.path.isdir(path)
+    trash = path + ".deleted"
+    if os.path.exists(trash):
+        shutil.rmtree(trash, ignore_errors=True)
+    os.replace(path, trash)
+    return True
+
+
+def purge_deleted():
+    """Best-effort úklid odstavených úlovků. Vrací počet těch, co nešly smazat."""
+    ensure_root()
+    left = 0
+    for entry in list(os.scandir(CATCH_ROOT)):
+        if entry.is_dir() and entry.name.endswith(".deleted"):
+            shutil.rmtree(entry.path, ignore_errors=True)
+            if os.path.isdir(entry.path):
+                left += 1
+    return left
+
+
+def save_rejected(data, reason):
+    """Odmítnuté fotky jsou nejcennější testovací materiál — pár posledních se schová."""
+    os.makedirs(REJECTED_ROOT, exist_ok=True)
+    ascii_reason = unicodedata.normalize("NFKD", reason or "").encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_reason.lower()).strip("-")[:60] or "chyba"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    ext = ".png" if data[:8] == b"\x89PNG\r\n\x1a\n" else ".jpg"
+    path = os.path.join(REJECTED_ROOT, f"{stamp}_{slug}{ext}")
+    with open(path, "wb") as f:
+        f.write(data)
+    files = sorted(e.name for e in os.scandir(REJECTED_ROOT) if e.is_file())
+    for name in files[:-REJECTED_KEEP]:
+        try:
+            os.remove(os.path.join(REJECTED_ROOT, name))
+        except OSError:
+            pass
+    return path
