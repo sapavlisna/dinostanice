@@ -25,10 +25,15 @@ const MAX_ACTORS = 18;
 const LENGTH_FRACTION = { walk: 0.17, swim: 0.19, fly: 0.24, sail: 0.15 };
 // totez pro 3D tvory, kde se nemeri delka, ale odmocnina z plochy siluety
 const SIZE_FRACTION = { walk: 0.234, fly: 0.334 };
-const FALLBACK_ZONES = {
-  sky: { y0: 0.06, y1: 0.40 }, shore: { y0: 0.60, y1: 0.72 },
-  water: { y0: 0.58, y1: 0.86 }, surface: { y0: 0.60, y1: 0.70 },
-};
+// Defaultni pasy sceny, kdyz Backdrop zadne nedodal (ladeni bez krajiny).
+// Stejny tvar jako Backdrop.bands: kazdy pas rika, ktere pohyby unese, a
+// `lane` odlisuje vic pasu tehoz pohybu.
+const FALLBACK_BANDS = [
+  { name: 'sky', y0: 0.06, y1: 0.40, motions: ['fly'] },
+  { name: 'shore', y0: 0.60, y1: 0.72, motions: ['walk'], lane: 'near' },
+  { name: 'water', y0: 0.58, y1: 0.86, motions: ['swim'] },
+  { name: 'surface', y0: 0.60, y1: 0.70, motions: ['sail'] },
+];
 // zakladni rychlost pohybu po scene v podilu sirky obrazovky za sekundu; chodec
 // z 3D modelu si ji spocita sam z delky kroku, tohle plati pro ostatni
 const BASE_SPEED = { walk: 0.030, swim: 0.030, fly: 0.055, sail: 0.018 };
@@ -64,8 +69,12 @@ const REST = {
   jump: 0.35, turn: 0.45, spin: 0.5,
 };
 // Podil vodorovne rychlosti, kterym se chodec sune po pasu brehu dopredu nebo
-// dozadu. Bez toho jdou vsichni po jedne lince zleva doprava.
+// dozadu. Bez toho jdou vsichni po jedne lince zleva doprava. Plati pro pas
+// vysoky DRIFT_REF_HEIGHT; uzsi pasy dostanou pomerne min (viz driftFor).
 const DRIFT = 0.3;
+const DRIFT_REF_HEIGHT = 0.15;
+// Sance, ze chodec padne na vedlejsi (vzdalenou) lane misto hlavni.
+const FAR_CHANCE = 0.35;
 // Na kolik tvoru scenu doplnit z katalogu, nez neco prinesou deti. Prazdna
 // krajina na televizi nikoho neprilaka a ukazkove textury vypadaji jako
 // vybarvene, takze je poznat, o co jde.
@@ -93,13 +102,32 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-function zone(motion, far) {
-  const z = (window.Backdrop && Backdrop.zones) || {};
-  if (motion === 'fly') return z.sky || FALLBACK_ZONES.sky;
-  if (motion === 'swim') return z.water || FALLBACK_ZONES.water;
-  if (motion === 'sail') return z.surface || FALLBACK_ZONES.surface;
-  if (far && z.shoreFar) return z.shoreFar;
-  return z.shore || FALLBACK_ZONES.shore;
+/* Pasy, ktere umi dany pohyb. Kdyz je Backdrop nezna (nebo pro pohyb zadny
+   nema), plati default — chodec tak nikdy nespadne do vody, protoze zadny
+   walk pas ji neobsahuje. */
+function bandsFor(motion) {
+  const all = (window.Backdrop && Backdrop.bands) || FALLBACK_BANDS;
+  let fit = all.filter(b => (b.motions || []).includes(motion));
+  if (!fit.length) fit = FALLBACK_BANDS.filter(b => b.motions.includes(motion));
+  return fit.length ? fit : [FALLBACK_BANDS[1]];
+}
+
+/* Novy tvor padne z FAR_CHANCE na nekterou vedlejsi lane (dnes vzdaleny breh),
+   at ma scena hloubku; jinak jde hlavni (blizkou) lane. */
+function pickBand(motion) {
+  const fit = bandsFor(motion);
+  if (fit.length === 1) return fit[0];
+  const near = fit.find(b => b.lane !== 'far') || fit[0];
+  const rest = fit.filter(b => b !== near);
+  return Math.random() < FAR_CHANCE
+    ? rest[Math.floor(Math.random() * rest.length)] : near;
+}
+
+/* Svisly drift se skaluje vyskou pasu: v uzkem vzdalenem brehu by tvor s plnym
+   driftem kmital mezi okraji kazde ~4 s. Reference je vyska predniho brehu. */
+function driftFor(band) {
+  return (Math.random() * 2 - 1) * DRIFT
+       * Math.min(1, (band.y1 - band.y0) / DRIFT_REF_HEIGHT);
 }
 
 function depthScale(yFrac) {
@@ -126,15 +154,14 @@ function addActor(what, opts) {
     return null;
   }
   const motion = what.motion || 'walk';
-  const far = motion === 'walk' && Math.random() < 0.35;
-  const z = zone(motion, far);
-  const yFrac = z.y0 + Math.random() * (z.y1 - z.y0);
+  const band = pickBand(motion);
+  const yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
   const dir = Math.random() < 0.5 ? 1 : -1;
   // rychlost i tempo cyklu maji jednu spolecnou nahodu, aby rychlejsi tvor
   // zaroven casteji maval kridly nebo vesloval
   const pace = 0.75 + Math.random() * 0.5;
   const actor = {
-    ...what, motion, yFrac, dir, far, pace,
+    ...what, motion, yFrac, dir, band, pace,
     // Tvory, kteri uz ve sceně "byli" (obnovene ulovky, doplnek z katalogu),
     // rozsazuje zlaty rez, ne nahoda: nahodnych sest cisel se casto sesype do
     // jednoho rohu a pul obrazovky zustane prazdna.
@@ -151,7 +178,7 @@ function addActor(what, opts) {
     fade: REST.fade,
     mix: 0,
     face: dir,
-    drift: (Math.random() * 2 - 1) * DRIFT,
+    drift: driftFor(band),
     born: sceneTime,
     label: what.label || 'tvor',
     who: (opts && opts.who) || '',
@@ -244,15 +271,16 @@ function makeRoom() {
   if (i >= 0) dropActor(i);
 }
 
-/* Po obchuzi scény jde chodec druhým pásem: kdo šel vzadu, vrací se vepředu.
-   Každý dinosaurus se tak aspoň jednou ukáže zblízka a scéna nemá pořád stejné
-   obsazení popředí. Přeskok pásu padne za okraj obrazovky, takže ho není vidět. */
+/* Po obchuzi scény přejde tvor na další lane téhož pohybu: kdo šel vzadu,
+   vrací se vepředu. Každý dinosaurus se tak aspoň jednou ukáže zblízka a scéna
+   nemá pořád stejné obsazení popředí. Pohyb s jedinou lane žádný přeskok nemá;
+   přeskok padne za okraj obrazovky, takže ho není vidět. */
 function swapBand(a) {
-  if (a.motion !== 'walk') return;
-  a.far = !a.far;
-  const z = zone('walk', a.far);
-  a.yFrac = z.y0 + Math.random() * (z.y1 - z.y0);
-  a.drift = (Math.random() * 2 - 1) * DRIFT;
+  const fit = bandsFor(a.motion);
+  if (fit.length < 2) return;
+  a.band = fit[(fit.indexOf(a.band) + 1) % fit.length];
+  a.yFrac = a.band.y0 + Math.random() * (a.band.y1 - a.band.y0);
+  a.drift = driftFor(a.band);
 }
 
 function toward(value, goal, step) {
@@ -318,16 +346,14 @@ function update(dt) {
     if (a.xFrac > 1.25) { a.xFrac = -0.25; swapBand(a); }
     if (a.xFrac < -0.25) { a.xFrac = 1.25; swapBand(a); }
     if (a.motion === 'fly') {
-      const z = zone('fly');
       a.yFrac += Math.sin(sceneTime * 0.35 + a.bob) * 0.012 * dt;
-      a.yFrac = Math.max(z.y0, Math.min(z.y1, a.yFrac));
+      a.yFrac = Math.max(a.band.y0, Math.min(a.band.y1, a.yFrac));
     } else if (a.motion === 'walk') {
       // Sunuti po pasu brehu: na kraji se odrazi, protoze za nim uz je voda
       // nebo les. Svisle se posouva pomerem `drift` k vodorovne rychlosti.
-      const z = zone('walk', a.far);
       a.yFrac += go * a.drift;
-      if (a.yFrac < z.y0 || a.yFrac > z.y1) {
-        a.yFrac = Math.max(z.y0, Math.min(z.y1, a.yFrac));
+      if (a.yFrac < a.band.y0 || a.yFrac > a.band.y1) {
+        a.yFrac = Math.max(a.band.y0, Math.min(a.band.y1, a.yFrac));
         a.drift = -a.drift;
       }
     }
@@ -597,7 +623,8 @@ window.DinoScene = {
   },
   gpu: () => Scene3D.info(),
   where: () => actors.map(a => ({
-    label: a.label, key: a.key, motion: a.motion, far: a.far,
+    label: a.label, key: a.key, motion: a.motion,
+    band: a.band.name, lane: a.band.lane || null,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
     x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
     // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti

@@ -370,6 +370,14 @@
       drawCycad(g, cxp, H * (FAR_SAND_TOP + 0.012 + rand() * 0.014),
                 H * (0.030 + rand() * 0.016), rgba(mix(FOREST_BANDS[3], SKY_HAZE, 0.10), 1));
     }
+    // Tiny fern tufts at the very top of the far sand strip: their base lies
+    // above the far walking band (y0 = 0.525), so walkers there pass in front
+    // of them — plants read as one depth further away.
+    var tufts = Math.round(W / H * 9);
+    for (i = 0; i < tufts; i++) {
+      fernClump(g, H, rand() * W, H * (0.516 + rand() * 0.008),
+                H * (0.011 + rand() * 0.007), rand);
+    }
     return { canvas: c, y0: y0 };
   }
 
@@ -554,32 +562,49 @@
       g.fill();
     }
 
-    // Fern clumps hugging the bottom corners.
-    var clumps = Math.round(W / H * 5);
-    for (i = 0; i < clumps; i++) {
-      var pos = i / Math.max(1, clumps - 1);
-      var fx = W * (pos < 0.5 ? pos * 0.42 + rand() * 0.06 : 0.60 + (pos - 0.5) * 0.80 + rand() * 0.06);
-      var fy = H * (0.965 + rand() * 0.05);
-      var scale = H * (0.10 + rand() * 0.075);
-      var fronds = 6 + Math.floor(rand() * 4);
-      for (var k = 0; k < fronds; k++) {
-        var spread = (k / (fronds - 1) - 0.5) * 2;
-        var ang = -Math.PI / 2 + spread * 0.85;
-        var bend = spread * 0.85 + (rand() - 0.5) * 0.3;
-        var col = rgba(mix(FERN_DARK, FERN_MID, rand() * 0.8), 1);
-        drawFrond(g, fx, fy, scale * (0.75 + rand() * 0.5), ang, bend, col);
-      }
-      for (var b = 0; b < 5; b++) {
-        var bl = (rand() - 0.5) * scale * 1.2;
-        g.strokeStyle = rgba(FERN_MID, 0.7);
-        g.lineWidth = Math.max(1, H * 0.002);
-        g.beginPath();
-        g.moveTo(fx + bl, fy);
-        g.quadraticCurveTo(fx + bl * 1.4, fy - scale * 0.7, fx + bl * 2.2, fy - scale * 1.1);
-        g.stroke();
-      }
+    // Mid-depth fern tufts at the waterline: base sits just above the near
+    // walking band (y0 = 0.80), so every walker passes in front of them.
+    var tufts = Math.round(W / H * 5);
+    for (i = 0; i < tufts; i++) {
+      fernClump(g, H, rand() * W, H * (0.786 + rand() * 0.012),
+                H * (0.032 + rand() * 0.022), rand);
     }
     return { canvas: c, edge: edge, y0: y0 };
+  }
+
+  function fernClump(g, H, fx, fy, scale, rand) {
+    var fronds = 6 + Math.floor(rand() * 4), k, b;
+    for (k = 0; k < fronds; k++) {
+      var spread = (k / (fronds - 1) - 0.5) * 2;
+      var ang = -Math.PI / 2 + spread * 0.85;
+      var bend = spread * 0.85 + (rand() - 0.5) * 0.3;
+      var col = rgba(mix(FERN_DARK, FERN_MID, rand() * 0.8), 1);
+      drawFrond(g, fx, fy, scale * (0.75 + rand() * 0.5), ang, bend, col);
+    }
+    for (b = 0; b < 5; b++) {
+      var bl = (rand() - 0.5) * scale * 1.2;
+      g.strokeStyle = rgba(FERN_MID, 0.7);
+      g.lineWidth = Math.max(1, H * 0.002);
+      g.beginPath();
+      g.moveTo(fx + bl, fy);
+      g.quadraticCurveTo(fx + bl * 1.4, fy - scale * 0.7, fx + bl * 2.2, fy - scale * 1.1);
+      g.stroke();
+    }
+  }
+
+  // Fern clumps hugging the bottom corners, in front of every creature —
+  // drawn by drawFront into the top canvas.
+  function buildFrontFerns(W, H, rand) {
+    var y0 = Math.round(H * 0.70);
+    var c = makeCanvas(W, H - y0), g = c.getContext('2d');
+    g.translate(0, -y0);
+    var clumps = Math.round(W / H * 5);
+    for (var i = 0; i < clumps; i++) {
+      var pos = i / Math.max(1, clumps - 1);
+      var fx = W * (pos < 0.5 ? pos * 0.42 + rand() * 0.06 : 0.60 + (pos - 0.5) * 0.80 + rand() * 0.06);
+      fernClump(g, H, fx, H * (0.965 + rand() * 0.05), H * (0.10 + rand() * 0.075), rand);
+    }
+    return { canvas: c, y0: y0 };
   }
 
   // ---------------------------------------------------------------- runtime
@@ -593,6 +618,7 @@
     var near = buildClouds(W, H, rand, { count: 6, y0: 0.13, y1: 0.29, size: 0.17, alpha: 0.62, flat: false, band: [0.02, 0.37] });
     var land = buildLand(W, H, rand);
     var shore = buildShore(W, H, rand);
+    var front = buildFrontFerns(W, H, rand);
 
     var waterGrad = null;
     var ripples = [], i;
@@ -639,7 +665,7 @@
 
     return {
       W: W, H: H, sky: sky, vig: vig, cloudFar: far, cloudNear: near, land: land,
-      shore: shore.canvas, shoreY0: shore.y0,
+      shore: shore.canvas, shoreY0: shore.y0, front: front,
       shoreEdge: function (x) { return shoreEdge(shore.edge, x, H); },
       ripples: ripples, sparks: sparks, blades: blades, waterGrad: waterGrad
     };
@@ -795,10 +821,12 @@
   }
 
   function drawFront(ctx, W, H, t) {
-    // Kapradi a vinetace patri az pred tvory, jinak by dinosaurus na pisku
-    // vypadal, ze stoji nad travou a ne v ni. Kresli se do vlastniho platna
-    // nad tim s 3D tvory.
+    // Rostliny lezi ve trech hloubkach: trsy u vzdaleneho brehu a u vodni cary
+    // se kresli do spodniho platna (draw), takze tvorove chodi PRED nimi, a
+    // rohove kapradi s travou a vinetaci sem, do platna NAD 3D tvory —
+    // dinosaurus tak stoji v zeleni, ne nad ni.
     if (!state || state.W !== W || state.H !== H) state = build(W, H);
+    ctx.drawImage(state.front.canvas, 0, state.front.y0);
     drawBlades(ctx, W, H, t, state);
     ctx.drawImage(state.vig, 0, 0);
   }
@@ -818,16 +846,20 @@
     drawFront: drawFront,
     // odkud sviti slunce na obloze, at ho 3D vrstva muze napodobit
     sun: { x: 0.74, y: 0.155 },
-    zones: {
-      sky: { y0: 0.06, y1: 0.38 },
-      shore: { y0: 0.80, y1: 0.95 },
+    // Pasy sceny jako data: y0/y1 v podilu vysky platna, `motions` rika, kdo
+    // se v pasu smi pohybovat, `lane` odlisuje vic pasu tehoz pohybu (scena
+    // mezi nimi tvory stridave preskakuje). Chodci tim maji formalni zakaz
+    // vody: zadny walk pas ji neprekryva.
+    bands: [
+      { name: 'sky', y0: 0.06, y1: 0.38, motions: ['fly'] },
       // the sand strip between forest and lagoon, so walkers can also appear
       // across the water and give the scene depth; pruh pisku lezi mezi 0,516
       // a 0,570 a 3D tvor stoji nohama presne na yFrac, takze se do nej musi vejit
-      shoreFar: { y0: 0.525, y1: 0.565 },
-      water: { y0: 0.645, y1: 0.755 },
-      surface: { y0: 0.645, y1: 0.745 }
-    },
+      { name: 'shoreFar', y0: 0.525, y1: 0.565, motions: ['walk'], lane: 'far' },
+      { name: 'water', y0: 0.645, y1: 0.755, motions: ['swim'] },
+      { name: 'surface', y0: 0.645, y1: 0.745, motions: ['sail'] },
+      { name: 'shore', y0: 0.80, y1: 0.95, motions: ['walk'], lane: 'near' }
+    ],
     depthScale: depthScale
   };
 })();
