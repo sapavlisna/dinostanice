@@ -1,0 +1,10 @@
+# aruco je v contribu, headless varianta nepotrebuje libGL ani X server.
+# Major verze je pripnuta na 4.x: proti ni bezi tech 143 testu, cv2 5.0
+# meni chovani aruco a nikdo to tu neoveril.
+opencv-contrib-python-headless>=4.10,<5
+numpy>=2.0
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pillow>=11.0
+qrcode>=8.0
+python-multipart>=0.0.12

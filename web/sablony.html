@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dinosauří stanice — šablony a modely</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 28px 48px;
+    background: #10151b; color: #dfe7ef;
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  h2 { margin: 34px 0 12px; font-size: 16px; font-weight: 600; color: #93a4b6; }
+  p.lead { margin: 0 0 8px; color: #93a4b6; }
+  a { color: #7fc4ff; }
+  .grid {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .card {
+    background: #18202a; border: 1px solid #26313d; border-radius: 12px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .card img {
+    width: 100%; aspect-ratio: 297 / 210; object-fit: contain;
+    background: #fff; border-radius: 8px;
+  }
+  .name { font-weight: 600; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    font: inherit; color: #e8eff6; background: #223040; text-decoration: none;
+    border: 1px solid #33465b; border-radius: 7px; padding: 5px 11px;
+  }
+  .btn:hover { background: #2b3d51; }
+  .btn.ghost { opacity: .65; }
+  .note { color: #6c7f92; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>Šablony a modely</h1>
+<p class="lead">
+  Předloha vznikla promítnutím 3D modelu na list, takže vybarvení sedne zpátky
+  na tvora. Tiskni na 100 %, žádné „přizpůsobit stránce“ — na měřítku stojí
+  celá pipeline.
+  <br><a href="/pridat">Nahrát vybarvený obrázek</a> ·
+  <a href="/dino3d">3D modely</a> · <a href="/">Zpět na scénu</a>
+</p>
+
+<div id="list"></div>
+
+<script type="module">
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text) n.textContent = text;
+  return n;
+};
+
+function card(entry) {
+  const c = el('div', 'card');
+  const img = el('img');
+  img.src = entry.template;
+  img.alt = entry.label;
+  img.loading = 'lazy';
+  c.append(img, el('div', 'name', entry.label));
+
+  const row = el('div', 'row');
+  const print = el('a', 'btn', 'Vytisknout');
+  print.href = entry.template;
+  print.target = '_blank';
+  row.append(print);
+  const model = el('a', 'btn', '3D model');
+  model.href = `/dino3d#${entry.key}`;
+  row.append(model);
+  c.append(row);
+  return c;
+}
+
+const list = await (await fetch('/api/templates')).json();
+const grid = el('div', 'grid');
+list.forEach((e) => grid.append(card(e)));
+document.getElementById('list').append(grid);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,135 @@
+[
+ {
+  "key": "trex3d",
+  "label": "Tyrannosaurus",
+  "motion": "walk",
+  "glb": "/models3d/trex3d.glb",
+  "texture": "/models3d/trex3d_texture.png",
+  "clips": {
+   "Attack": "Armature|TRex_Attack",
+   "Death": "Armature|TRex_Death",
+   "Idle": "Armature|TRex_Idle",
+   "Jump": "Armature|TRex_Jump",
+   "Run": "Armature|TRex_Run",
+   "Walk": "Armature|TRex_Walk"
+  },
+  "pose": "Armature|TRex_Walk",
+  "size": 31.22
+ },
+ {
+  "key": "velociraptor3d",
+  "label": "Velociraptor",
+  "motion": "walk",
+  "glb": "/models3d/velociraptor3d.glb",
+  "texture": "/models3d/velociraptor3d_texture.png",
+  "clips": {
+   "Attack": "Armature|Velociraptor_Attack",
+   "Death": "Armature|Velociraptor_Death",
+   "Idle": "Armature|Velociraptor_Idle",
+   "Jump": "Armature|Velociraptor_Jump",
+   "Run": "Armature|Velociraptor_Run",
+   "Walk": "Armature|Velociraptor_Walk"
+  },
+  "pose": "Armature|Velociraptor_Walk",
+  "size": 13.59
+ },
+ {
+  "key": "triceratops3d",
+  "label": "Triceratops",
+  "motion": "walk",
+  "glb": "/models3d/triceratops3d.glb",
+  "texture": "/models3d/triceratops3d_texture.png",
+  "clips": {
+   "Attack": "Armature|Triceratops_Attack",
+   "Death": "Armature|Triceratops_Death",
+   "Idle": "Armature|Triceratops_Idle",
+   "Jump": "Armature|Triceratops_Jump",
+   "Run": "Armature|Triceratops_Run",
+   "Walk": "Armature|Triceratops_Walk"
+  },
+  "pose": "Armature|Triceratops_Walk",
+  "size": 19.77
+ },
+ {
+  "key": "stegosaurus3d",
+  "label": "Stegosaurus",
+  "motion": "walk",
+  "glb": "/models3d/stegosaurus3d.glb",
+  "texture": "/models3d/stegosaurus3d_texture.png",
+  "clips": {
+   "Attack": "Armature|Stegosaurus_Attack",
+   "Death": "Armature|Stegosaurus_Death",
+   "Idle": "Armature|Stegosaurus_Idle",
+   "Jump": "Armature|Stegosaurus_Jump",
+   "Run": "Armature|Stegosaurus_Run",
+   "Walk": "Armature|Stegosaurus_Walk"
+  },
+  "pose": "Armature|Stegosaurus_Walk",
+  "size": 21.8
+ },
+ {
+  "key": "parasaurolophus3d",
+  "label": "Parasaurolophus",
+  "motion": "walk",
+  "glb": "/models3d/parasaurolophus3d.glb",
+  "texture": "/models3d/parasaurolophus3d_texture.png",
+  "clips": {
+   "Attack": "Armature|Parasaurolophus_Attack",
+   "Death": "Armature|Parasaurolophus_Death",
+   "Idle": "Armature|Parasaurolophus_Idle",
+   "Jump": "Armature|Parasaurolophus_Jump",
+   "Run": "Armature|Parasaurolophus_Run",
+   "Walk": "Armature|Parasaurolophus_Walk"
+  },
+  "pose": "Armature|Parasaurolophus_Walk",
+  "size": 12.88
+ },
+ {
+  "key": "apatosaurus3d",
+  "label": "Apatosaurus",
+  "motion": "walk",
+  "glb": "/models3d/apatosaurus3d.glb",
+  "texture": "/models3d/apatosaurus3d_texture.png",
+  "clips": {
+   "Attack": "Armature|Apatosaurus_Attack",
+   "Idle": "Armature|Apatosaurus_Idle",
+   "Jump": "Armature|Apatosaurus_Jump",
+   "Run": "Armature|Apatosaurus_Run",
+   "Walk": "Armature|Apatosaurus_Walk",
+   "Death": "Armature|Stegosaurus_Death"
+  },
+  "pose": "Armature|Apatosaurus_Walk",
+  "size": 47.92
+ },
+ {
+  "key": "drak3d",
+  "label": "Drak",
+  "motion": "fly",
+  "glb": "/models3d/drak3d.glb",
+  "texture": "/models3d/drak3d_texture.png",
+  "clips": {
+   "CharacterArmature|Death": "CharacterArmature|Death",
+   "Flying": "CharacterArmature|Fast_Flying",
+   "Idle": "CharacterArmature|Flying_Idle",
+   "CharacterArmature|Headbutt": "CharacterArmature|Headbutt",
+   "CharacterArmature|HitReact": "CharacterArmature|HitReact",
+   "CharacterArmature|No": "CharacterArmature|No",
+   "CharacterArmature|Punch": "CharacterArmature|Punch",
+   "CharacterArmature|Yes": "CharacterArmature|Yes"
+  },
+  "pose": "CharacterArmature|Fast_Flying",
+  "size": 2.25
+ },
+ {
+  "key": "pteranodon3d",
+  "label": "Pteranodon",
+  "motion": "fly",
+  "glb": "/models3d/pteranodon3d.glb",
+  "texture": "/models3d/pteranodon3d_texture.png",
+  "clips": {
+   "Flying": "Flying"
+  },
+  "pose": "Flying",
+  "size": 2.66
+ }
+]

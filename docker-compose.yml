@@ -1,0 +1,18 @@
+services:
+  dinostanice:
+    build: .
+    image: dinostanice
+    container_name: dinostanice
+    ports:
+      # 8000 na hostiteli uz drzi fs25-modssearcher, proto 8100
+      - "${DINO_PORT:-8100}:8000"
+    volumes:
+      # ulovky zustavaji na disku, at prezijou prestavbu image
+      - ./data/catch:/app/data/catch
+    environment:
+      # adresa a port, na kterych stanici uvidi mobil; pouzije se pro QR kod,
+      # kdyz je scena otevrena pres localhost. V kontejneru se adresa hostitele
+      # zjistit neda, proto se predava z .env
+      DINO_HOST: "${DINO_HOST:-}"
+      DINO_PORT: "${DINO_PORT:-8100}"
+    restart: unless-stopped

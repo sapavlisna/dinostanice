@@ -1,0 +1,11 @@
+out/
+tests/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+data/catch/
+*.md
+start.ps1
+conftest.py
+pytest.ini
+NUL
