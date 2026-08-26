@@ -8,8 +8,13 @@ import numpy as np
 from .shapes import SHEET_W_MM, SHEET_H_MM
 from .markers import DICT, creature_index_of, marker_corner_points_mm
 from .raster import creature_mask
-from .creatures import CATALOGUE
 from .creatures3d import CATALOGUE as CATALOGUE3D
+
+# Indexy 0-7 jsou historicky rezervovane pro starou 2D rig vetev
+# (creatures.CATALOGUE). Zamerne natvrdo, ne len(CATALOGUE): creatures.py cte
+# pri importu data/shapes/*.json a 3D pipeline nesmi spadnout, kdyby chybely.
+# Server si pro zpracovani starych vytisku importuje creatures sam.
+LEGACY_INDICES = range(8)
 
 WARP_PPM = 5.0
 WARP_W = int(round(SHEET_W_MM * WARP_PPM))
@@ -36,7 +41,7 @@ def known_indices():
     Obe vetve sdileji jeden prostor znacek: starsi tvorove maji indexy 0-7,
     ti z 3D modelu 8 a vys.
     """
-    return set(range(len(CATALOGUE))) | {m.marker_index for m in CATALOGUE3D}
+    return set(LEGACY_INDICES) | {m.marker_index for m in CATALOGUE3D}
 
 
 def detect_sheet(bgr, min_markers=MIN_MARKERS):

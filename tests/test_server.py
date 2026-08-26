@@ -129,6 +129,30 @@ def test_upload_blank_photo_rejected(client):
     assert client.get("/api/rigs").json() == []
 
 
+def test_upload_blurry_photo_gets_concrete_advice(client):
+    """Odmítnutí neříká jen „nejsou vidět značky" — quality poradí, co s fotkou."""
+    bgr = cv2.imdecode(np.frombuffer(model_photo_jpg(), np.uint8), cv2.IMREAD_COLOR)
+    ok, enc = cv2.imencode(".jpg", cv2.GaussianBlur(bgr, (0, 0), 15))
+    assert ok
+    r = upload(client, enc.tobytes(), filename="blur.jpg")
+    assert r.status_code == 400
+    assert "rozmazan" in r.json()["error"], r.json()["error"]
+
+
+def test_upload_too_far_photo_advises_moving_closer(client):
+    bgr = cv2.imdecode(np.frombuffer(model_photo_jpg(), np.uint8), cv2.IMREAD_COLOR)
+    h, w = bgr.shape[:2]
+    small = cv2.resize(bgr, (w // 6, h // 6), interpolation=cv2.INTER_AREA)
+    canvas = np.full((h, w, 3), 175, np.uint8)
+    y0, x0 = (h - small.shape[0]) // 2, (w - small.shape[1]) // 2
+    canvas[y0:y0 + small.shape[0], x0:x0 + small.shape[1]] = small
+    ok, enc = cv2.imencode(".jpg", canvas)
+    assert ok
+    r = upload(client, enc.tobytes(), filename="far.jpg")
+    assert r.status_code == 400
+    assert "přibliž telefon" in r.json()["error"], r.json()["error"]
+
+
 def test_upload_unreadable_file(client):
     r = upload(client, b"tohle rozhodne neni obrazek", filename="x.jpg")
     assert r.status_code == 400

@@ -1,7 +1,7 @@
 """Runtime photo-quality assessment.
 
-Meant to run before (or instead of) the full detect_sheet -> rig pipeline, so
-the uploader can tell a child what to fix and let them retake the shot rather
+Runs when the capture pipeline rejects a photo (server.process), so the
+uploader can tell a child what to fix and let them retake the shot rather
 than just failing. Works even on a photo where the sheet can't be located at
 all -- everything except ink_coverage only needs raw ArUco detection.
 
@@ -21,7 +21,8 @@ shadows), so they only ever produce a soft warning, never a hard block.
 import cv2
 import numpy as np
 
-from .capture import CaptureError, detect_sheet, extract_texture, ink_coverage as _ink_coverage
+from .capture import (MIN_MARKERS, CaptureError, detect_sheet, extract_texture,
+                      ink_coverage as _ink_coverage)
 from .markers import DICT
 
 _detector = cv2.aruco.ArucoDetector(DICT, cv2.aruco.DetectorParameters())
@@ -30,7 +31,7 @@ NORM_LONG_SIDE = 1600     # sharpness is computed after resizing to this, so the
 SHARP_FAIL = 1.5          # at/below this, detection reliably fails (measured: sigma>=7 extra blur -> norm_lap_var<=0.6)
 SHARP_WARN = 15.0         # below this, still usually works but is well below a normal in-focus shot (baseline ~50-80)
 
-MARKERS_MIN_OK = 3        # mirrors server.py's own gate -- fewer than this is rejected downstream regardless
+MARKERS_MIN_OK = MIN_MARKERS  # capture.detect_sheet's own gate -- fewer than this is rejected downstream regardless
 
 TOO_FAR_FAIL = 0.008      # avg marker side / image diagonal; measured failure at a sheet filling <~20% of the frame
 TOO_FAR_WARN = 0.015      # comfortable margin above that

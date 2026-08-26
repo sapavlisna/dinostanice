@@ -13,7 +13,6 @@ from .shapes import SHEET_W_MM, SHEET_H_MM
 # 4X4_100 je nadmnozina 4X4_50 (prvnich 50 kodu je shodnych), takze uz
 # vytistene listy plati dal a pribylo misto pro dalsi tvory
 DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
-MAX_CREATURES = 25
 MARKER_MM = 16.0
 MARGIN_MM = 9.0
 

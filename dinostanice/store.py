@@ -63,15 +63,6 @@ def save_photo(catch_id, data):
     return os.path.basename(path)
 
 
-def find_photo(catch_id):
-    d = catch_dir(catch_id)
-    for ext in (".jpg", ".png"):
-        p = os.path.join(d, "photo" + ext)
-        if os.path.exists(p):
-            return p
-    return None
-
-
 def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
                markers=0, photo=None, kind="rig"):
     """`kind` rozlisuje, co v adresari lezi: ohybany 2D rig, nebo textura

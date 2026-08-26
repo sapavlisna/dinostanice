@@ -227,28 +227,6 @@ def rigid_body(rgba_sheet, creature, ppm=WARP_PPM):
     return crop, meta
 
 
-SHEET_BLEED_MM = 2.5
-
-
-def sheet_for_texture(rgba_sheet, ppm=WARP_PPM):
-    """The whole drawing as one opaque image, for texturing a 3D model.
-
-    The cut-out is trimmed a little inside the printed line, so a mesh built on
-    the full outline samples past its edge and would come out transparent
-    there. Bleeding the colours outwards is the usual cure and costs nothing.
-    """
-    rgb = rgba_sheet[:, :, :3].copy()
-    alpha = rgba_sheet[:, :, 3]
-    solid = (alpha > 8).astype(np.uint8)
-    k = int(round(SHEET_BLEED_MM * ppm)) * 2 + 1
-    kernel = np.ones((k, k), np.uint8)
-    grown = cv2.dilate(rgb, kernel)
-    reach = cv2.dilate(solid, kernel) > 0
-    out = np.where((solid > 0)[:, :, None], rgb,
-                   np.where(reach[:, :, None], grown, 255)).astype(np.uint8)
-    return out
-
-
 def build_rig(rgba_sheet, creature, out_dir, name, ppm=WARP_PPM):
     """Write strip + limb images and a rig.json describing how they fit together."""
     os.makedirs(out_dir, exist_ok=True)
@@ -257,7 +235,6 @@ def build_rig(rgba_sheet, creature, out_dir, name, ppm=WARP_PPM):
     else:
         strip, meta = unwrap_body(rgba_sheet, creature, ppm)
     write_image(os.path.join(out_dir, "body.png"), strip)
-    write_image(os.path.join(out_dir, "sheet.png"), sheet_for_texture(rgba_sheet, ppm))
 
     limbs = []
     for idx, limb in enumerate(creature.limbs):
@@ -287,7 +264,6 @@ def build_rig(rgba_sheet, creature, out_dir, name, ppm=WARP_PPM):
         "ppm": ppm,
         "sheet_mm": [SHEET_W_MM, SHEET_H_MM],
         "body": {"image": "body.png", **meta},
-        "sheet": "sheet.png",
         "limbs": limbs,
     }
     with open(os.path.join(out_dir, "rig.json"), "w", encoding="utf-8") as f:

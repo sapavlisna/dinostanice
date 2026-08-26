@@ -148,10 +148,3 @@ def full_sheet_rgba(rgba_crop, bbox_mm, ppm=WARP_PPM):
     h, w = rgba_crop.shape[:2]
     full[y:y + h, x:x + w] = rgba_crop
     return full
-
-
-def raw_marker_count(bgr):
-    """How many ArUco markers are detectable in a photo at all, with no attempt to match them to a creature."""
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    _, ids, _ = _detector.detectMarkers(gray)
-    return 0 if ids is None else len(ids)

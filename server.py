@@ -22,14 +22,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dinostanice import capture, capture3d, modelsheet, rig, store
+from dinostanice import capture, capture3d, modelsheet, quality, rig, store
 from dinostanice.capture import CaptureError
-from dinostanice.creatures import BY_KEY, CATALOGUE
+from dinostanice.creatures import CATALOGUE
 from dinostanice.creatures3d import CATALOGUE as CATALOGUE3D
 
 BY_MARKER3D = {m.marker_index: m for m in CATALOGUE3D}
-from dinostanice.raster import outline_contours
-from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(ROOT, "web")
@@ -205,12 +203,30 @@ def _process_model_sheet(spec, warped, markers, data, name):
         raise
 
 
+def _capture_advice(bgr, err):
+    """Když se list nenajde, řekni dítěti, co s fotkou udělat jinak.
+
+    quality.assess nikdy nevyhazuje; capture_failed je jen obecné „nepovedlo
+    se" bez rady navíc, takže když nic konkrétnějšího nenajde, zůstane
+    původní hláška z capture.
+    """
+    report = quality.assess(bgr)
+    advice = [a for i, a in zip(report.issues, report.advice) if i != "capture_failed"]
+    if not advice:
+        return str(err)
+    log.info("rada z quality: issues=%s", report.issues)
+    return "; ".join(advice)
+
+
 def process(data, name):
     """The whole pipeline. Blocking — never call this straight from the event loop."""
     started = time.perf_counter()
     bgr = decode_photo(data)
 
-    creature_index, warped, markers = capture.detect_sheet(bgr)
+    try:
+        creature_index, warped, markers = capture.detect_sheet(bgr)
+    except CaptureError as e:
+        raise CaptureError(_capture_advice(bgr, e)) from e
 
     spec = BY_MARKER3D.get(creature_index)
     if spec is not None:
@@ -260,11 +276,6 @@ def upload_page():
     return _page("upload.html", "Stránka pro přidání zatím není nasazená.")
 
 
-@app.get("/3d")
-def model3d_page():
-    return _page("model3d.html", "3D náhled zatím není nasazený.")
-
-
 @app.get("/dino3d")
 def dino3d_page():
     return _page("dino3d.html", "Model z předlohy zatím není nasazený.")
@@ -299,37 +310,6 @@ def api_dino3d():
         return JSONResponse([], status_code=200)
     with open(path, encoding="utf-8") as fh:
         return JSONResponse(json.load(fh))
-
-
-@app.get("/api/models3d")
-def api_models3d():
-    """Creature keys that already have a baked 3D model.
-
-    catalogue3d.json is the index of the model-built creatures, not a model —
-    listing it here would offer the old viewer a key it cannot load.
-    """
-    return sorted(f[:-5] for f in os.listdir(MODELS3D_DIR)
-                  if f.endswith(".json") and f != "catalogue3d.json")
-
-
-@app.get("/api/template-texture/{key}.png")
-def api_template_texture(key: str):
-    """A blank sheet, so a model can be looked at before anyone colours one in."""
-    creature = BY_KEY.get(key)
-    if creature is None:
-        return JSONResponse({"ok": False, "error": "neznámý tvor"}, status_code=404)
-    ppm = 5.0
-    img = np.full((int(SHEET_H_MM * ppm), int(SHEET_W_MM * ppm), 3), 246, np.uint8)
-    for c in outline_contours(creature, ppm=ppm):
-        cv2.polylines(img, [np.round(c * ppm).astype(np.int32)], True, (60, 60, 60),
-                      max(1, int(round(0.9 * ppm))), cv2.LINE_AA)
-    ok, buf = cv2.imencode(".png", img)
-    if not ok:
-        log.error("imencode šablony %s selhal", key)
-        return JSONResponse({"ok": False, "error": "náhled se nepodařilo vykreslit"},
-                            status_code=500)
-    return Response(buf.tobytes(), media_type="image/png",
-                    headers={"Cache-Control": "no-store"})
 
 
 @app.get("/favicon.ico")

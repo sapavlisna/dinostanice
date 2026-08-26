@@ -65,27 +65,6 @@ def catmull_rom(points, samples_per_segment=14):
     return np.vstack(out)
 
 
-def smooth_closed(points, samples_per_segment=10):
-    """Catmull-Rom through a closed loop of control points.
-
-    Hand-placed polygons read as crude next to a traced silhouette; running the
-    same few points through a spline is what makes a hull look like a hull.
-    """
-    p = np.asarray(points, dtype=float)
-    n = len(p)
-    out = []
-    for i in range(n):
-        p0, p1, p2, p3 = p[(i - 1) % n], p[i], p[(i + 1) % n], p[(i + 2) % n]
-        t = np.linspace(0.0, 1.0, samples_per_segment, endpoint=False)[:, None]
-        out.append(
-            0.5 * ((2 * p1)
-                   + (-p0 + p2) * t
-                   + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t ** 2
-                   + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3)
-        )
-    return np.vstack(out)
-
-
 def resample_profile(profile, n):
     src = np.linspace(0.0, 1.0, len(profile))
     dst = np.linspace(0.0, 1.0, n)
