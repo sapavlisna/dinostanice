@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12161c">
+<title>Režim stanice</title>
+<style>
+  :root {
+    --bg: #12161c;
+    --card: #1b212a;
+    --line: #2c3542;
+    --text: #e8eef6;
+    --muted: #9aa7b8;
+    --accent: #ffb347;
+    --ok: #6ddf9c;
+    --bad: #ff8f7a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 18px calc(28px + env(safe-area-inset-bottom));
+    max-width: 560px; margin: 0 auto;
+  }
+  h1 { font-size: 25px; margin: 4px 0 2px; }
+  .lead { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 18px; margin-top: 18px;
+  }
+  .field-label { font-size: 15px; color: var(--muted); margin-bottom: 12px; }
+  .hidden { display: none !important; }
+
+  .toggle-row { display: flex; gap: 10px; }
+  .toggle-btn {
+    flex: 1; border: 1px solid var(--line); border-radius: 16px;
+    background: #10151b; color: var(--text);
+    font-size: 18px; font-weight: 700; padding: 22px 12px; cursor: pointer;
+  }
+  .toggle-btn.active { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+  .toggle-btn:active { transform: translateY(2px); }
+  .hint-text { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
+
+  button.action {
+    border: none; border-radius: 16px; padding: 20px 12px;
+    font-size: 18px; font-weight: 700; cursor: pointer; width: 100%;
+  }
+  button.action:active { transform: translateY(2px); }
+  button:disabled { opacity: .45; }
+
+  .danger-btn {
+    display: block; width: 100%; border: none; border-radius: 20px;
+    background: #2a1518; color: var(--bad);
+    font-size: 20px; font-weight: 700; padding: 22px 12px;
+    text-align: center; cursor: pointer;
+  }
+  .danger-btn:active { transform: translateY(2px); }
+
+  .confirm-text { margin: 0 0 16px; font-size: 16px; }
+  .row { display: flex; gap: 10px; margin-top: 4px; }
+  .row .action { flex: 1; }
+  .primary-danger { background: var(--bad); color: #2a0e0e; }
+  .ghost { background: transparent; color: var(--muted); border: 1px solid var(--line) !important; }
+
+  .status-text { margin-top: 14px; font-size: 15px; color: var(--muted); }
+  .status-text.ok { color: var(--ok); }
+
+  .footer-links { margin-top: 30px; text-align: center; }
+  .footer-links a { color: #7fc4ff; text-decoration: none; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Režim stanice</h1>
+<p class="lead">Nastavení pro obsluhu — na televizi se přes dotyk nic neřeší.</p>
+
+<div class="card">
+  <div class="field-label">Krajina</div>
+  <div class="toggle-row">
+    <button class="toggle-btn" id="ambientOn" type="button">Ukázková</button>
+    <button class="toggle-btn" id="ambientOff" type="button">Prázdná</button>
+  </div>
+  <p class="hint-text">
+    Ukázková krajina doplňuje tvory z katalogu, ať scéna nezeje prázdnotou.
+    Prázdná krajina se doplňuje jen tím, co přinesou děti.
+  </p>
+</div>
+
+<div class="card">
+  <div class="field-label">Vyprázdnit stanici</div>
+  <button class="danger-btn" id="resetBtn" type="button">Vyprázdnit stanici</button>
+  <div id="resetConfirm" class="hidden">
+    <p class="confirm-text" id="resetText"></p>
+    <div class="row">
+      <button class="action primary-danger" id="resetYes" type="button">Ano, smazat vše</button>
+      <button class="action ghost" id="resetNo" type="button">Ne, nechat</button>
+    </div>
+  </div>
+  <div class="status-text" id="resetStatus"></div>
+</div>
+
+<div class="footer-links">
+  <a href="/">Zpět na scénu</a> &middot; <a href="/sablony">Šablony</a> &middot; <a href="/pridat">Přidat dinosaura</a>
+</div>
+
+<script>
+"use strict";
+
+const ambientOnBtn = document.getElementById("ambientOn");
+const ambientOffBtn = document.getElementById("ambientOff");
+const resetBtn = document.getElementById("resetBtn");
+const resetConfirm = document.getElementById("resetConfirm");
+const resetText = document.getElementById("resetText");
+const resetYes = document.getElementById("resetYes");
+const resetNo = document.getElementById("resetNo");
+const resetStatus = document.getElementById("resetStatus");
+
+function paintAmbient(ambient) {
+  ambientOnBtn.classList.toggle("active", ambient);
+  ambientOffBtn.classList.toggle("active", !ambient);
+}
+
+async function loadSettings() {
+  try {
+    const s = await (await fetch("/api/scene/settings")).json();
+    paintAmbient(!!s.ambient);
+  } catch (e) { /* necháme výchozí vzhled */ }
+}
+
+async function setAmbient(ambient) {
+  paintAmbient(ambient);
+  try {
+    await fetch("/api/scene/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ambient }),
+    });
+  } catch (e) {
+    resetStatus.textContent = "Nepodařilo se spojit se stanicí, zkus to znovu.";
+  }
+}
+
+ambientOnBtn.addEventListener("click", () => setAmbient(true));
+ambientOffBtn.addEventListener("click", () => setAmbient(false));
+
+resetBtn.addEventListener("click", async () => {
+  let n = "?";
+  try {
+    const rigs = await (await fetch("/api/rigs")).json();
+    n = (rigs.rigs || rigs).length;
+  } catch (e) { /* n zůstane "?" */ }
+  resetText.textContent = "Smažou se všichni dinosauři, které jste přinesli (" + n +
+                          "). Ukázkoví z katalogu zůstanou. Nedá se vrátit.";
+  resetStatus.textContent = "";
+  resetBtn.classList.add("hidden");
+  resetConfirm.classList.remove("hidden");
+});
+
+resetNo.addEventListener("click", () => {
+  resetConfirm.classList.add("hidden");
+  resetBtn.classList.remove("hidden");
+});
+
+resetYes.addEventListener("click", async () => {
+  resetYes.disabled = true;
+  resetNo.disabled = true;
+  try {
+    const r = await (await fetch("/api/scene/reset", { method: "POST" })).json();
+    resetStatus.textContent = r.ok ? "Hotovo — smazáno " + r.deleted + "."
+                                   : "Nepodařilo se to.";
+    resetStatus.classList.toggle("ok", !!r.ok);
+  } catch (e) {
+    resetStatus.textContent = "Nepodařilo se spojit se stanicí.";
+    resetStatus.classList.remove("ok");
+  }
+  resetYes.disabled = false;
+  resetNo.disabled = false;
+  resetConfirm.classList.add("hidden");
+  resetBtn.classList.remove("hidden");
+});
+
+loadSettings();
+</script>
+</body>
+</html>

@@ -34,6 +34,7 @@ WEB_DIR = os.path.join(ROOT, "web")
 MODELS3D_DIR = os.path.join(ROOT, "data", "models3d")
 TEMPLATES_DIR = os.path.join(ROOT, "data", "templates")
 SHAPES3D_DIR = os.path.join(ROOT, "data", "shapes3d")
+STATE_PATH = os.path.join(ROOT, "data", "state.json")
 
 MAX_UPLOAD = 25 * 1024 * 1024
 MAX_BODY = MAX_UPLOAD + 1024 * 1024   # rezerva na multipart obálku okolo fotky
@@ -98,6 +99,24 @@ class Hub:
 
 
 hub = Hub()
+
+
+def _read_state():
+    """Malá trvalá nastavení scény (dnes jen `ambient`). Čte se za běhu, ne
+    jednou při startu, ať jde cesta izolovat monkeypatchem stejně jako
+    store.CATCH_ROOT."""
+    try:
+        with open(STATE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        return {"ambient": bool(data.get("ambient", True))}
+    except (OSError, json.JSONDecodeError):
+        return {"ambient": True}
+
+
+def _write_state(state):
+    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=1)
 
 
 @app.middleware("http")
@@ -286,6 +305,11 @@ def sheets_page():
     return _page("sablony.html", "Přehled šablon zatím není nasazený.")
 
 
+@app.get("/rezim")
+def rezim_page():
+    return _page("rezim.html", "Režim stanice zatím není nasazený.")
+
+
 @app.get("/api/templates")
 def api_templates():
     """Předlohy vygenerované z 3D modelů.
@@ -384,6 +408,40 @@ async def api_delete(catch_id: str):
         log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
                     leftover)
     return {"ok": True, "id": catch_id}
+
+
+@app.get("/api/scene/settings")
+def api_scene_settings():
+    return _read_state()
+
+
+@app.post("/api/scene/settings")
+async def api_scene_settings_set(request: Request):
+    body = await request.json()
+    state = _read_state()
+    state["ambient"] = bool(body.get("ambient", state["ambient"]))
+    _write_state(state)
+    log.info("nastavení scény: ambient=%s", state["ambient"])
+    await hub.broadcast({"type": "settings", "ambient": state["ambient"]})
+    return state
+
+
+@app.post("/api/scene/reset")
+async def api_scene_reset():
+    """Vyprázdní stanici: smaže všechny úlovky (ambientní doplňky z katalogu
+    v `data/catch` nejsou, tak se jich to netýká) a pošle jedinou zprávu
+    scéně, ať si nespustí topUp() N-krát za sebou."""
+    deleted = 0
+    for meta in store.list_catches():
+        if store.delete_catch(meta["id"]):
+            deleted += 1
+    leftover = await run_in_threadpool(store.purge_deleted)
+    if leftover:
+        log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
+                    leftover)
+    log.info("stanice vyprázdněna: smazáno %d úlovků", deleted)
+    await hub.broadcast({"type": "cleared"})
+    return {"ok": True, "deleted": deleted}
 
 
 @app.get("/api/qr")

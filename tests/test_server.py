@@ -6,6 +6,7 @@ Ulozene ulovky jdou do tmp_path — store se parametrizuje monkeypatchem
 CATCH_ROOT/REJECTED_ROOT, vsechny funkce store je ctou az za behu.
 """
 
+import json
 import struct
 import zlib
 from functools import lru_cache
@@ -232,3 +233,58 @@ def test_ws_add_and_remove(client):
         assert client.delete(f"/api/rigs/{catch_id}").status_code == 200
         msg = ws.receive_json()
         assert msg == {"type": "remove", "id": catch_id}
+
+
+def test_scene_settings_roundtrip(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+
+    # bez souboru je vychozi ambient zapnuty
+    assert client.get("/api/scene/settings").json() == {"ambient": True}
+
+    r = client.post("/api/scene/settings", json={"ambient": False})
+    assert r.status_code == 200
+    assert r.json()["ambient"] is False
+
+    # perzistuje pres dalsi cteni i primo na disku
+    assert client.get("/api/scene/settings").json()["ambient"] is False
+    saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert saved == {"ambient": False}
+
+    r = client.post("/api/scene/settings", json={"ambient": True})
+    assert r.json()["ambient"] is True
+    assert client.get("/api/scene/settings").json()["ambient"] is True
+
+
+def test_scene_settings_broadcasts(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+    with client.websocket_connect("/ws") as ws:
+        client.post("/api/scene/settings", json={"ambient": False})
+        msg = ws.receive_json()
+        assert msg == {"type": "settings", "ambient": False}
+
+
+def test_scene_reset_clears_catches_and_broadcasts(client):
+    catch_id = upload(client, model_photo_jpg()).json()["id"]
+    assert len(client.get("/api/rigs").json()) == 1
+
+    with client.websocket_connect("/ws") as ws:
+        r = client.post("/api/scene/reset")
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "deleted": 1}
+        msg = ws.receive_json()
+        assert msg == {"type": "cleared"}
+
+    assert client.get("/api/rigs").json() == []
+    assert not server.os.path.isdir(store.catch_dir(catch_id))
+
+
+def test_scene_reset_with_nothing_to_delete(client):
+    r = client.post("/api/scene/reset")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "deleted": 0}
+
+
+def test_rezim_page(client):
+    r = client.get("/rezim")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]

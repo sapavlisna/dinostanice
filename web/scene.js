@@ -87,6 +87,9 @@ let ambientSeq = 0;
 let spawnSeq = 0;
 let has3D = false;
 let dpr = 1, W = 0, H = 0, lastFrame = 0, sceneTime = 0;
+// Prazdna vs ukazkova krajina (bod c) — pri vypnutem se ambientni tvorove
+// nemazou, jen se prestanou doplnovat; init hodnota se nacte z /api/scene/settings.
+let ambientEnabled = true;
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -245,7 +248,7 @@ function nextAmbient() {
 let topping = false;
 
 async function topUp() {
-  if (topping || !has3D || !byKey.size) return;  // dve soubezna volani by prelila AMBIENT_MIN
+  if (topping || !has3D || !byKey.size || !ambientEnabled) return;  // dve soubezna volani by prelila AMBIENT_MIN
   topping = true;
   try {
     while (actors.length < AMBIENT_MIN) {
@@ -480,6 +483,29 @@ async function catalogue() {
   }
 }
 
+async function fetchSettings() {
+  try {
+    const s = await (await fetch('/api/scene/settings')).json();
+    ambientEnabled = !!s.ambient;
+  } catch (e) {
+    /* necháme výchozí (zapnuto) — scéna se dá ladit i bez serveru */
+  }
+}
+
+/* Reset z /rezim (bod d): ulovky zmizi, ambientni doplnky z katalogu
+   zustanou. Jeden souhrnny zaznam v listě mísi vypadá lip nez zaplaveni N
+   jednotlivymi "odešel". */
+function clearCatches() {
+  for (let i = actors.length - 1; i >= 0; i--) {
+    if (actors[i].ambient) continue;
+    const [gone] = actors.splice(i, 1);
+    if (gone.m3) Scene3D.remove(gone.m3);
+  }
+  Roster.cast(actors);
+  Roster.event('note', 'Stanice vyprázdněna');
+  topUp();
+}
+
 async function fetchCast() {
   const res = await fetch('/api/rigs');
   if (!res.ok) return null;
@@ -552,6 +578,7 @@ function connect() {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'add') {
+      qrArrived();      // zmenseni patri kazdemu prirustku, bez ohledu na kind
       try {
         const a = await arrive(msg, { who: msg.name });
         if (a) {
@@ -567,6 +594,11 @@ function connect() {
         if (actors[i].id === msg.id) dropActor(i);
       }
       topUp();
+    } else if (msg.type === 'settings') {
+      ambientEnabled = !!msg.ambient;
+      if (ambientEnabled) topUp();
+    } else if (msg.type === 'cleared') {
+      clearCatches();
     }
   };
   ws.onclose = () => {
@@ -603,6 +635,54 @@ Tune.init({
   },
 });
 
+/* QR panel v pravem hornim rohu (bod a): plny prvnich QR_FULL_MS po startu,
+   pak mini; hned mini po prvnim WS `add`; po QR_IDLE_MS klidu (zadny `add`)
+   se jednou na QR_REMIND_MS plynule pripomene. Casy se daji docasne zkratit
+   pres window.QR_*_MS pred nactenim stranky (Playwright), zdrojak zustava
+   netknuty. Klavesa H je rucni override: prebiji vzhled uplnym skryti/
+   zobrazenim a od prvniho stisku natrvalo vypne automatiku. */
+const QR_FULL_MS = window.QR_FULL_MS || 90000;
+const QR_IDLE_MS = window.QR_IDLE_MS || 10 * 60000;
+const QR_REMIND_MS = window.QR_REMIND_MS || 20000;
+
+let qrManual = false;
+let qrShrinkTimer = 0, qrIdleTimer = 0, qrRemindTimer = 0;
+
+function qrSetMini(mini) {
+  hintEl.classList.toggle('mini', mini);
+}
+
+function qrScheduleIdleRemind() {
+  clearTimeout(qrIdleTimer);
+  qrIdleTimer = setTimeout(() => {
+    if (!qrManual) {
+      qrSetMini(false);
+      qrRemindTimer = setTimeout(() => { if (!qrManual) qrSetMini(true); }, QR_REMIND_MS);
+    }
+    qrScheduleIdleRemind();       // pripominka se opakuje po kazdych QR_IDLE_MS klidu
+  }, QR_IDLE_MS);
+}
+
+function qrArrived() {
+  clearTimeout(qrShrinkTimer);
+  clearTimeout(qrRemindTimer);
+  if (!qrManual) qrSetMini(true);
+  qrScheduleIdleRemind();         // klid se pocita znovu od posledniho prirustku
+}
+
+function qrInit() {
+  qrShrinkTimer = setTimeout(() => { if (!qrManual) qrSetMini(true); }, QR_FULL_MS);
+  qrScheduleIdleRemind();
+}
+
+function qrToggleManual() {
+  qrManual = true;
+  clearTimeout(qrShrinkTimer);
+  clearTimeout(qrIdleTimer);
+  clearTimeout(qrRemindTimer);
+  hintEl.style.opacity = hintEl.style.opacity === '0' ? '1' : '0';
+}
+
 document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (e.target.tagName === 'INPUT') return;      // v panelu se pise
@@ -612,7 +692,7 @@ document.addEventListener('keydown', (e) => {
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen();
   }
-  if (k === 'h') hintEl.style.opacity = hintEl.style.opacity === '0' ? '1' : '0';
+  if (k === 'h') qrToggleManual();
 });
 
 window.DinoScene = {
@@ -632,6 +712,7 @@ window.DinoScene = {
     bodiesPerS: a.natural ? +(a.natural * a.rate * a.speedMul).toFixed(4) : null,
     cycle: a.m3 && a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
   })),
+  ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
 };
 
 const qr = document.getElementById('qr');
@@ -648,6 +729,8 @@ if (glError) {
   console.error('WebGL:', glError);
 }
 resize();
-catalogue().then(restoreCast).then(topUp).then(() => { window.__ready = true; });
+Promise.all([catalogue(), fetchSettings()])
+  .then(restoreCast).then(topUp).then(() => { window.__ready = true; });
 connect();
 requestAnimationFrame(frame);
+qrInit();

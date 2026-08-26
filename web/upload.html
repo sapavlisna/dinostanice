@@ -78,6 +78,34 @@
   .error .why { color: var(--bad); font-weight: 600; }
   .hints { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 15px; }
   .hints li { margin: 4px 0; }
+
+  .field-label { font-size: 15px; color: var(--muted); margin-bottom: 4px; }
+  .roster-card { padding: 6px 10px; }
+  .roster-row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .roster-row:last-child { border-bottom: none; }
+  .roster-row.confirm { flex-direction: column; align-items: stretch; gap: 10px; }
+  .roster-thumb {
+    width: 52px; height: 52px; border-radius: 10px; object-fit: contain;
+    background: #fff; flex: none;
+  }
+  .roster-thumb.empty { background: #232b36; }
+  .roster-info { flex: 1; min-width: 0; }
+  .roster-name {
+    font-weight: 600; font-size: 16px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .roster-kind { color: var(--muted); font-size: 13px; }
+  .roster-del {
+    flex: none; width: 42px; height: 42px; border-radius: 50%; border: none;
+    background: #232b36; color: var(--bad); font-size: 19px; cursor: pointer;
+  }
+  .roster-del:active { background: #2c3542; }
+  .roster-confirm-text { margin: 0 0 12px; font-size: 15px; }
+  .roster-empty { color: var(--muted); font-size: 15px; padding: 12px 6px; }
+  .action.danger { background: var(--bad); color: #2a0e0e; }
 </style>
 </head>
 <body>
@@ -90,6 +118,11 @@
   <small>na počítači vybere soubor z disku</small>
 </label>
 <input id="file" type="file" accept="image/*" capture="environment">
+
+<div class="field-label" style="margin-top:22px">Dinosauři ve stanici</div>
+<div class="card roster-card">
+  <div id="rosterList"></div>
+</div>
 
 <div id="sheet" class="card hidden">
   <img id="preview" alt="Náhled fotky">
@@ -120,6 +153,7 @@ const nameInput = document.getElementById("name");
 const sendBtn = document.getElementById("send");
 const againBtn = document.getElementById("again");
 const statusBox = document.getElementById("status");
+const rosterList = document.getElementById("rosterList");
 
 let pending = null;
 let previewUrl = null;
@@ -241,7 +275,101 @@ sendBtn.addEventListener("click", async () => {
   pending = null;
   sheet.classList.add("hidden");
   nameInput.value = nameInput.value.trim();
+  loadRoster();
 });
+
+// --- Dinosauři ve stanici: seznam s mazáním (bod d) --------------------
+
+function rosterThumb(r) {
+  if (r.kind === "model") return "/catch/" + r.id + "/texture.png";
+  if (r.kind === "rig") return "/catch/" + r.id + "/body.png";
+  return null;
+}
+
+function rosterRow(r) {
+  const row = document.createElement("div");
+  row.className = "roster-row";
+
+  const src = rosterThumb(r);
+  const thumb = document.createElement(src ? "img" : "div");
+  thumb.className = "roster-thumb" + (src ? "" : " empty");
+  if (src) { thumb.src = src; thumb.alt = ""; }
+
+  const info = document.createElement("div");
+  info.className = "roster-info";
+  const name = document.createElement("div");
+  name.className = "roster-name";
+  name.textContent = r.name || "–";
+  const kind = document.createElement("div");
+  kind.className = "roster-kind";
+  kind.textContent = r.label || r.creature || "";
+  info.append(name, kind);
+
+  const del = document.createElement("button");
+  del.className = "roster-del";
+  del.type = "button";
+  del.setAttribute("aria-label", "Smazat");
+  del.textContent = "✕";
+  del.addEventListener("click", () => rosterAskDelete(row, r));
+
+  row.append(thumb, info, del);
+  return row;
+}
+
+function rosterAskDelete(row, r) {
+  row.replaceChildren();
+  row.classList.add("confirm");
+  const text = document.createElement("div");
+  text.className = "roster-confirm-text";
+  text.textContent = "Fakt smazat " + (r.name ? r.name + ", tvého " : "tohoto ")
+                     + (r.label || "dinosaura") + "?";
+
+  const buttons = document.createElement("div");
+  buttons.className = "row";
+  const yes = document.createElement("button");
+  yes.className = "action danger";
+  yes.type = "button";
+  yes.textContent = "Ano, smazat";
+  const no = document.createElement("button");
+  no.className = "action ghost";
+  no.type = "button";
+  no.textContent = "Ne";
+  no.addEventListener("click", () => row.replaceWith(rosterRow(r)));
+
+  yes.addEventListener("click", async () => {
+    yes.disabled = true;
+    no.disabled = true;
+    try {
+      const res = await fetch("/api/rigs/" + r.id, { method: "DELETE" });
+      if (res.ok) { row.remove(); return; }
+    } catch (e) { /* padne do hlášky níž */ }
+    text.textContent = "Smazání se nepovedlo, zkus to znovu.";
+    yes.disabled = false;
+    no.disabled = false;
+  });
+
+  buttons.append(yes, no);
+  row.append(text, buttons);
+}
+
+async function loadRoster() {
+  let rigs = [];
+  try {
+    const data = await (await fetch("/api/rigs")).json();
+    rigs = data.rigs || data;
+  } catch (e) { /* seznam prostě zůstane prázdný */ }
+  rosterList.replaceChildren();
+  if (!rigs.length) {
+    const empty = document.createElement("div");
+    empty.className = "roster-empty";
+    empty.textContent = "Zatím tu nikdo není.";
+    rosterList.append(empty);
+    return;
+  }
+  rigs.slice().reverse().forEach((r) => rosterList.append(rosterRow(r)));
+}
+
+loadRoster();
 </script>
 </body>
 </html>

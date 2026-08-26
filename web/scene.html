@@ -13,13 +13,17 @@
   #stagefx { z-index: 2; pointer-events: none; }
   #hint, #toast, #err, #roster { z-index: 3; }
   #hint {
-    position: fixed; right: 24px; bottom: 62px; display: flex; align-items: center;
+    position: fixed; right: 24px; top: 24px; display: flex; align-items: center;
     gap: 16px; padding: 14px 18px; border-radius: 14px; color: #f2f6f8;
     background: rgba(8, 22, 30, .62); backdrop-filter: blur(6px);
     font: 500 17px/1.35 "Segoe UI", system-ui, sans-serif;
-    transition: opacity .6s; box-shadow: 0 6px 30px rgba(0,0,0,.35);
+    transition: opacity .6s, gap .5s ease, padding .5s ease;
+    box-shadow: 0 6px 30px rgba(0,0,0,.35);
   }
-  #hint img { width: 108px; height: 108px; border-radius: 8px; background: #fff; }
+  #hint img {
+    width: 108px; height: 108px; border-radius: 8px; background: #fff;
+    transition: width .5s ease, height .5s ease;
+  }
   #hint b { display: block; font-size: 20px; margin-bottom: 4px; }
   #hint span { display: block; opacity: .78; font-size: 15px; }
   #hint a {
@@ -27,6 +31,11 @@
     text-decoration: none; border-bottom: 1px solid rgba(159, 214, 255, .4);
   }
   #hint a:hover { color: #d6ecff; }
+  /* mini stav: jen QR v rohu, bez textu — hlavni stav prvnich 90 s po startu,
+     nebo hned po prvnim add; pripominka se na chvili vrati k plnemu stavu */
+  #hint.mini { gap: 0; padding: 7px; border-radius: 12px; }
+  #hint.mini img { width: 56px; height: 56px; }
+  #hint.mini > div { display: none; }
   #toast {
     position: fixed; left: 50%; top: 36px; transform: translateX(-50%) translateY(-140%);
     padding: 16px 30px; border-radius: 999px; color: #06222c; background: #ffe9a8;
@@ -75,6 +84,7 @@
           margin-left: auto; font-size: 13px; }
   #feed .ev.in { color: #b7e7b0; }
   #feed .ev.out { color: #f2b3ac; }
+  #feed .ev.note { color: #ffe9a8; }
   #err.fatal {
     left: 50%; bottom: auto; top: 40%; transform: translateX(-50%);
     max-width: 70vw; padding: 18px 26px; border-radius: 14px; opacity: 1;

@@ -40,17 +40,20 @@ function plural(n) {
   return n >= 2 && n <= 4 ? 'tvorové' : 'tvorů';
 }
 
-/** Přišel (`in`) nebo odešel (`out`) tvor daného typu a jména. */
+/** Přišel (`in`) nebo odešel (`out`) tvor daného typu a jména; `note` je
+    obecný záznam bez tvora (např. „stanice vyprázdněna“) — bere jen `label`. */
 export function event(kind, label, who) {
   if (!feed) return;
   const time = new Date().toLocaleTimeString('cs-CZ');
-  events.unshift({ kind, text: `${label} · ${who || '-'}`, time });
+  const text = kind === 'note' ? label : `${label} · ${who || '-'}`;
+  events.unshift({ kind, text, time });
   events.length = Math.min(events.length, EVENTS);
   feed.replaceChildren(...events.map((e, i) => {
     const item = document.createElement('span');
     item.className = 'ev ' + e.kind;
     item.style.opacity = 1 - i * 0.17;    // starší záznamy blednou dozadu
-    item.textContent = `${e.kind === 'in' ? '+' : '−'} ${e.text}`;
+    const prefix = e.kind === 'in' ? '+' : e.kind === 'out' ? '−' : '•';
+    item.textContent = `${prefix} ${e.text}`;
     item.title = e.time;
     return item;
   }));
