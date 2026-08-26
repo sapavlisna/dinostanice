@@ -39,11 +39,11 @@ const BASE_SPEED = { walk: 0.030, swim: 0.030, fly: 0.055, sail: 0.018 };
 const STRIDE_RATE = { min: 0.12, max: 0.22 };
 const GAIT_RATE = { min: 0.6, max: 1.6 };
 // Doladeno okem na televizi, klic je druh z katalogu. `rate` je tempo animace,
-// `speed` nasobek dopoctene rychlosti — u ktereho druhu je pod 1, tam je mereny
-// krok delsi, nez jak vypada. Cisla vypadnou z ladiciho panelu (klavesa d).
+// `speed` nasobek dopoctene rychlosti. Cisla vypadnou z ladiciho panelu
+// (klavesa d).
 const BAKED = {
-  trex3d: { rate: 1, speed: 0.75 },
-  triceratops3d: { rate: 1.55, speed: 0.6 },
+  trex3d: { rate: 1 },
+  triceratops3d: { rate: 1.55 },
 };
 // Zastavky. Bez nich to byla prehlidka: vsichni porad vpred, nikdo nikdy nestoji.
 // `walk` je jak dlouho chodec jde, nez se zastavi, `stand` jak dlouho postoji,
@@ -176,7 +176,8 @@ function bodyFrac(a) {
 function applyGait(a) {
   const t = { ...BAKED[a.key], ...Tune.of(a.key) };
   a.rate = t.rate || a.autoRate;
-  a.speed = a.autoSpeed * (a.rate / a.autoRate) * (t.speed || 1);
+  a.speedMul = t.speed || 1;
+  a.speed = a.autoSpeed * (a.rate / a.autoRate) * a.speedMul;
 }
 
 function dropActor(i) {
@@ -275,7 +276,13 @@ function update(dt) {
       a.autoSpeed = a.natural * a.autoRate * bodyFrac(a);
       applyGait(a);
     }
-    const go = a.speed * (1 - a.mix) * dt;
+    // 3D chodec jede po kumulativni krivce klipu, ne prumernou rychlosti —
+    // stojna noha se v klipu nesune konstantne a prumer nechava chodidla
+    // klouzat. `walked` cte timeScale, takze zastavka (mix) je v tom zdarma.
+    const stepBodies = a.natural ? Scene3D.walked(a.m3, dt) : null;
+    const go = stepBodies !== null
+      ? stepBodies * bodyFrac(a) * a.speedMul
+      : a.speed * (1 - a.mix) * dt;
     a.xFrac += a.dir * go;
     // Za okrajem tvor obejde scenu dokola, misto aby se odrazil. Odraz vypadal
     // prirozene, ale vsichni se odrazeji od tehoz mista a casem se sesypou do

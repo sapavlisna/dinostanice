@@ -175,7 +175,11 @@ function strideOf(key, model, handle, clip) {
      Noha, která se v modelu sune dozadu nejrychleji, je ta, co právě stojí na
      zemi; ostatní se zvedají nebo dosedají. Kolik za cyklus ujede, tolik se
      musí posunout tvor. Sčítá se přes celý cyklus, ne jen rozkyv jedné nohy —
-     na jeden cyklus přijdou dva kroky, každý za jednu nohu. */
+     na jeden cyklus přijdou dva kroky, každý za jednu nohu.
+
+     Vedle celkové dráhy se ukládá i kumulativní křivka posunu po fázi klipu
+     (`cum`, normalizovaná 0..1) — stojná noha se nesune konstantně, takže
+     `walked()` z ní čte, kolik tvor ujde za konkrétní úsek cyklu. */
   if (strideCache.has(key)) return strideCache.get(key);
 
   const feet = [];
@@ -184,6 +188,7 @@ function strideOf(key, model, handle, clip) {
   });
   const N = STRIDE_SAMPLES;
   let travel = 0;
+  const cum = new Float64Array(N + 1);
   if (feet.length && clip.duration > 0) {
     const z = feet.map(() => new Float64Array(N));
     const keep = handle.action.time;
@@ -201,10 +206,13 @@ function strideOf(key, model, handle, clip) {
         back = Math.max(back, z[i][k] - z[i][(k + 1) % N]);
       }
       travel += back;
+      cum[k + 1] = travel;
     }
   }
-  strideCache.set(key, travel);
-  return travel;
+  if (travel > 0) for (let k = 0; k <= N; k++) cum[k] /= travel;
+  const stride = { travel, cum: travel > 0 ? cum : null };
+  strideCache.set(key, stride);
+  return stride;
 }
 
 function find(clips, name) {
@@ -273,8 +281,9 @@ export async function spawn(entry) {
     handle.duration = clip.duration;
     // Krok v delkach tela, promitnuty do osy obrazovky stejne jako `length`,
     // aby scena mohla rychlost spocitat rovnou v podilech sirky obrazovky.
-    const travel = strideOf(entry.glb + '|' + clip.name, model, handle, clip);
-    handle.strideBodies = travel * Math.abs(Math.sin(yaw)) / length;
+    const stride = strideOf(entry.glb + '|' + clip.name, model, handle, clip);
+    handle.strideBodies = stride.travel * Math.abs(Math.sin(yaw)) / length;
+    handle.phaseCum = stride.cum;
     handle.action.time = Math.random() * clip.duration;   // at neslapou v zakrytu
   }
 
@@ -310,6 +319,25 @@ export function place(handle, at) {
 
 export function speed(handle, timeScale) {
   if (handle.action) handle.action.timeScale = timeScale;
+}
+
+/* Kolik délek těla tvor ujde za dt při aktuálním timeScale — po kumulativní
+   křivce klipu, ne průměrem. Čte action.time, ale neposouvá ho: mixer ho
+   v render() posune o totéž dt. */
+export function walked(handle, dt) {
+  const a = handle.action;
+  if (!a || !handle.phaseCum) return null;
+  const cum = handle.phaseCum;
+  const dur = a.getClip().duration;
+  const adv = dt * a.timeScale;
+  const f = (t) => {
+    const p = (t / dur) * (cum.length - 1);
+    const i = Math.min(cum.length - 2, Math.floor(p));
+    return cum[i] + (p - i) * (cum[i + 1] - cum[i]);
+  };
+  const t0 = a.time % dur, t1 = t0 + adv;
+  const whole = Math.floor(t1 / dur);
+  return handle.strideBodies * (whole + f(t1 - whole * dur) - f(t0));
 }
 
 /* Kolik z tvora je zastavena poza `name`: 0 jde, 1 stoji (nebo skace). Mezi tim
