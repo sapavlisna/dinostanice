@@ -16,6 +16,8 @@ from datetime import datetime
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CATCH_ROOT = os.path.join(ROOT, "data", "catch")
 REJECTED_ROOT = os.path.join(ROOT, "data", "rejected")
+TRASH_ROOT = os.path.join(ROOT, "data", "trash")
+TRASH_KEEP_DAYS = 30
 REJECTED_KEEP = 50
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,23}-[0-9a-f]{4}$")
@@ -130,14 +132,25 @@ def delete_catch(catch_id):
 
 
 def purge_deleted():
-    """Best-effort úklid odstavených úlovků. Vrací počet těch, co nešly smazat."""
+    """Best-effort úklid odstavených úlovků: přesouvá je do data/trash/, ne na
+    věčnost pryč — jsou to dětské výtvory a omylem spuštěný reset je nesmí
+    zničit. Koš se čistí až po TRASH_KEEP_DAYS. Vrací počet těch, co nešly
+    odklidit (drží je otevřený soubor)."""
     ensure_root()
+    os.makedirs(TRASH_ROOT, exist_ok=True)
     left = 0
     for entry in list(os.scandir(CATCH_ROOT)):
         if entry.is_dir() and entry.name.endswith(".deleted"):
-            shutil.rmtree(entry.path, ignore_errors=True)
-            if os.path.isdir(entry.path):
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            dest = os.path.join(TRASH_ROOT, entry.name[: -len(".deleted")] + "-" + stamp)
+            try:
+                os.replace(entry.path, dest)
+            except OSError:
                 left += 1
+    cutoff = datetime.now().timestamp() - TRASH_KEEP_DAYS * 86400
+    for entry in list(os.scandir(TRASH_ROOT)):
+        if entry.is_dir() and entry.stat().st_mtime < cutoff:
+            shutil.rmtree(entry.path, ignore_errors=True)
     return left
 
 

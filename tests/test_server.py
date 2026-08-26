@@ -31,6 +31,7 @@ def client(monkeypatch, tmp_path):
     rejected_root = tmp_path / "rejected"
     monkeypatch.setattr(store, "CATCH_ROOT", str(catch_root))
     monkeypatch.setattr(store, "REJECTED_ROOT", str(rejected_root))
+    monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
     with TestClient(server.app) as c:
         yield c
 
@@ -220,6 +221,9 @@ def test_purge_deleted_cleans_leftovers(client):
     server.os.makedirs(leftover)
     assert store.purge_deleted() == 0
     assert not server.os.path.isdir(leftover)
+    # neodešel do nenávratna, ale do koše
+    binned = [e.name for e in server.os.scandir(store.TRASH_ROOT)]
+    assert any(name.startswith("trex3d-dead-") for name in binned)
 
 
 def test_ws_add_and_remove(client):
