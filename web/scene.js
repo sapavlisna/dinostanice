@@ -32,19 +32,28 @@ const FALLBACK_ZONES = {
 // zakladni rychlost pohybu po scene v podilu sirky obrazovky za sekundu; chodec
 // z 3D modelu si ji spocita sam z delky kroku, tohle plati pro ostatni
 const BASE_SPEED = { walk: 0.030, swim: 0.030, fly: 0.055, sail: 0.018 };
-// Kolik delek tela za sekundu ma chodec urazit. Cyklus animace se smi zrychlit
-// nebo zpomalit jen v rozmezi GAIT_RATE — po scene se pak tvor posouva presne
-// tak, jak mu vyjdou kroky, takze nikdy neklouze. Zbytek rozdilu si druh nese
-// jako svou povahu: apatosaurus se plouzi, drobny velociraptor si vykracuje.
-const STRIDE_RATE = { min: 0.12, max: 0.22 };
-const GAIT_RATE = { min: 0.6, max: 1.6 };
+// Kolik delek tela za sekundu ma ktery druh urazit — vychazi z paleo odhadu
+// rychlosti chuze (viz out/audit/animator.md, sekce 2). U triceratopse a
+// stegosaura je horni mez lehce pod paleo maximem, at scena nepusobi
+// uspechane; velociraptor je kompromis, protoze scena normalizuje velikosti.
+// Cyklus animace se smi zrychlit nebo zpomalit jen v rozmezi GAIT_RATE — po
+// scene se pak tvor posouva presne tak, jak mu vyjdou kroky, takze nikdy
+// neklouze.
+const STRIDE_RATE = {
+  trex3d: [0.11, 0.18],
+  apatosaurus3d: [0.05, 0.09],
+  triceratops3d: [0.17, 0.28],
+  stegosaurus3d: [0.16, 0.26],
+  velociraptor3d: [0.30, 0.40],
+  parasaurolophus3d: [0.14, 0.25],
+  default: [0.12, 0.22],
+};
+// Jen pojistka proti grotesknimu tempu animace; cil urcuje STRIDE_RATE.
+const GAIT_RATE = { min: 0.4, max: 1.8 };
 // Doladeno okem na televizi, klic je druh z katalogu. `rate` je tempo animace,
 // `speed` nasobek dopoctene rychlosti. Cisla vypadnou z ladiciho panelu
 // (klavesa d).
-const BAKED = {
-  trex3d: { rate: 1 },
-  triceratops3d: { rate: 1.55 },
-};
+const BAKED = {};
 // Zastavky. Bez nich to byla prehlidka: vsichni porad vpred, nikdo nikdy nestoji.
 // `walk` je jak dlouho chodec jde, nez se zastavi, `stand` jak dlouho postoji,
 // `fade` jak dlouho trva uklidneni (skok zacina rychleji, at se stihne odrazit).
@@ -148,7 +157,8 @@ function addActor(what, opts) {
     // Chodec: tempo cyklu se vybere kolem prirozeneho tempa druhu a rychlost po
     // scene se z nej dopocita, ne naopak — chodidla tak zustanou na zemi.
     actor.natural = actor.m3.strideBodies / actor.m3.duration;   // delek tela/s
-    const want = STRIDE_RATE.min + Math.random() * (STRIDE_RATE.max - STRIDE_RATE.min);
+    const [lo, hi] = STRIDE_RATE[actor.key] || STRIDE_RATE.default;
+    const want = lo + Math.random() * (hi - lo);
     actor.autoRate = Math.max(GAIT_RATE.min, Math.min(GAIT_RATE.max, want / actor.natural))
                    * (0.94 + 0.12 * Math.random());
     actor.autoSpeed = actor.natural * actor.autoRate * bodyFrac(actor);
@@ -496,9 +506,13 @@ window.DinoScene = {
   actors,
   add: arrive,                 // rucni pridani tvora, pro tools/shot_scene.py
   where: () => actors.map(a => ({
-    label: a.label, motion: a.motion, far: a.far, kind: a.m3 ? 'model' : 'rig',
-    ambient: a.ambient,
+    label: a.label, key: a.key, motion: a.motion, far: a.far,
+    kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
     x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
+    // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti
+    speedPx: +(a.speed * W).toFixed(1),
+    bodiesPerS: a.natural ? +(a.natural * a.rate * a.speedMul).toFixed(4) : null,
+    cycle: a.m3 && a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
   })),
 };
 
