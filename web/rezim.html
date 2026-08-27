@@ -67,6 +67,26 @@
   .status-text { margin-top: 14px; font-size: 15px; color: var(--muted); }
   .status-text.ok { color: var(--ok); }
 
+  .scene-card {
+    display: flex; align-items: center; gap: 14px;
+    border: 1px solid var(--line); border-radius: 16px;
+    background: #10151b; padding: 14px 16px; margin-top: 10px;
+  }
+  .scene-card.active { border-color: var(--accent); }
+  .scene-card .info { flex: 1; min-width: 0; }
+  .scene-card .name { font-size: 18px; font-weight: 700; }
+  .scene-card .sub { font-size: 14px; color: var(--muted); margin-top: 2px; }
+  .scene-card .badge {
+    color: var(--accent); font-size: 15px; font-weight: 700; white-space: nowrap;
+  }
+  .scene-card button {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--card);
+    color: var(--text); font-size: 15px; font-weight: 700;
+    padding: 12px 16px; cursor: pointer; white-space: nowrap;
+  }
+  .scene-card button:active { transform: translateY(2px); }
+  .primary { background: var(--accent); color: #1a1206; }
+
   .footer-links { margin-top: 30px; text-align: center; }
   .footer-links a { color: #7fc4ff; text-decoration: none; font-size: 14px; }
 </style>
@@ -78,6 +98,19 @@
 
 <div class="card">
   <div class="field-label">Krajina</div>
+  <div id="sceneList"></div>
+  <div id="sceneConfirm" class="hidden">
+    <p class="confirm-text" id="sceneText"></p>
+    <div class="row">
+      <button class="action primary" id="sceneYes" type="button">Ano, přepnout</button>
+      <button class="action ghost" id="sceneNo" type="button">Zrušit</button>
+    </div>
+  </div>
+  <div class="status-text" id="sceneStatus"></div>
+</div>
+
+<div class="card">
+  <div class="field-label">Ukázkoví tvorové</div>
   <div class="toggle-row">
     <button class="toggle-btn" id="ambientOn" type="button">Ukázková</button>
     <button class="toggle-btn" id="ambientOff" type="button">Prázdná</button>
@@ -107,6 +140,110 @@
 
 <script>
 "use strict";
+
+// `?s=` cili na konkretni televizi (session); bez nej plati domaci default
+const SID = new URLSearchParams(location.search).get("s") || "";
+const SIDQ = SID ? "s=" + encodeURIComponent(SID) : "";
+
+// --- Krajina: karty scen + prepnuti s potvrzenim ------------------------
+
+const sceneList = document.getElementById("sceneList");
+const sceneConfirm = document.getElementById("sceneConfirm");
+const sceneText = document.getElementById("sceneText");
+const sceneYes = document.getElementById("sceneYes");
+const sceneNo = document.getElementById("sceneNo");
+const sceneStatus = document.getElementById("sceneStatus");
+
+let scenes = [];
+let activeScene = "";
+let pendingScene = null;
+
+function paintScenes() {
+  sceneList.innerHTML = "";
+  for (const sc of scenes) {
+    const card = document.createElement("div");
+    card.className = "scene-card" + (sc.key === activeScene ? " active" : "");
+    const info = document.createElement("div");
+    info.className = "info";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = sc.label;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = sc.subtitle || "";
+    info.append(name, sub);
+    card.append(info);
+    if (sc.key === activeScene) {
+      const badge = document.createElement("div");
+      badge.className = "badge";
+      badge.textContent = "Aktivní";
+      card.append(badge);
+    } else {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Přepnout";
+      btn.addEventListener("click", () => askSwitch(sc));
+      card.append(btn);
+    }
+    sceneList.append(card);
+  }
+}
+
+function askSwitch(sc) {
+  pendingScene = sc;
+  sceneText.textContent = "Přepnout krajinu na „" + sc.label + "“? " +
+                          "Dinosauři ze současné krajiny zajdou spát, nic se nesmaže.";
+  sceneStatus.textContent = "";
+  sceneConfirm.classList.remove("hidden");
+}
+
+sceneNo.addEventListener("click", () => {
+  pendingScene = null;
+  sceneConfirm.classList.add("hidden");
+});
+
+sceneYes.addEventListener("click", async () => {
+  if (!pendingScene) return;
+  sceneYes.disabled = true;
+  sceneNo.disabled = true;
+  try {
+    const r = await (await fetch("/api/scene/active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scene: pendingScene.key, s: SID }),
+    })).json();
+    if (r.ok) {
+      activeScene = r.scene;
+      sceneStatus.textContent = "Hotovo — na televizi teď běží " + pendingScene.label + ".";
+      sceneStatus.classList.add("ok");
+    } else {
+      sceneStatus.textContent = r.error || "Nepodařilo se to.";
+      sceneStatus.classList.remove("ok");
+    }
+  } catch (e) {
+    sceneStatus.textContent = "Nepodařilo se spojit se stanicí.";
+    sceneStatus.classList.remove("ok");
+  }
+  sceneYes.disabled = false;
+  sceneNo.disabled = false;
+  pendingScene = null;
+  sceneConfirm.classList.add("hidden");
+  paintScenes();
+});
+
+async function loadScenes() {
+  try {
+    const [list, active] = await Promise.all([
+      (await fetch("/api/scenes")).json(),
+      (await fetch("/api/scene/active" + (SIDQ ? "?" + SIDQ : ""))).json(),
+    ]);
+    scenes = list;
+    activeScene = active.scene;
+    paintScenes();
+  } catch (e) {
+    sceneStatus.textContent = "Krajiny se nepodařilo načíst.";
+  }
+}
 
 const ambientOnBtn = document.getElementById("ambientOn");
 const ambientOffBtn = document.getElementById("ambientOff");
@@ -181,6 +318,7 @@ resetYes.addEventListener("click", async () => {
   resetBtn.classList.remove("hidden");
 });
 
+loadScenes();
 loadSettings();
 </script>
 </body>

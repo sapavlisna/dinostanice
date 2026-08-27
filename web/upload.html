@@ -297,9 +297,18 @@ sendBtn.addEventListener("click", async () => {
 
   const who = data.name ? data.name + ", tvůj " + data.label : "Tvůj " + data.label;
   const pct = Math.round((data.coverage || 0) * 100);
-  setStatus('<div class="result"><strong>' + who + " vyrazil do krajiny!</strong>" +
-            '<div class="meta">Vybarveno na ' + pct + " % · zpracováno za " +
-            (data.took_ms || 0) + " ms</div></div>");
+  if (data.note) {
+    // tvor patri do jine krajiny, nez jaka ted bezi na televizi: je ulozeny,
+    // objevi se po prepnuti — server posila celou cesku vetu
+    const div = document.createElement("div");
+    div.textContent = data.note;
+    setStatus('<div class="result"><strong>' + who + " je uložený!</strong>" +
+              '<div class="meta">' + div.innerHTML + "</div></div>");
+  } else {
+    setStatus('<div class="result"><strong>' + who + " vyrazil do krajiny!</strong>" +
+              '<div class="meta">Vybarveno na ' + pct + " % · zpracováno za " +
+              (data.took_ms || 0) + " ms</div></div>");
+  }
   pending = null;
   sheet.classList.add("hidden");
   nameInput.value = nameInput.value.trim();

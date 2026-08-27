@@ -262,8 +262,9 @@ def test_ws_add_and_remove(client):
 def test_scene_settings_roundtrip(client, tmp_path, monkeypatch):
     monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
 
-    # bez souboru je vychozi ambient zapnuty
-    assert client.get("/api/scene/settings").json() == {"ambient": True}
+    # bez souboru je vychozi ambient zapnuty (a krajina default)
+    assert client.get("/api/scene/settings").json() == {
+        "ambient": True, "scene": "cretaceous"}
 
     r = client.post("/api/scene/settings", json={"ambient": False})
     assert r.status_code == 200
@@ -272,7 +273,7 @@ def test_scene_settings_roundtrip(client, tmp_path, monkeypatch):
     # perzistuje pres dalsi cteni i primo na disku
     assert client.get("/api/scene/settings").json()["ambient"] is False
     saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
-    assert saved == {"ambient": False}
+    assert saved["ambient"] is False
 
     r = client.post("/api/scene/settings", json={"ambient": True})
     assert r.json()["ambient"] is True
@@ -477,3 +478,98 @@ def test_sleeping_session_greets_new_client_with_sleep(client):
     server.hub.session("zzz").sleeping = True
     with client.websocket_connect("/ws?s=zzz") as ws:
         assert ws.receive_json() == {"type": "sleep"}
+
+
+# --- Více scén (bod 8) ----------------------------------------------------
+
+def test_api_scenes_registry(client):
+    scenes = client.get("/api/scenes").json()
+    keys = [s["key"] for s in scenes]
+    assert "cretaceous" in keys and "cretaceous_night" in keys
+    for s in scenes:
+        assert s["label"] and s["subtitle"] and s["catalogue"]
+    # obe varianty laguny sdili touz sadu tvoru
+    by_key = {s["key"]: s for s in scenes}
+    assert by_key["cretaceous_night"]["catalogue"] == "cretaceous"
+
+
+def test_dino3d_scene_filter(client):
+    everything = client.get("/api/dino3d").json()
+    cretaceous = client.get("/api/dino3d?scene=cretaceous").json()
+    assert len(everything) == len(cretaceous) > 0    # dnes je vse z kridy
+    assert client.get("/api/dino3d?scene=neexistuje").json() == []
+
+
+def test_scene_active_per_session(client):
+    # neznama session vznika s defaultni krajinou
+    assert client.get("/api/scene/active?s=xyz").json() == {
+        "s": "xyz", "scene": "cretaceous"}
+
+    with client.websocket_connect("/ws?s=xyz") as ws:
+        r = client.post("/api/scene/active",
+                        json={"scene": "cretaceous_night", "s": "xyz"})
+        assert r.json() == {"ok": True, "s": "xyz", "scene": "cretaceous_night"}
+        assert ws.receive_json() == {"type": "scene", "scene": "cretaceous_night"}
+
+    assert client.get("/api/scene/active?s=xyz").json()["scene"] == "cretaceous_night"
+    assert client.get("/api/session/xyz").json()["scene"] == "cretaceous_night"
+    # jina session zustava na defaultu
+    assert client.get("/api/scene/active?s=jina").json()["scene"] == "cretaceous"
+
+    r = client.post("/api/scene/active", json={"scene": "atlantida", "s": "xyz"})
+    assert r.status_code == 400
+    assert "krajina" in r.json()["error"]
+
+
+def test_default_scene_survives_restart(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+    r = client.post("/api/scene/active", json={"scene": "cretaceous_night"})
+    assert r.json()["ok"] is True
+    saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert saved["scene"] == "cretaceous_night"
+
+    # "restart": sessions z pameti zmizi, default si krajinu vezme ze state.json
+    server.hub.sessions.clear()
+    assert client.get("/api/scene/active").json()["scene"] == "cretaceous_night"
+
+
+@pytest.fixture
+def aquarium(monkeypatch):
+    """Docasna scena s cizi sadou tvoru — trex do ni nepatri."""
+    from dinostanice import scenes as scenes_mod
+    fake = scenes_mod.Scene("aquarium", "Akvárium", "test", "aquarium")
+    monkeypatch.setattr(scenes_mod, "SCENES", scenes_mod.SCENES + [fake])
+    monkeypatch.setattr(scenes_mod, "BY_KEY",
+                        {**scenes_mod.BY_KEY, "aquarium": fake})
+    return fake
+
+
+def test_upload_to_foreign_scene_saves_without_broadcast(client, aquarium):
+    with client.websocket_connect("/ws?s=aaa") as ws:
+        r = client.post("/api/scene/active", json={"scene": "aquarium", "s": "aaa"})
+        assert r.json()["ok"] is True
+        assert ws.receive_json() == {"type": "scene", "scene": "aquarium"}
+
+        body = upload(client, model_photo_jpg(), s="aaa").json()
+        assert body["ok"] is True
+        # ulovek se ULOZIL, mobil dostal ceskou hlasku o jine krajine
+        assert "Křídová laguna" in body["note"]
+        assert server.os.path.isdir(store.catch_dir(body["id"]))
+
+        # scena zadny `add` nedostala: dalsi zprava na WS je az tohle prepnuti
+        client.post("/api/scene/active", json={"scene": "cretaceous", "s": "aaa"})
+        assert ws.receive_json() == {"type": "scene", "scene": "cretaceous"}
+
+    # rigs: bez filtru je videt, s filtrem patri jen do kridy
+    ids = lambda r: [m["id"] for m in r.json()]
+    assert ids(client.get("/api/rigs?s=aaa")) == [body["id"]]
+    assert ids(client.get("/api/rigs?s=aaa&scene=aquarium")) == []
+    assert ids(client.get("/api/rigs?s=aaa&scene=cretaceous")) == [body["id"]]
+    # nocni laguna sdili sadu tvoru s denni, ulovek do ni patri taky
+    assert ids(client.get("/api/rigs?s=aaa&scene=cretaceous_night")) == [body["id"]]
+
+
+def test_upload_to_matching_scene_has_no_note(client):
+    body = upload(client, model_photo_jpg()).json()
+    assert body["ok"] is True
+    assert "note" not in body

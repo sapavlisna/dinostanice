@@ -24,10 +24,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dinostanice import capture, capture3d, modelsheet, quality, rig, store
+from dinostanice import capture, capture3d, modelsheet, quality, rig, scenes, store
 from dinostanice.capture import CaptureError
 from dinostanice.creatures import CATALOGUE
+from dinostanice.creatures3d import BY_KEY as BY_KEY3D
 from dinostanice.creatures3d import CATALOGUE as CATALOGUE3D
+from dinostanice.scenes import DEFAULT_SCENE
 
 BY_MARKER3D = {m.marker_index: m for m in CATALOGUE3D}
 
@@ -92,6 +94,10 @@ class Session:
     clients: set = field(default_factory=set)
     last_seen: float = field(default_factory=time.monotonic)
     sleeping: bool = False
+    # Aktivni krajina teto televize. Default session ji persistuje ve
+    # state.json (nastavuje Hub.session), ostatni po restartu spadnou na
+    # default — druha TV je docasna zalezitost.
+    scene: str = DEFAULT_SCENE
 
 
 def clean_session(raw):
@@ -114,6 +120,8 @@ class Hub:
         s = self.sessions.get(sid)
         if s is None:
             s = self.sessions[sid] = Session(sid)
+            if sid == DEFAULT_SESSION:
+                s.scene = _read_state()["scene"]
         return s
 
     async def add(self, sid, ws):
@@ -207,15 +215,16 @@ async def _stop_idle_watch():
 
 
 def _read_state():
-    """Malá trvalá nastavení scény (dnes jen `ambient`). Čte se za běhu, ne
-    jednou při startu, ať jde cesta izolovat monkeypatchem stejně jako
-    store.CATCH_ROOT."""
+    """Malá trvalá nastavení (`ambient` + krajina defaultní televize). Čte se
+    za běhu, ne jednou při startu, ať jde cesta izolovat monkeypatchem stejně
+    jako store.CATCH_ROOT."""
     try:
         with open(STATE_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return {"ambient": bool(data.get("ambient", True))}
+        return {"ambient": bool(data.get("ambient", True)),
+                "scene": scenes.clean_scene(data.get("scene"))}
     except (OSError, json.JSONDecodeError):
-        return {"ambient": True}
+        return {"ambient": True, "scene": DEFAULT_SCENE}
 
 
 def _write_state(state):
@@ -438,13 +447,69 @@ def api_templates():
 
 
 @app.get("/api/dino3d")
-def api_dino3d():
-    """Katalog tvorů postavených z hotových 3D modelů."""
+def api_dino3d(scene: str = ""):
+    """Katalog tvorů postavených z hotových 3D modelů.
+
+    `scene` filtruje na sadu tvorů (klíč katalogu, Model3D.scene); bez
+    parametru jde všechno — prohlížečka /dino3d ukazuje celý katalog."""
     path = os.path.join(MODELS3D_DIR, "catalogue3d.json")
     if not os.path.exists(path):
         return JSONResponse([], status_code=200)
     with open(path, encoding="utf-8") as fh:
-        return JSONResponse(json.load(fh))
+        data = json.load(fh)
+    if scene:
+        data = [e for e in data if e.get("scene", DEFAULT_SCENE) == scene]
+    return JSONResponse(data)
+
+
+def _catch_scene(meta):
+    """Do ktere sady tvoru (Scene.catalogue) ulovek patri. Stara 2D vetev
+    (kind=rig, tvorove 0-7) je cela z kridy."""
+    if meta.get("kind") == "model":
+        spec = BY_KEY3D.get(meta.get("creature"))
+        if spec is not None:
+            return spec.scene
+    return DEFAULT_SCENE
+
+
+@app.get("/api/scenes")
+def api_scenes():
+    """Registr scén pro /rezim: karty s popisem, `catalogue` říká, kterou
+    sadu tvorů scéna přijímá."""
+    return [{"key": sc.key, "label": sc.label, "subtitle": sc.subtitle,
+             "catalogue": sc.catalogue} for sc in scenes.SCENES]
+
+
+@app.get("/api/scene/active")
+def api_scene_active(s: str = ""):
+    """Aktivní krajina session. Neznámou session tiše založí (scéna se na ni
+    ptá při startu, dřív než se připojí WS)."""
+    sid = clean_session(s)
+    return {"s": sid, "scene": hub.session(sid).scene}
+
+
+@app.post("/api/scene/active")
+async def api_scene_active_set(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    sid = clean_session(body.get("s"))
+    key = body.get("scene")
+    if key not in scenes.BY_KEY:
+        return JSONResponse({"ok": False, "error": "taková krajina tu není"},
+                            status_code=400)
+    sess = hub.session(sid)
+    sess.scene = key
+    if sid == DEFAULT_SESSION:
+        state = _read_state()
+        state["scene"] = key
+        _write_state(state)
+    log.info("session %s prepnuta na krajinu %s", sid, key)
+    await hub.broadcast(sid, {"type": "scene", "scene": key})
+    return {"ok": True, "s": sid, "scene": key}
 
 
 @app.get("/favicon.ico")
@@ -488,7 +553,21 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
     log.info("úlovek %s: %s kind=%s session=%s markers=%s coverage=%.3f took_ms=%s",
              meta["id"], meta["creature"], meta.get("kind"), sid,
              meta.get("markers"), meta.get("coverage", 0.0), meta.get("took_ms"))
-    await touch_session(sid)     # uspesny upload = aktivita (a budicek)
+    sess = await touch_session(sid)     # uspesny upload = aktivita (a budicek)
+
+    # Tvor z jine krajiny, nez jaka na televizi zrovna bezi: ulovek je ulozeny
+    # (nic se nezahazuje), jen se scene neposila — objevi se po prepnuti.
+    active = scenes.BY_KEY.get(sess.scene)
+    accept = active.catalogue if active else DEFAULT_SCENE
+    home = _catch_scene(meta)
+    if home != accept:
+        home_label = scenes.BY_KEY[home].label if home in scenes.BY_KEY else home
+        note = (f"{meta['label']} patří do jiné krajiny — {home_label}. "
+                f"Je uložený; přepni krajinu v Režimu stanice a objeví se.")
+        log.info("úlovek %s patří do %s, session %s má %s — bez broadcastu",
+                 meta["id"], home, sid, sess.scene)
+        return {"ok": True, **meta, "note": note}
+
     await hub.broadcast(sid, {"type": "add", "url": meta["url"], "id": meta["id"],
                               "label": meta["label"], "name": meta["name"],
                               "creature": meta["creature"],
@@ -497,10 +576,16 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
 
 
 @app.get("/api/rigs")
-def api_rigs(s: str = ""):
+def api_rigs(s: str = "", scene: str = ""):
     # bez parametru default session — stavajici klienti (scena, /pridat,
-    # /rezim) tak funguji beze zmeny chovani
-    return store.list_catches(session=clean_session(s))
+    # /rezim) tak funguji beze zmeny chovani; `scene` navic filtruje na
+    # ulovky patrici dane krajine (scena po prepnuti nenacita cizi)
+    out = store.list_catches(session=clean_session(s))
+    if scene:
+        sc = scenes.BY_KEY.get(scene)
+        accept = sc.catalogue if sc else scene
+        out = [m for m in out if _catch_scene(m) == accept]
+    return out
 
 
 @app.delete("/api/rigs/{catch_id}")
@@ -586,7 +671,7 @@ def api_session_state(sid: str):
         return JSONResponse({"ok": False, "error": "session neexistuje"},
                             status_code=404)
     return {"ok": True, "id": sess.id, "sleeping": sess.sleeping,
-            "clients": len(sess.clients),
+            "scene": sess.scene, "clients": len(sess.clients),
             "idle_s": round(time.monotonic() - sess.last_seen, 3)}
 
 

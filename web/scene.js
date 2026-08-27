@@ -26,65 +26,30 @@ const errEl = document.getElementById('err');
 const hintEl = document.getElementById('hint');
 
 const MAX_ACTORS = 18;
-// podil sirky obrazovky, ktery ma tvor zabrat v nejblizsim planu; letec je
-// vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
-const LENGTH_FRACTION = { walk: 0.17, swim: 0.19, fly: 0.24, sail: 0.15 };
-// totez pro 3D tvory, kde se nemeri delka, ale odmocnina z plochy siluety
-const SIZE_FRACTION = { walk: 0.234, fly: 0.334 };
-// Defaultni pasy sceny, kdyz Backdrop zadne nedodal (ladeni bez krajiny).
-// Stejny tvar jako Backdrop.bands: kazdy pas rika, ktere pohyby unese, a
-// `lane` odlisuje vic pasu tehoz pohybu.
-const FALLBACK_BANDS = [
-  { name: 'sky', y0: 0.06, y1: 0.40, motions: ['fly'] },
-  { name: 'shore', y0: 0.60, y1: 0.72, motions: ['walk'], lane: 'near' },
-  { name: 'water', y0: 0.58, y1: 0.86, motions: ['swim'] },
-  { name: 'surface', y0: 0.60, y1: 0.70, motions: ['sail'] },
-];
-// zakladni rychlost pohybu po scene v podilu sirky obrazovky za sekundu; chodec
-// z 3D modelu si ji spocita sam z delky kroku, tohle plati pro ostatni
-const BASE_SPEED = { walk: 0.030, swim: 0.030, fly: 0.055, sail: 0.018 };
-// Kolik delek tela za sekundu ma ktery druh urazit — vychazi z paleo odhadu
-// rychlosti chuze (viz out/audit/animator.md, sekce 2). U triceratopse a
-// stegosaura je horni mez lehce pod paleo maximem, at scena nepusobi
-// uspechane; velociraptor je kompromis, protoze scena normalizuje velikosti.
-// Cyklus animace se smi zrychlit nebo zpomalit jen v rozmezi GAIT_RATE — po
-// scene se pak tvor posouva presne tak, jak mu vyjdou kroky, takze nikdy
-// neklouze.
-const STRIDE_RATE = {
-  trex3d: [0.11, 0.18],
-  apatosaurus3d: [0.05, 0.09],
-  triceratops3d: [0.17, 0.28],
-  stegosaurus3d: [0.16, 0.26],
-  velociraptor3d: [0.30, 0.40],
-  parasaurolophus3d: [0.14, 0.25],
-  default: [0.12, 0.22],
-};
-// Jen pojistka proti grotesknimu tempu animace; cil urcuje STRIDE_RATE.
+// Jen pojistka proti grotesknimu tempu animace; cil urcuje strideRate
+// z katalogu (per druh) nebo z definice sceny (default per motion).
 const GAIT_RATE = { min: 0.4, max: 1.8 };
-// Doladeno okem na televizi, klic je druh z katalogu. `rate` je tempo animace,
-// `speed` nasobek dopoctene rychlosti. Cisla vypadnou z ladiciho panelu
-// (klavesa d).
-const BAKED = {};
-// Zastavky. Bez nich to byla prehlidka: vsichni porad vpred, nikdo nikdy nestoji.
-// `walk` je jak dlouho chodec jde, nez se zastavi, `stand` jak dlouho postoji,
-// `fade` jak dlouho trva uklidneni (skok zacina rychleji, at se stihne odrazit).
-// `jump` je sance, ze ze zastavky bude skok, `turn` ze se tvor po stani otoci a
-// pujde zpatky.
-const REST = {
-  walk: [11, 34], stand: [3, 9], fade: 0.7, jumpFade: 0.25,
-  jump: 0.35, turn: 0.45, spin: 0.5,
-};
-// Podil vodorovne rychlosti, kterym se chodec sune po pasu brehu dopredu nebo
-// dozadu. Bez toho jdou vsichni po jedne lince zleva doprava. Plati pro pas
-// vysoky DRIFT_REF_HEIGHT; uzsi pasy dostanou pomerne min (viz driftFor).
-const DRIFT = 0.3;
-const DRIFT_REF_HEIGHT = 0.15;
-// Sance, ze chodec padne na vedlejsi (vzdalenou) lane misto hlavni.
-const FAR_CHANCE = 0.35;
-// Na kolik tvoru scenu doplnit z katalogu, nez neco prinesou deti. Prazdna
-// krajina na televizi nikoho neprilaka a ukazkove textury vypadaji jako
-// vybarvene, takze je poznat, o co jde.
-const AMBIENT_MIN = 6;
+// Jak dlouho trvaji prechody scen: odchod tvora (zmenseni do ztracena)
+// a prolnuti krajin.
+const LEAVE_S = 0.8;
+const XFADE_S = 1.6;
+
+/* Scena jako data (bod 8): vsechno, co je vlastnost krajiny — pasy, chovani
+   pohybu, osvetleni, backdrop — zije v definici web/scenes/<key>.js. scene.js
+   je jeden genericky stroj nad aktivni definici. Vyber sceny: `?scene=` v URL
+   prebiji, jinak plati hodnota session ze serveru; zpravou `scene` z WS se
+   prepina za behu. */
+const SCENE_OVERRIDE = new URLSearchParams(location.search).get('scene') || '';
+const DEFAULT_SCENE = 'cretaceous';
+let sceneDef = null;      // aktivni definice sceny
+let backdrop = null;      // instance kreslice krajiny {draw, drawFront, ...}
+let xfade = null;         // { old, t, buf } — prolnuti stare krajiny do nove
+let switching = false;    // behem prepnuti se nedoplnuje ani neobnovuje
+
+function motionCfg(motion) {
+  const m = (sceneDef && sceneDef.motions) || {};
+  return m[motion] || m.walk || {};
+}
 
 const actors = [];
 const byKey = new Map();
@@ -107,40 +72,41 @@ function resize() {
     c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   Scene3D.resize(W, H);
-  if (window.Backdrop && Backdrop.resize) Backdrop.resize(W, H);
 }
 window.addEventListener('resize', resize);
 
-/* Pasy, ktere umi dany pohyb. Kdyz je Backdrop nezna (nebo pro pohyb zadny
-   nema), plati default — chodec tak nikdy nespadne do vody, protoze zadny
-   walk pas ji neobsahuje. */
+/* Pasy aktivni sceny, ktere umi dany pohyb. Chodec nikdy nespadne do vody,
+   protoze zadny walk pas ji neobsahuje. Kdyz scena pro pohyb zadny pas nema
+   (definice se nenacetla), plati nouzovy pas uprostred, at nic nespadne. */
 function bandsFor(motion) {
-  const all = (window.Backdrop && Backdrop.bands) || FALLBACK_BANDS;
-  let fit = all.filter(b => (b.motions || []).includes(motion));
-  if (!fit.length) fit = FALLBACK_BANDS.filter(b => b.motions.includes(motion));
-  return fit.length ? fit : [FALLBACK_BANDS[1]];
+  const all = (sceneDef && sceneDef.bands) || [];
+  const fit = all.filter(b => (b.motions || []).includes(motion));
+  return fit.length ? fit
+                    : [{ name: 'nouze', y0: 0.55, y1: 0.85, motions: [motion] }];
 }
 
-/* Novy tvor padne z FAR_CHANCE na nekterou vedlejsi lane (dnes vzdaleny breh),
+/* Novy tvor padne s sanci farChance na nekterou vedlejsi lane (vzdaleny breh),
    at ma scena hloubku; jinak jde hlavni (blizkou) lane. */
 function pickBand(motion) {
   const fit = bandsFor(motion);
   if (fit.length === 1) return fit[0];
   const near = fit.find(b => b.lane !== 'far') || fit[0];
   const rest = fit.filter(b => b !== near);
-  return Math.random() < FAR_CHANCE
+  return Math.random() < (motionCfg(motion).farChance || 0)
     ? rest[Math.floor(Math.random() * rest.length)] : near;
 }
 
 /* Svisly drift se skaluje vyskou pasu: v uzkem vzdalenem brehu by tvor s plnym
    driftem kmital mezi okraji kazde ~4 s. Reference je vyska predniho brehu. */
-function driftFor(band) {
-  return (Math.random() * 2 - 1) * DRIFT
-       * Math.min(1, (band.y1 - band.y0) / DRIFT_REF_HEIGHT);
+function driftFor(band, motion) {
+  const cfg = motionCfg(motion);
+  if (!cfg.drift) return 0;
+  return (Math.random() * 2 - 1) * cfg.drift
+       * Math.min(1, (band.y1 - band.y0) / (cfg.driftRefHeight || 0.15));
 }
 
 function depthScale(yFrac) {
-  if (window.Backdrop && Backdrop.depthScale) return Backdrop.depthScale(yFrac);
+  if (backdrop && backdrop.depthScale) return backdrop.depthScale(yFrac);
   return 0.35 + 0.65 * Math.max(0, Math.min(1, (yFrac - 0.35) / 0.55));
 }
 
@@ -163,6 +129,7 @@ function addActor(what, opts) {
     return null;
   }
   const motion = what.motion || 'walk';
+  const cfg = motionCfg(motion);
   const band = pickBand(motion);
   const yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
   const dir = Math.random() < 0.5 ? 1 : -1;
@@ -177,17 +144,18 @@ function addActor(what, opts) {
     xFrac: opts && opts.silent ? (spawnSeq++ * 0.6180339887 + 0.1) % 1
                                : (dir > 0 ? -0.15 : 1.15),
     phase: Math.random(),
-    speed: (BASE_SPEED[motion] || BASE_SPEED.walk) * pace,
+    speed: (cfg.baseSpeed || 0.03) * pace,
     bob: Math.random() * Math.PI * 2,
-    // prvni zastavka az za chvili, at scena po nacteni nezacne stat
-    restAt: sceneTime + span(REST.walk),
+    // prvni zastavka az za chvili, at scena po nacteni nezacne stat;
+    // pohyb bez `rest` v definici sceny nezastavuje nikdy
+    restAt: cfg.rest ? sceneTime + span(cfg.rest.walk) : Infinity,
     restUntil: 0,
     pause: '',
     shown: '',
-    fade: REST.fade,
+    fade: cfg.rest ? cfg.rest.fade : 0.7,
     mix: 0,
     face: dir,
-    drift: driftFor(band),
+    drift: driftFor(band, motion),
     born: sceneTime,
     label: what.label || 'tvor',
     who: (opts && opts.who) || '',
@@ -198,8 +166,9 @@ function addActor(what, opts) {
   if (actor.m3 && actor.m3.strideBodies) {
     // Chodec: tempo cyklu se vybere kolem prirozeneho tempa druhu a rychlost po
     // scene se z nej dopocita, ne naopak — chodidla tak zustanou na zemi.
+    // Cilove tempo (tel/s) je vlastnost druhu (katalog), default dava scena.
     actor.natural = actor.m3.strideBodies / actor.m3.duration;   // delek tela/s
-    const [lo, hi] = STRIDE_RATE[actor.key] || STRIDE_RATE.default;
+    const [lo, hi] = actor.strideRate || cfg.strideRate || [0.12, 0.22];
     const want = lo + Math.random() * (hi - lo);
     actor.autoRate = Math.max(GAIT_RATE.min, Math.min(GAIT_RATE.max, want / actor.natural))
                    * (0.94 + 0.12 * Math.random());
@@ -222,7 +191,8 @@ function addActor(what, opts) {
 /* Podil sirky obrazovky, ktery zabere telo tvora — z nej se pocita rychlost po
    scene, aby vzdaleny tvor slapal stejne a jen se posouval pomaleji. */
 function bodyFrac(a) {
-  return (SIZE_FRACTION[a.motion] || SIZE_FRACTION.walk)
+  const cfg = motionCfg(a.motion);
+  return (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
        * depthScale(a.yFrac) * a.m3.length / a.m3.sizePx;
 }
 
@@ -230,7 +200,7 @@ function bodyFrac(a) {
    (klávesa d): `rate` je tempo animace, `speed` násobek dopočítané rychlosti.
    Když se mění jen tempo, rychlost jde s ním, aby chodidla zůstala na zemi. */
 function applyGait(a) {
-  const t = { ...BAKED[a.key], ...Tune.of(a.key) };
+  const t = Tune.of(a.key);
   a.rate = t.rate || a.autoRate;
   a.speedMul = t.speed || 1;
   a.speed = a.autoSpeed * (a.rate / a.autoRate) * a.speedMul;
@@ -254,10 +224,11 @@ function nextAmbient() {
 let topping = false;
 
 async function topUp() {
-  if (topping || !has3D || !byKey.size || !ambientEnabled) return;  // dve soubezna volani by prelila AMBIENT_MIN
+  // dve soubezna volani by prelila ambientMin; behem prepnuti sceny se ceka
+  if (topping || switching || !has3D || !byKey.size || !ambientEnabled) return;
   topping = true;
   try {
-    while (actors.length < AMBIENT_MIN) {
+    while (actors.length < ((sceneDef && sceneDef.ambientMin) || 0)) {
       const spec = nextAmbient();
       try {
         await loadModel({ kind: 'model', creature: spec.key, texture: spec.texture,
@@ -275,7 +246,7 @@ async function topUp() {
 
 function makeRoom() {
   // ulovek ma prednost pred tvorem z katalogu; ten odejde, at scena nezhoustne
-  if (actors.length <= AMBIENT_MIN) return;
+  if (actors.length <= ((sceneDef && sceneDef.ambientMin) || 0)) return;
   const i = actors.findIndex(a => a.ambient);
   if (i >= 0) dropActor(i);
 }
@@ -289,7 +260,7 @@ function swapBand(a) {
   if (fit.length < 2) return;
   a.band = fit[(fit.indexOf(a.band) + 1) % fit.length];
   a.yFrac = a.band.y0 + Math.random() * (a.band.y1 - a.band.y0);
-  a.drift = driftFor(a.band);
+  a.drift = driftFor(a.band, a.motion);
 }
 
 function toward(value, goal, step) {
@@ -306,24 +277,27 @@ function toward(value, goal, step) {
    divakovi na druhou stranu a pak jde zpatky. Dokud se otaci, drzi se `mix` na
    jednicce, aby se otacel na miste a ne v pohybu. */
 function rest(a, dt) {
-  const can = a.motion === 'walk' && (!a.m3 || a.m3.action);
+  // Zastavovat se umi jen pohyb, ktery ma v definici sceny `rest` (a 3D tvor
+  // k tomu pozu, do ktere jde prolnout) — letec by spadl.
+  const R = motionCfg(a.motion).rest;
+  const can = R && (!a.m3 || a.m3.action);
   if (can && !a.pause && sceneTime > a.restAt) {
-    const jump = a.m3 && a.m3.breakDur.jump && Math.random() < REST.jump;
+    const jump = a.m3 && a.m3.breakDur.jump && Math.random() < R.jump;
     a.pause = jump ? 'jump' : 'stand';
-    a.fade = jump ? REST.jumpFade : REST.fade;
-    a.restUntil = sceneTime + (jump ? a.m3.breakDur.jump : span(REST.stand));
+    a.fade = jump ? R.jumpFade : R.fade;
+    a.restUntil = sceneTime + (jump ? a.m3.breakDur.jump : span(R.stand));
     if (jump) Scene3D.restart(a.m3, 'jump');
   }
-  if (a.pause && sceneTime > a.restUntil) {
-    if (a.pause === 'stand' && Math.random() < REST.turn) a.dir = -a.dir;
+  if (R && a.pause && sceneTime > a.restUntil) {
+    if (a.pause === 'stand' && Math.random() < R.turn) a.dir = -a.dir;
     a.pause = '';
-    a.restAt = sceneTime + span(REST.walk);
+    a.restAt = sceneTime + span(R.walk);
   }
 
   // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
   // skok skonci, skacici tvor by cuknul do stojaci pozy.
   if (!a.mix) a.shown = a.pause;
-  a.face = toward(a.face, a.dir, dt / REST.spin);
+  a.face = toward(a.face, a.dir, dt / ((R && R.spin) || 0.5));
   const target = a.pause || a.face !== a.dir ? 1 : 0;
   a.mix = toward(a.mix, target, dt / a.fade);
   if (a.m3) {
@@ -333,6 +307,10 @@ function rest(a, dt) {
 }
 
 function update(dt) {
+  // odchazejici tvorove (prepnuti sceny) zmizi, jakmile se doztraceji
+  for (let i = actors.length - 1; i >= 0; i--) {
+    if (actors[i].leaving && sceneTime - actors[i].leaving > LEAVE_S) dropActor(i);
+  }
   for (const a of actors) {
     rest(a, dt);
     if (a.natural) {
@@ -354,10 +332,11 @@ function update(dt) {
     // jinak rychle.
     if (a.xFrac > 1.25) { a.xFrac = -0.25; swapBand(a); }
     if (a.xFrac < -0.25) { a.xFrac = 1.25; swapBand(a); }
-    if (a.motion === 'fly') {
+    const cfg = motionCfg(a.motion);
+    if (cfg.bob) {
       a.yFrac += Math.sin(sceneTime * 0.35 + a.bob) * 0.012 * dt;
       a.yFrac = Math.max(a.band.y0, Math.min(a.band.y1, a.yFrac));
-    } else if (a.motion === 'walk') {
+    } else if (a.drift) {
       // Sunuti po pasu brehu: na kraji se odrazi, protoze za nim uz je voda
       // nebo les. Svisle se posouva pomerem `drift` k vodorovne rychlosti.
       a.yFrac += go * a.drift;
@@ -387,21 +366,53 @@ function die(msg) {
   errEl.textContent = msg;
 }
 
+/* Krajina, pripadne prolnuti stare do nove pri prepnuti sceny: stara se
+   kresli primo, nova do bufferu a pres ni s rostouci alfou — jeji kreslic
+   si uvnitr nastavuje vlastni globalAlpha, takze pruhledne primo kreslit
+   nejde. Buffer zije jen po dobu prechodu. */
+function drawBackdrop(dt) {
+  if (xfade && (xfade.t += dt / XFADE_S) >= 1) xfade = null;
+  if (xfade && backdrop) {
+    xfade.old.draw(ctx, W, H, sceneTime);
+    if (!xfade.buf || xfade.buf.width !== canvas.width
+                   || xfade.buf.height !== canvas.height) {
+      xfade.buf = document.createElement('canvas');
+      xfade.buf.width = canvas.width;
+      xfade.buf.height = canvas.height;
+    }
+    const bctx = xfade.buf.getContext('2d');
+    bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    backdrop.draw(bctx, W, H, sceneTime);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = Math.min(1, xfade.t);
+    ctx.drawImage(xfade.buf, 0, 0);
+    ctx.restore();
+  } else if (backdrop) {
+    backdrop.draw(ctx, W, H, sceneTime);
+  } else {
+    ctx.fillStyle = '#123';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
 function draw(dt) {
-  if (window.Backdrop) Backdrop.draw(ctx, W, H, sceneTime);
-  else { ctx.fillStyle = '#123'; ctx.fillRect(0, 0, W, H); }
+  drawBackdrop(dt);
 
   const order = actors.slice().sort((a, b) => a.yFrac - b.yFrac);
   for (const a of order) {
     const scale = depthScale(a.yFrac);
-    const targetPx = W * (LENGTH_FRACTION[a.motion] || 0.17) * scale;
+    const targetPx = W * (motionCfg(a.motion).lengthFraction || 0.17) * scale;
     const age = sceneTime - a.born;
-    const pop = age < 0.9 ? 0.72 + 0.28 * Math.min(1, age / 0.9) : 1;
+    let pop = age < 0.9 ? 0.72 + 0.28 * Math.min(1, age / 0.9) : 1;
+    // odchod pri prepnuti sceny: zmenseni do ztracena, obraceny "pop"
+    if (a.leaving) pop *= Math.max(0, 1 - (sceneTime - a.leaving) / LEAVE_S);
     const x = a.xFrac * W, y = a.yFrac * H;
 
     if (a.m3) {
       // u 3D tvora je yFrac primo cara, na ktere stoji nohama
-      const s = W * (SIZE_FRACTION[a.motion] || SIZE_FRACTION.walk) * scale / a.m3.sizePx;
+      const s = W * (motionCfg(a.motion).sizeFraction
+                     || motionCfg('walk').sizeFraction || 0.234) * scale / a.m3.sizePx;
       Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop,
                             depth: a.yFrac * 4000 - 2000 });
       continue;
@@ -423,7 +434,7 @@ function draw(dt) {
   Scene3D.render(dt);
 
   fxCtx.clearRect(0, 0, W, H);
-  if (window.Backdrop && Backdrop.drawFront) Backdrop.drawFront(fxCtx, W, H, sceneTime);
+  if (backdrop && backdrop.drawFront) backdrop.drawFront(fxCtx, W, H, sceneTime);
 }
 
 let frameErrors = 0;
@@ -464,15 +475,17 @@ async function loadModel(item, opts) {
   const spec = byKey.get(item.creature);
   if (!spec) throw new Error('neznámý model: ' + item.creature);
   if (!has3D) throw new Error('WebGL není k dispozici');
-  const clip = spec.clips[spec.motion === 'fly' ? 'Flying' : 'Walk'] || spec.pose;
+  // role klipu (pohyb, stani, skok) rika katalog — jmena se nehadaji ve scene
+  const cf = spec.clipFor || {};
+  const clip = spec.clips[cf.move] || spec.pose;
+  const breaks = cf.stand || cf.jump
+    ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump] }
+    : undefined;
   const m3 = await Scene3D.spawn({
-    id: item.id, glb: spec.glb, motion: spec.motion, clip,
-    // do ceho prolnout, kdyz se chodec zastavi; letec zadnou nedostane
-    breaks: spec.motion === 'walk' ? { stand: spec.clips.Idle, jump: spec.clips.Jump }
-                                   : undefined,
+    id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks,
     texture: item.texture || (item.url || `/catch/${item.id}/`) + 'texture.png',
   });
-  return addActor({ m3, id: item.id, key: spec.key,
+  return addActor({ m3, id: item.id, key: spec.key, strideRate: spec.strideRate,
                     motion: spec.motion, label: spec.label }, opts);
 }
 
@@ -482,7 +495,10 @@ function arrive(item, opts) {
 
 async function catalogue() {
   try {
-    const list = await (await fetch('/api/dino3d')).json();
+    const scope = sceneDef ? '?scene=' + encodeURIComponent(sceneDef.catalogue) : '';
+    const list = await (await fetch('/api/dino3d' + scope)).json();
+    byKey.clear();
+    ambientQueue = [];
     for (const e of list) byKey.set(e.key, e);
   } catch (e) {
     note('katalog: ' + e.message);
@@ -513,7 +529,10 @@ function clearCatches() {
 }
 
 async function fetchCast() {
-  const res = await fetch('/api/rigs?' + SIDQ);
+  // scoped na scenu: ulovky cizi krajiny se nenacitaji (a nemazou) — objevi
+  // se zase po prepnuti zpatky
+  const scope = sceneDef ? '&scene=' + encodeURIComponent(sceneDef.key) : '';
+  const res = await fetch('/api/rigs?' + SIDQ + scope);
   if (!res.ok) return null;
   const data = await res.json();
   // server zatim limit neumi; po tydnech provozu by scena bootovala minuty
@@ -540,6 +559,9 @@ async function restoreCast() {
    serverem podle id: chybějící úlovky se přivedou, úlovky, které server už
    nezná, odejdou. Katalogových (ambientních) tvorů se rekonciliace netýká. */
 async function reconcile() {
+  // pred nactenim definice sceny (boot) a behem prepnuti se nerekonciliuje —
+  // fetchCast by bez sceny prinesl i ulovky cizi krajiny
+  if (switching || !sceneDef) return;
   let items;
   try {
     items = await fetchCast();
@@ -561,6 +583,42 @@ async function reconcile() {
     }
   }
   topUp();
+}
+
+async function loadSceneDef(key) {
+  return (await import(`./scenes/${key}.js`)).default;
+}
+
+/* Přepnutí scény za běhu (zpráva `scene` z WS): tvorové odejdou zmenšením do
+   ztracena, krajina se prolne do nové, 3D vrstva dostane nové osvětlení a po
+   odchodu staré sestavy se přivedou úlovky a doplňky nové scény. Úlovky cizí
+   krajiny se nenačítají a nemažou — čekají na přepnutí zpátky. */
+async function switchScene(key) {
+  if (!key || switching || (sceneDef && sceneDef.key === key)) return;
+  switching = true;
+  try {
+    const def = await loadSceneDef(key);
+    const bd = await def.backdrop();
+    for (const a of actors) if (!a.leaving) a.leaving = sceneTime;
+    if (backdrop) xfade = { old: backdrop, t: 0, buf: null };
+    sceneDef = def;
+    backdrop = bd;
+    Scene3D.setLighting(def.lighting);
+    await catalogue();
+    toast('Krajina: ' + def.label);
+    // novou sestavu privest az kdyz stara odejde (update ji doztraci)
+    setTimeout(async () => {
+      switching = false;
+      try {
+        await restoreCast();
+      } finally {
+        topUp();
+      }
+    }, (LEAVE_S + 0.4) * 1000);
+  } catch (e) {
+    switching = false;
+    note('scéna: ' + (e && e.message || e));
+  }
 }
 
 let wsDelay = 3000;
@@ -606,6 +664,8 @@ function connect() {
       if (ambientEnabled) topUp();
     } else if (msg.type === 'cleared') {
       clearCatches();
+    } else if (msg.type === 'scene') {
+      switchScene(msg.scene);
     } else if (msg.type === 'idle') {
       idleWarn(msg.seconds_left);
     } else if (msg.type === 'sleep') {
@@ -632,10 +692,10 @@ Tune.init({
       let r = rows.get(a.key);
       if (!r) rows.set(a.key, r = { key: a.key, label: a.label, count: 0,
                                     autoRate: 0, rate: 0, px: 0, cycle: 0,
-                                    autoSpeed: (BAKED[a.key] || {}).speed || 1,
+                                    autoSpeed: 1,
                                     stride: a.m3 ? a.m3.strideBodies : 0 });
       r.count++;
-      r.autoRate += (BAKED[a.key] || {}).rate || a.autoRate;
+      r.autoRate += a.autoRate;
       r.rate += a.rate;
       r.px += a.speed * W;
       r.cycle += a.m3 && a.m3.duration ? a.m3.duration / a.rate : 0;
@@ -773,6 +833,8 @@ window.DinoScene = {
   })),
   ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
   session: () => SID,
+  scene: () => sceneDef && sceneDef.key,   // aktivni krajina (bod 8)
+  switchScene,                             // rucni prepnuti (Playwright/ladeni)
   // ladici vstupy do spaciho UI (Playwright): server je jediny, kdo tyhle
   // stavy doopravdy ridi, ale vizual se musi dat prohlednout i bez cekani
   debugIdle: (s) => idleWarn(s == null ? 120 : s),
@@ -795,8 +857,42 @@ if (glError) {
   console.error('WebGL:', glError);
 }
 resize();
-Promise.all([catalogue(), fetchSettings()])
-  .then(restoreCast).then(topUp).then(() => { window.__ready = true; });
+
+/* Start: nejdriv zjistit, jaka krajina plati (?scene= prebiji hodnotu session
+   ze serveru), nacist jeji definici a backdrop, pak katalog a ulovky. Scena
+   se da ladit i bez serveru — pak plati default. */
+async function boot() {
+  let key = SCENE_OVERRIDE;
+  if (!key) {
+    try {
+      key = (await (await fetch('/api/scene/active?' + SIDQ)).json()).scene;
+    } catch (e) { /* bez serveru plati default */ }
+  }
+  try {
+    sceneDef = await loadSceneDef(key || DEFAULT_SCENE);
+  } catch (e) {
+    try {
+      sceneDef = await loadSceneDef(DEFAULT_SCENE);
+      note('scéna ' + key + ' se nenačetla, jede ' + DEFAULT_SCENE);
+    } catch (e2) {
+      die('Definice scény se nenačetla: ' + (e2 && e2.message || e2));
+      window.__ready = true;
+      return;
+    }
+  }
+  Scene3D.setLighting(sceneDef.lighting);
+  try {
+    backdrop = await sceneDef.backdrop();
+  } catch (e) {
+    note('krajina: ' + (e && e.message || e));
+  }
+  await Promise.all([catalogue(), fetchSettings()]);
+  await restoreCast();
+  await topUp();
+  window.__ready = true;
+}
+
+boot();
 connect();
 requestAnimationFrame(frame);
 qrInit();

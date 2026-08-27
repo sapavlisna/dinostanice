@@ -13,10 +13,17 @@ import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from './vendor/SkeletonUtils.js';
 
 const FORWARD_YAW = Math.PI / 2;   // modely koukaji na +Z, obrazovka doprava je +X
-const TURN = { walk: 0.34, fly: 0.95 };
-// Letec z ciste profilu je jen car; naklon k divakovi ukaze i kridla, ktera
-// jsou na nem to jedine zajimave — a zaroven vrchni stranu, kam padla kresba.
-const BANK = { walk: 0, fly: -0.42 };
+// Natoceni a kotva per typ pohybu. `turn` je naklon k divakovi (cisty profil
+// je jen cara), `bank` naklon kolem osy pohledu — letec z profilu je car a
+// naklon ukaze kridla, kam padla kresba. `anchor` rika, za co tvor visi:
+// chodec za nohy na y=0 (modely maji pocatek na zemi), letec/plavec/lod za
+// stred tela — nestoji na zemi, vznasi se.
+const MOTION = {
+  walk: { turn: 0.34, bank: 0, anchor: 'ground' },
+  fly: { turn: 0.95, bank: -0.42, anchor: 'centre' },
+  swim: { turn: 0.34, bank: 0, anchor: 'centre' },
+  sail: { turn: 0.20, bank: 0, anchor: 'centre' },
+};
 
 // Chodidla se poznaji podle jmena kostry; podle nich se meri delka kroku.
 // Koncove kosti (_end) se vynechavaji, jsou to jen spicky bez vlastniho pohybu.
@@ -53,14 +60,36 @@ function initRenderer(canvas) {
   scene = new THREE.Scene();
   camera = new THREE.OrthographicCamera(0, 1, 0, -1, -20000, 20000);
 
-  scene.add(new THREE.HemisphereLight(0xcfe2ff, 0x5c5b3a, 1.05));
-  // slunce je na malovane obloze vpravo nahore (backdrop.js), at stiny sedi
-  const sun = new THREE.DirectionalLight(0xfff0d4, 2.1);
-  sun.position.set(0.62, 1.35, 0.95);
-  scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x9fc4e8, 0.5);
-  fill.position.set(-0.8, 0.3, 0.6);
-  scene.add(fill);
+  // neutralni svetla, dokud scena nedoda vlastni (setLighting z definice sceny)
+  setLighting(null);
+}
+
+let lights = [];
+
+/* Svetla 3D vrstvy z dat sceny: {hemi: {sky, ground, intensity},
+   sun: {color, intensity, position}, fill: {...}}. Bez argumentu neutralni
+   default (dnesni kridove hodnoty), at tvor neni cerny ani bez definice. */
+export function setLighting(cfg) {
+  if (!scene) return;
+  for (const l of lights) scene.remove(l);
+  lights = [];
+  const c = cfg || {
+    hemi: { sky: 0xcfe2ff, ground: 0x5c5b3a, intensity: 1.05 },
+    sun: { color: 0xfff0d4, intensity: 2.1, position: [0.62, 1.35, 0.95] },
+    fill: { color: 0x9fc4e8, intensity: 0.5, position: [-0.8, 0.3, 0.6] },
+  };
+  if (c.hemi) {
+    lights.push(new THREE.HemisphereLight(c.hemi.sky, c.hemi.ground,
+                                          c.hemi.intensity));
+  }
+  for (const key of ['sun', 'fill']) {
+    const d = c[key];
+    if (!d) continue;
+    const l = new THREE.DirectionalLight(d.color, d.intensity);
+    l.position.set(...d.position);
+    lights.push(l);
+  }
+  for (const l of lights) scene.add(l);
 }
 
 export function init(canvas) {
@@ -268,16 +297,17 @@ export async function spawn(entry) {
     o.frustumCulled = false;                 // skinning vytahuje vrcholy z bind bboxu
   });
 
-  const flying = entry.motion === 'fly';
-  const yaw = (FORWARD_YAW - (flying ? TURN.fly : TURN.walk));
-  const bank = flying ? BANK.fly : BANK.walk;
+  const mo = MOTION[entry.motion] || MOTION.walk;
+  const grounded = mo.anchor === 'ground';
+  const yaw = FORWARD_YAW - mo.turn;
+  const bank = mo.bank;
 
   const box = measure(model);
   const centre = box.getCenter(new THREE.Vector3());
-  // Chodec visi za nohy, letec za stred tela. Nohy jsou na y = 0: modely maji
+  // Chodec visi za nohy, ostatni za stred tela. Nohy jsou na y = 0: modely maji
   // pocatek na zemi. Spodek obalky by nesedel — triceratops ma bind pozu, ktera
   // sahá pet jednotek pod nej, a ve sceně by se pak vznasel nad piskem.
-  const anchor = new THREE.Vector3(centre.x, flying ? centre.y : 0, centre.z);
+  const anchor = new THREE.Vector3(centre.x, grounded ? 0 : centre.y, centre.z);
   model.position.sub(anchor);
 
   const spin = new THREE.Group();
@@ -295,7 +325,7 @@ export async function spawn(entry) {
   const length = onScreen.max.x - onScreen.min.x;
   // chodec se meri od zeme nahoru, ne pres celou obalku: triceratopsu sahá bind
   // poza pod nulu a vyska by z toho vysla o polovinu vetsi
-  const height = flying ? onScreen.max.y - onScreen.min.y : onScreen.max.y;
+  const height = grounded ? onScreen.max.y : onScreen.max.y - onScreen.min.y;
 
   const handle = {
     id: entry.id, motion: entry.motion, root, spin, yaw, bank,

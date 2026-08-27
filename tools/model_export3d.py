@@ -27,39 +27,47 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data/models3d"
 
 
-def export(spec) -> dict:
+def export(spec, index_only=False) -> dict:
     shape = ms.load(ROOT / f"data/shapes3d/{spec.key}.json")
     model = Model(ROOT / "data/models_src" / spec.glb)
 
     verts, _ = model.posed(shape.anim or None, shape.time)
-    mm = shape.placement.to_mm(verts)
-    uv = np.stack([mm[:, 0] / SHEET_W_MM, mm[:, 1] / SHEET_H_MM], axis=1)
-    glb = write_with_uv(model, uv, OUT / f"{spec.key}.glb")
+    if not index_only:
+        mm = shape.placement.to_mm(verts)
+        uv = np.stack([mm[:, 0] / SHEET_W_MM, mm[:, 1] / SHEET_H_MM], axis=1)
+        write_with_uv(model, uv, OUT / f"{spec.key}.glb")
 
-    sheet = demo.paint_sheet(shape)
-    cv2.imwrite(str(OUT / f"{spec.key}_texture.png"),
-                ms.to_texture(sheet, shape, demo.PPM))
+        sheet = demo.paint_sheet(shape)
+        cv2.imwrite(str(OUT / f"{spec.key}_texture.png"),
+                    ms.to_texture(sheet, shape, demo.PPM))
 
-    return {
+    entry = {
         "key": spec.key,
         "label": spec.label,
         "motion": spec.motion,
+        "scene": spec.scene,
         "glb": f"/models3d/{spec.key}.glb",
         "texture": f"/models3d/{spec.key}_texture.png",
         "clips": {name.split("_")[-1]: name for name in sorted(model.animations)},
+        "clipFor": spec.clip_roles(),
         "pose": shape.anim,
         "size": round(float(np.ptp(verts[:, 2])), 2),
     }
+    if spec.stride_rate:
+        entry["strideRate"] = list(spec.stride_rate)
+    return entry
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("keys", nargs="*")
+    ap.add_argument("--index-only", action="store_true",
+                    help="prepsat jen catalogue3d.json, GLB a textur se nedotykat")
     args = ap.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
     specs = [BY_KEY[k] for k in args.keys] if args.keys else CATALOGUE
-    entries = [export(s) for s in specs]
+    entries = [export(s, index_only=args.index_only) for s in specs]
 
     index = OUT / "catalogue3d.json"
     if args.keys and index.exists():
