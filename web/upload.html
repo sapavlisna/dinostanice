@@ -130,6 +130,11 @@
   }
   .stay-foot button:active { background: var(--card); }
   #stayNote { display: block; margin-top: 8px; color: var(--ok); font-size: 14px; }
+
+  /* paticka s dalsimi strankami (bod 6): rozcestnik u televize je jen text
+     k opsani, skutecne prokliknuti odsud dal je tady, na mobilu */
+  .footer-links { margin-top: 26px; text-align: center; }
+  .footer-links a { color: #7fc4ff; text-decoration: none; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -172,6 +177,10 @@
 <div class="stay-foot">
   <button id="stay" type="button">Ještě chvíli ⏰</button>
   <span id="stayNote"></span>
+</div>
+
+<div class="footer-links">
+  <a href="/sablony">Šablony k tisku</a> &middot; <a href="/rezim">Režim stanice</a>
 </div>
 
 <script>

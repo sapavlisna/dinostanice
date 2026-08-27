@@ -30,16 +30,20 @@
   }
   #hint b { display: block; font-size: 20px; margin-bottom: 4px; }
   #hint span { display: block; opacity: .78; font-size: 15px; }
-  #hint a {
-    display: inline-block; margin-top: 7px; color: #9fd6ff; font-size: 14px;
-    text-decoration: none; border-bottom: 1px solid rgba(159, 214, 255, .4);
-  }
-  #hint a:hover { color: #d6ecff; }
-  /* mini stav: jen QR v rohu, bez textu — hlavni stav prvnich 90 s po startu,
-     nebo hned po prvnim add; pripominka se na chvili vrati k plnemu stavu */
-  #hint.mini { gap: 0; padding: 7px; border-radius: 12px; }
+  /* rozcestnik (bod 6): na TV se nekleka, tak jen tlumeny text k opsani do
+     mobilu, ne odkaz — QR zustava jedina klikatelna cesta (na mobilu) */
+  #hint .links { margin: 8px 0 0; font-size: 12px; line-height: 1.6; opacity: .55; }
+  /* mini stav: jen QR v rohu — hlavni stav prvnich 90 s po startu, nebo hned
+     po prvnim add; pripominka se na chvili vrati k plnemu stavu. Cesta na
+     šablony zůstává i tady jako mikrořádek (bod 7), ať ji mini stav neuřízne */
+  #hint.mini { gap: 10px; padding: 7px 14px 7px 7px; border-radius: 12px; }
   #hint.mini img { width: 56px; height: 56px; }
   #hint.mini > div { display: none; }
+  #hint .mini-link { display: none; }
+  #hint.mini .mini-link {
+    display: block; font-size: 11px; letter-spacing: .01em;
+    color: rgba(242, 246, 248, .55); white-space: nowrap;
+  }
   #toast {
     position: fixed; left: 50%; top: 36px; transform: translateX(-50%) translateY(calc(-100% - 80px));
     padding: 16px 30px; border-radius: 999px; color: #06222c; background: #ffe9a8;
@@ -141,8 +145,9 @@
   <div>
     <b>Přidej svého dinosaura</b>
     <span>Naskenuj kód a vyfoť vybarvený obrázek</span>
-    <a href="/sablony">Šablony k tisku a 3D modely</a>
+    <p class="links">🖨 /sablony — tisk šablon<br>⚙ /rezim — přepnout krajinu, reset</p>
   </div>
+  <span class="mini-link">/sablony</span>
 </div>
 <div id="toast"></div>
 <div id="err"></div>
