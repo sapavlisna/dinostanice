@@ -573,3 +573,41 @@ def test_upload_to_matching_scene_has_no_note(client):
     body = upload(client, model_photo_jpg()).json()
     assert body["ok"] is True
     assert "note" not in body
+
+
+# --- Krmeni z mobilu (bod 11) ----------------------------------------------
+
+def test_feed_broadcast_rate_limit_and_isolation(client):
+    with client.websocket_connect("/ws?s=aaa") as ws_a, \
+         client.websocket_connect("/ws?s=bbb") as ws_b:
+        r = client.post("/api/feed", json={"s": "aaa"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        msg = ws_a.receive_json()
+        assert msg["type"] == "feed"
+        assert 0.25 <= msg["x"] <= 0.75
+        assert msg["x"] == body["x"]
+
+        # rate-limit: druhy hod hned po prvnim vraci 429 s ceskou hlaskou
+        r2 = client.post("/api/feed", json={"s": "aaa"})
+        assert r2.status_code == 429
+        assert r2.json()["ok"] is False
+        assert "žvýkají" in r2.json()["error"]
+
+        # cizi session feed nedostala: prvni zprava na jejim WS je az jeji
+        # vlastni hod (rate-limit je per session, aaa ho neblokuje)
+        r3 = client.post("/api/feed", json={"s": "bbb"})
+        assert r3.status_code == 200
+        msg_b = ws_b.receive_json()
+        assert msg_b["type"] == "feed"
+        assert msg_b["x"] == r3.json()["x"]
+
+
+def test_feed_cooldown_expires(client, monkeypatch):
+    monkeypatch.setattr(server, "FEED_COOLDOWN_S", 0.05)
+    assert client.post("/api/feed", json={"s": "ccc"}).status_code == 200
+    assert client.post("/api/feed", json={"s": "ccc"}).status_code == 429
+    import time as _time
+    _time.sleep(0.06)
+    assert client.post("/api/feed", json={"s": "ccc"}).status_code == 200

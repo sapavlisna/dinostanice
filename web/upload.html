@@ -38,6 +38,21 @@
   .shoot small { display: block; font-size: 14px; font-weight: 500; opacity: .7; margin-top: 4px; }
   input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
+  /* krmeni (bod 11): jedina interakce s televizi */
+  .feed-btn {
+    display: block; width: 100%; border: none; border-radius: 20px;
+    margin-top: 14px; background: #2e4a35; color: #d9f2e0;
+    font-size: 20px; font-weight: 700; padding: 20px 18px;
+    text-align: center; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(46, 74, 53, .3);
+  }
+  .feed-btn:active { transform: translateY(2px); }
+  .feed-btn:disabled { opacity: .55; }
+  .feed-btn small { display: block; font-size: 14px; font-weight: 500; opacity: .7; margin-top: 4px; }
+  #feedNote { display: block; margin-top: 8px; text-align: center; font-size: 14px; min-height: 1.3em; }
+  #feedNote.ok { color: var(--ok); }
+  #feedNote.bad { color: var(--bad); }
+
   .card {
     background: var(--card); border: 1px solid var(--line);
     border-radius: 18px; padding: 16px; margin-top: 18px;
@@ -127,6 +142,12 @@
   <small>na počítači vybere soubor z disku</small>
 </label>
 <input id="file" type="file" accept="image/*" capture="environment">
+
+<button class="feed-btn" id="feedBtn" type="button">
+  🍖 Hodit žrádlo
+  <small>dinosauři na televizi se seběhnou</small>
+</button>
+<span id="feedNote"></span>
 
 <div class="field-label" style="margin-top:22px">Dinosauři ve stanici</div>
 <div class="card roster-card">
@@ -305,7 +326,8 @@ sendBtn.addEventListener("click", async () => {
     setStatus('<div class="result"><strong>' + who + " je uložený!</strong>" +
               '<div class="meta">' + div.innerHTML + "</div></div>");
   } else {
-    setStatus('<div class="result"><strong>' + who + " vyrazil do krajiny!</strong>" +
+    setStatus('<div class="result"><strong>' + who +
+              " vyrazil do krajiny — sleduj levý kraj televize!</strong>" +
               '<div class="meta">Vybarveno na ' + pct + " % · zpracováno za " +
               (data.took_ms || 0) + " ms</div></div>");
   }
@@ -407,6 +429,39 @@ async function loadRoster() {
 }
 
 loadRoster();
+
+// --- Hodit žrádlo (bod 11): jediná interakce s televizí --------------------
+
+const feedBtn = document.getElementById("feedBtn");
+const feedNote = document.getElementById("feedNote");
+let feedNoteTimer = 0;
+
+function showFeedNote(text, ok) {
+  feedNote.textContent = text;
+  feedNote.className = ok ? "ok" : "bad";
+  clearTimeout(feedNoteTimer);
+  feedNoteTimer = setTimeout(() => { feedNote.textContent = ""; }, 6000);
+}
+
+feedBtn.addEventListener("click", async () => {
+  feedBtn.disabled = true;
+  try {
+    const res = await fetch("/api/feed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ s: SID }),
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ok) {
+      showFeedNote("Žrádlo letí — koukni na televizi! 🍖", true);
+    } else {
+      showFeedNote((data && data.error) || "Nepodařilo se hodit žrádlo, zkus to znovu.", false);
+    }
+  } catch (e) {
+    showFeedNote("Nepodařilo se spojit se stanicí.", false);
+  }
+  setTimeout(() => { feedBtn.disabled = false; }, 2000);
+});
 
 // „Ještě chvíli" (bod 6): explicitni touch — stanice nezhasne, i kdyz se
 // zrovna nic nenahrava. Upload sam je touch, tam neni potreba nic.

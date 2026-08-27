@@ -154,7 +154,9 @@ def purge_deleted():
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
             dest = os.path.join(TRASH_ROOT, entry.name[: -len(".deleted")] + "-" + stamp)
             try:
-                os.replace(entry.path, dest)
+                # shutil.move umí i přesun přes hranici filesystémů (bind
+                # mount v Dockeru), kde by os.replace spadl na EXDEV
+                shutil.move(entry.path, dest)
             except OSError:
                 left += 1
     cutoff = datetime.now().timestamp() - TRASH_KEEP_DAYS * 86400

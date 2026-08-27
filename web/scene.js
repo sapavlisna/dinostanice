@@ -33,6 +33,17 @@ const GAIT_RATE = { min: 0.4, max: 1.8 };
 // a prolnuti krajin.
 const LEAVE_S = 0.8;
 const XFADE_S = 1.6;
+// Odchod se odehrava (bod 11): tvor dojde/doleti/dopluje za okraj vlastnim
+// tempem; kdyz se EXIT_TIMEOUT_S nehne z mista (bug, zasek), spadne na
+// stary fade. TAG_S je jmenovka nad novym ulovkem.
+const EXIT_TIMEOUT_S = 20;
+const TAG_S = 6;
+// Krmeni z mobilu (bod 11): jidlo pada FEED_FALL_S, pak lezi FEED_LIFE_S;
+// chodce lakas do vzdalenosti FEED_RADIUS, u jidla je od FEED_REACH.
+const FEED_FALL_S = 1.0;
+const FEED_LIFE_S = 15;
+const FEED_RADIUS = 0.3;
+const FEED_REACH = 0.04;
 
 /* Scena jako data (bod 8): vsechno, co je vlastnost krajiny — pasy, chovani
    pohybu, osvetleni, backdrop — zije v definici web/scenes/<key>.js. scene.js
@@ -241,7 +252,10 @@ function addActor(what, opts) {
   const cfg = motionCfg(motion);
   const band = pickBand(motion);
   const yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  // Novy ulovek (ne-silent) ma ohlaseny vstup: vzdy zleva, at dite vi, kam
+  // koukat (teamLab vzor) — mobil po uploadu rika „sleduj levy kraj".
+  const silent = !!(opts && opts.silent);
+  const dir = silent ? (Math.random() < 0.5 ? 1 : -1) : 1;
   // rychlost i tempo cyklu maji jednu spolecnou nahodu, aby rychlejsi tvor
   // zaroven casteji maval kridly nebo vesloval
   const pace = 0.75 + Math.random() * 0.5;
@@ -250,8 +264,7 @@ function addActor(what, opts) {
     // Tvory, kteri uz ve sceně "byli" (obnovene ulovky, doplnek z katalogu),
     // rozsazuje zlaty rez, ne nahoda: nahodnych sest cisel se casto sesype do
     // jednoho rohu a pul obrazovky zustane prazdna.
-    xFrac: opts && opts.silent ? (spawnSeq++ * 0.6180339887 + 0.1) % 1
-                               : (dir > 0 ? -0.15 : 1.15),
+    xFrac: silent ? (spawnSeq++ * 0.6180339887 + 0.1) % 1 : -0.15,
     phase: Math.random(),
     speed: (cfg.baseSpeed || 0.03) * pace,
     bob: Math.random() * Math.PI * 2,
@@ -269,6 +282,8 @@ function addActor(what, opts) {
     label: what.label || 'tvor',
     who: (opts && opts.who) || '',
     ambient: !!(opts && opts.ambient),
+    // jmenovka nad novym ulovkem: jen kdyz fotka nese jmeno a vstup se ohlasuje
+    tagUntil: !silent && opts && opts.who ? sceneTime + TAG_S : 0,
   };
   actor.autoRate = 1;
   actor.autoSpeed = actor.speed;
@@ -294,14 +309,48 @@ function addActor(what, opts) {
   }
   applyGait(actor);
   actors.push(actor);
-  while (actors.length > MAX_ACTORS) {
-    // nejdriv odejde doplnek z katalogu, teprve pak nejstarsi ulovek
-    const amb = actors.findIndex(a => a.ambient);
-    dropActor(amb >= 0 ? amb : 0);
+  while (liveCount() > MAX_ACTORS) {
+    // nejdriv odejde doplnek z katalogu, teprve pak nejstarsi ulovek —
+    // odchod se odehrava (beginExit), zdroje drzi az do dropActor
+    const victim = actors.find(a => a.ambient && !a.exiting && !a.leaving)
+                || actors.find(a => !a.exiting && !a.leaving);
+    if (!victim || victim === actor) break;
+    beginExit(victim);
+  }
+  while (actors.length > MAX_ACTORS + 6) {
+    // tvrdy strop na drzene zdroje: nahromadene odchazejici zmizi hned
+    const i = actors.findIndex(a => a.exiting || a.leaving);
+    dropActor(i >= 0 ? i : 0);
   }
   Roster.event('in', actor.label, actor.who);
   Roster.cast(actors);
   return actor;
+}
+
+/* Obsazeni sceny bez odchazejicich: odchazejici tvor uz se nepocita, aby
+   topUp/makeRoom necekaly, az dojde k okraji (Scene3D zdroje ale drzi
+   az do dropActor). */
+function liveCount() {
+  let n = 0;
+  for (const a of actors) if (!a.exiting && !a.leaving) n++;
+  return n;
+}
+
+/* Odchod vzdy odehrat (bod 11): tvor opusti trasu, otoci se k blizsimu okraji
+   a odejde/odleti/odpluje za nej vlastnim tempem; dropActor az za okrajem.
+   Zachranna brzda: kdyz se do EXIT_TIMEOUT_S nedostane ven, fade jako drive. */
+function beginExit(a, quiet) {
+  if (!a || a.exiting || a.leaving) return;
+  a.exiting = true;
+  a.exitWatch = { x: a.xFrac, at: sceneTime };   // hlidac „nehybe se"
+  a.quietOut = !!quiet;
+  a.route = null;
+  a.feed = null;
+  a.pause = '';
+  a.restUntil = 0;
+  a.restAt = Infinity;
+  a.drift = 0;
+  a.dir = a.xFrac >= 0.5 ? 1 : -1;
 }
 
 /* Podil sirky obrazovky, ktery zabere telo tvora — z nej se pocita rychlost po
@@ -326,7 +375,9 @@ function dropActor(i) {
   const [gone] = actors.splice(i, 1);
   if (!gone) return;
   if (gone.m3) Scene3D.remove(gone.m3);
-  Roster.event('out', gone.label, gone.who);
+  // `−` v liste az pri skutecnem zmizeni; hromadny reset ma jeden souhrnny
+  // zaznam misto N jednotlivych (quietOut)
+  if (!gone.quietOut) Roster.event('out', gone.label, gone.who);
   Roster.cast(actors);
 }
 
@@ -344,7 +395,7 @@ async function topUp() {
   if (topping || switching || !has3D || !byKey.size || !ambientEnabled) return;
   topping = true;
   try {
-    while (actors.length < ((sceneDef && sceneDef.ambientMin) || 0)) {
+    while (liveCount() < ((sceneDef && sceneDef.ambientMin) || 0)) {
       const spec = nextAmbient();
       try {
         await loadModel({ kind: 'model', creature: spec.key, texture: spec.texture,
@@ -362,9 +413,8 @@ async function topUp() {
 
 function makeRoom() {
   // ulovek ma prednost pred tvorem z katalogu; ten odejde, at scena nezhoustne
-  if (actors.length <= ((sceneDef && sceneDef.ambientMin) || 0)) return;
-  const i = actors.findIndex(a => a.ambient);
-  if (i >= 0) dropActor(i);
+  if (liveCount() <= ((sceneDef && sceneDef.ambientMin) || 0)) return;
+  beginExit(actors.find(a => a.ambient && !a.exiting && !a.leaving));
 }
 
 /* Po obchuzi scény přejde tvor na další lane téhož pohybu: kdo šel vzadu,
@@ -424,11 +474,42 @@ function rest(a, dt) {
 }
 
 function update(dt) {
-  // odchazejici tvorove (prepnuti sceny) zmizi, jakmile se doztraceji
+  // odchazejici tvorove: fade (prepnuti sceny / zachranna brzda) zmizi po
+  // doztraceni, odehrany odchod az za okrajem obrazovky
   for (let i = actors.length - 1; i >= 0; i--) {
-    if (actors[i].leaving && sceneTime - actors[i].leaving > LEAVE_S) dropActor(i);
+    const a = actors[i];
+    if (a.leaving && sceneTime - a.leaving > LEAVE_S) { dropActor(i); continue; }
+    if (a.exiting && !a.leaving) {
+      if (a.xFrac > 1.3 || a.xFrac < -0.3) {
+        dropActor(i);
+        topUp();
+      } else if (Math.abs(a.xFrac - a.exitWatch.x) > 0.02) {
+        a.exitWatch = { x: a.xFrac, at: sceneTime };
+      } else if (sceneTime - a.exitWatch.at > EXIT_TIMEOUT_S) {
+        a.leaving = sceneTime;   // zasek (bug, stop) → fade jako drive
+      }
+    }
   }
+  updateFoods();
   for (const a of actors) {
+    // krmeni: chodec bez trasy v okruhu k jidlu zamiri; u jidla postoji
+    // (stavajici rest maserie) a pak se vrati k driftu
+    if (a.feed) {
+      if (a.feed.gone) {
+        a.feed = null;
+      } else if (Math.abs(a.xFrac - a.feed.x) < FEED_REACH) {
+        const R = motionCfg(a.motion).rest;
+        if (R && (!a.m3 || a.m3.action) && !a.pause) {
+          a.pause = 'stand';
+          a.fade = R.fade;
+          a.restUntil = sceneTime + span(R.stand);
+          a.restAt = sceneTime + span(R.walk);
+        }
+        a.feed = null;
+      } else {
+        a.dir = a.feed.x > a.xFrac ? 1 : -1;
+      }
+    }
     rest(a, dt);
     if (a.natural) {
       // hloubka se mení chuzí po pásu, a s ní i to, kolik pixelů je jeden krok
@@ -453,9 +534,11 @@ function update(dt) {
     // Za okrajem tvor obejde scenu dokola, misto aby se odrazil. Odraz vypadal
     // prirozene, ale vsichni se odrazeji od tehoz mista a casem se sesypou do
     // jednoho hloucku; takhle si rozestupy drzi napovad, protoze kazdy chodi
-    // jinak rychle.
-    if (a.xFrac > 1.25) { a.xFrac = -0.25; swapBand(a); }
-    if (a.xFrac < -0.25) { a.xFrac = 1.25; swapBand(a); }
+    // jinak rychle. Odchazejici tvor se neotaci ani neteleportuje — jde ven.
+    if (!a.exiting) {
+      if (a.xFrac > 1.25) { a.xFrac = -0.25; swapBand(a); }
+      if (a.xFrac < -0.25) { a.xFrac = 1.25; swapBand(a); }
+    }
     const cfg = motionCfg(a.motion);
     if (cfg.bob) {
       a.yFrac += Math.sin(sceneTime * 0.35 + a.bob) * 0.012 * dt;
@@ -469,6 +552,128 @@ function update(dt) {
         a.drift = -a.drift;
       }
     }
+  }
+}
+
+/* Krmeni z mobilu (bod 11): zprava `feed` shodi na predni breh trs kapradi.
+   Pada FEED_FALL_S, po dopadu si ho vsimnou chodci bez trasy v okruhu
+   FEED_RADIUS (tvor na trase drzi rad sceny a ignoruje ho), po FEED_LIFE_S
+   se doztraci a vsichni se vrati k driftu. Letci/plavci nereaguji. */
+const foods = [];
+
+function dropFood(x) {
+  const fit = bandsFor('walk');
+  const band = fit.find(b => b.lane !== 'far') || fit[0];
+  foods.push({
+    x: Math.max(0.05, Math.min(0.95, x)),
+    y: band.y0 + (0.3 + Math.random() * 0.4) * (band.y1 - band.y0),
+    born: sceneTime, claimed: false, gone: false,
+  });
+}
+
+function updateFoods() {
+  for (let i = foods.length - 1; i >= 0; i--) {
+    const f = foods[i];
+    const age = sceneTime - f.born;
+    if (!f.claimed && age >= FEED_FALL_S) {
+      f.claimed = true;      // laka az po dopadu, ne behem letu vzduchem
+      for (const a of actors) {
+        if (a.motion !== 'walk' || a.route || a.exiting || a.leaving) continue;
+        if (Math.abs(a.xFrac - f.x) < FEED_RADIUS) a.feed = f;
+      }
+    }
+    if (age > FEED_FALL_S + FEED_LIFE_S) {
+      f.gone = true;
+      foods.splice(i, 1);
+    }
+  }
+}
+
+/* Trs kapradi kresleny primo do fx vrstvy — zadny asset. */
+function drawFern(c, x, y, s, alpha) {
+  c.save();
+  c.globalAlpha = alpha;
+  c.translate(x, y);
+  c.lineCap = 'round';
+  c.fillStyle = 'rgba(24, 20, 10, 0.28)';
+  c.beginPath();
+  c.ellipse(0, s * 0.05, s * 0.55, s * 0.13, 0, 0, Math.PI * 2);
+  c.fill();
+  for (let i = -2; i <= 2; i++) {
+    const ang = -Math.PI / 2 + i * 0.38;
+    const len = s * (1 - Math.abs(i) * 0.14);
+    const ex = Math.cos(ang) * len, ey = Math.sin(ang) * len;
+    c.strokeStyle = '#2f7a3d';
+    c.lineWidth = Math.max(1.5, s * 0.07);
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.quadraticCurveTo(ex * 0.4, ey * 0.75, ex, ey);
+    c.stroke();
+    c.strokeStyle = '#48a75c';
+    c.lineWidth = Math.max(1, s * 0.05);
+    for (let k = 1; k <= 4; k++) {
+      const px = ex * k / 5, py = ey * k / 5 * 0.9;
+      const ll = s * 0.22 * (1 - k / 6);
+      c.beginPath();
+      c.moveTo(px, py);
+      c.lineTo(px - ll, py - ll * 0.35);
+      c.moveTo(px, py);
+      c.lineTo(px + ll, py - ll * 0.35);
+      c.stroke();
+    }
+  }
+  c.restore();
+}
+
+function drawFoods() {
+  for (const f of foods) {
+    const age = sceneTime - f.born;
+    const t = Math.min(1, age / FEED_FALL_S);
+    const y = (f.y - 0.4 * (1 - t * t)) * H;       // pad shora se zrychlenim
+    const fade = Math.min(1, (FEED_FALL_S + FEED_LIFE_S - age) / 2);
+    drawFern(fxCtx, f.x * W, y, W * 0.035 * depthScale(f.y), Math.max(0, fade));
+  }
+}
+
+/* Jmenovka nad novym ulovkem (bod 11): poloprupustna tmava pilulka s bilym
+   jmenem z fotky, sleduje tvora ~TAG_S sekund, pismo skalovane s hloubkou. */
+function drawTags() {
+  for (const a of actors) {
+    if (!a.tagUntil || sceneTime >= a.tagUntil || !a.who || a.leaving) continue;
+    const scale = depthScale(a.yFrac);
+    const cfg = motionCfg(a.motion);
+    let top;
+    if (a.m3) {
+      const s = W * (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
+              * scale / a.m3.sizePx;
+      top = a.yFrac * H - a.m3.height * s;
+    } else {
+      top = a.yFrac * H - W * (cfg.lengthFraction || 0.17) * scale * 0.75;
+    }
+    const alpha = Math.max(0, Math.min(1, (a.tagUntil - sceneTime) / 0.5,
+                                       (sceneTime - a.born) / 0.5));
+    const fs = Math.max(12, Math.round(17 * scale));
+    const x = a.xFrac * W;
+    const cy = Math.max(fs, top - fs * 1.2);
+    fxCtx.save();
+    fxCtx.globalAlpha = alpha * 0.9;
+    fxCtx.font = `600 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    fxCtx.textAlign = 'center';
+    fxCtx.textBaseline = 'middle';
+    const w = fxCtx.measureText(a.who).width;
+    const padX = fs * 0.7, padY = fs * 0.42;
+    fxCtx.fillStyle = 'rgba(8, 22, 30, 0.6)';
+    fxCtx.beginPath();
+    if (fxCtx.roundRect) {
+      fxCtx.roundRect(x - w / 2 - padX, cy - fs / 2 - padY,
+                      w + 2 * padX, fs + 2 * padY, fs);
+    } else {
+      fxCtx.rect(x - w / 2 - padX, cy - fs / 2 - padY, w + 2 * padX, fs + 2 * padY);
+    }
+    fxCtx.fill();
+    fxCtx.fillStyle = '#f2f6f8';
+    fxCtx.fillText(a.who, x, cy);
+    fxCtx.restore();
   }
 }
 
@@ -559,6 +764,8 @@ function draw(dt) {
 
   fxCtx.clearRect(0, 0, W, H);
   if (backdrop && backdrop.drawFront) backdrop.drawFront(fxCtx, W, H, sceneTime);
+  drawFoods();
+  drawTags();
   Tune.drawOverlay(fxCtx, W, H);   // editor tras; mimo editaci nekresli nic
 }
 
@@ -643,12 +850,10 @@ async function fetchSettings() {
    zustanou. Jeden souhrnny zaznam v listě mísi vypadá lip nez zaplaveni N
    jednotlivymi "odešel". */
 function clearCatches() {
-  for (let i = actors.length - 1; i >= 0; i--) {
-    if (actors[i].ambient) continue;
-    const [gone] = actors.splice(i, 1);
-    if (gone.m3) Scene3D.remove(gone.m3);
+  // odchod se odehrava i tady; quiet drzi jeden souhrnny zaznam v liste
+  for (const a of actors) {
+    if (!a.ambient) beginExit(a, true);
   }
-  Roster.cast(actors);
   Roster.event('note', 'Stanice vyprázdněna');
   topUp();
 }
@@ -695,8 +900,8 @@ async function reconcile() {
   }
   if (!items) return;
   const known = new Set(items.map(i => i.id));
-  for (let i = actors.length - 1; i >= 0; i--) {
-    if (!actors[i].ambient && !known.has(actors[i].id)) dropActor(i);
+  for (const a of actors) {
+    if (!a.ambient && !known.has(a.id)) beginExit(a);
   }
   for (const item of items) {
     if (actors.some(a => a.id === item.id)) continue;
@@ -780,10 +985,12 @@ function connect() {
         note('add: ' + e.message);
       }
     } else if (msg.type === 'remove') {
-      for (let i = actors.length - 1; i >= 0; i--) {
-        if (actors[i].id === msg.id) dropActor(i);
+      for (const a of actors) {
+        if (a.id === msg.id) beginExit(a);
       }
       topUp();
+    } else if (msg.type === 'feed') {
+      dropFood(typeof msg.x === 'number' ? msg.x : 0.5);
     } else if (msg.type === 'settings') {
       ambientEnabled = !!msg.ambient;
       if (ambientEnabled) topUp();
@@ -952,12 +1159,16 @@ window.DinoScene = {
     band: a.band.name, lane: a.band.lane || null,
     route: a.route ? a.route.path.name || '' : null,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
+    exiting: !!a.exiting, feeding: !!a.feed,
     x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
     // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti
     speedPx: +(a.speed * W).toFixed(1),
     bodiesPerS: a.natural ? +(a.natural * a.rate * a.speedMul).toFixed(4) : null,
     cycle: a.m3 && a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
   })),
+  foods: () => foods.map(f => ({ x: f.x, y: +f.y.toFixed(3),
+                                 age: +(sceneTime - f.born).toFixed(2) })),
+  feed: dropFood,                  // rucni krmeni (Playwright/ladeni)
   ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
   session: () => SID,
   scene: () => sceneDef && sceneDef.key,   // aktivni krajina (bod 8)

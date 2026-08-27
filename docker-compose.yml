@@ -9,6 +9,8 @@ services:
     volumes:
       # ulovky zustavaji na disku, at prezijou prestavbu image
       - ./data/catch:/app/data/catch
+      # kos smazanych ulovku patri na hostitele — kvuli obnove i EXDEV
+      - ./data/trash:/app/data/trash
       # nastaveni sceny (ambient) — soubor musi na hostiteli existovat pred
       # prvnim startem, jinak si Docker misto nej udela adresar
       - ./data/state.json:/app/data/state.json

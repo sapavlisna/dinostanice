@@ -9,6 +9,7 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import socket
 import time
@@ -64,6 +65,7 @@ SESSION_TTL_S = 2 * 3600  # session bez klientu a aktivity se zahodi z pameti
 # (`?s=` jine nez "tv"). Kdyby mela nekdy usinat i domaci TV, staci ji odtud
 # vyndat.
 IDLE_EXEMPT = {DEFAULT_SESSION}
+FEED_COOLDOWN_S = 10   # krmeni z mobilu: max 1x za tolik sekund per session
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -94,6 +96,7 @@ class Session:
     clients: set = field(default_factory=set)
     last_seen: float = field(default_factory=time.monotonic)
     sleeping: bool = False
+    last_feed: float = 0.0   # rate-limit krmeni (bod 11)
     # Aktivni krajina teto televize. Default session ji persistuje ve
     # state.json (nastavuje Hub.session), ostatni po restartu spadnou na
     # default — druha TV je docasna zalezitost.
@@ -649,6 +652,30 @@ async def api_scene_reset(s: str = ""):
     log.info("stanice %s vyprázdněna: smazáno %d úlovků", sid, deleted)
     await hub.broadcast(sid, {"type": "cleared"})
     return {"ok": True, "deleted": deleted}
+
+
+@app.post("/api/feed")
+async def api_feed(request: Request):
+    """Krmeni z mobilu (bod 11): shodi do sceny kus zelene, chodci v okoli
+    k nemu zamiri. Rate-limit per session, at deti scenu nezasypou."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    sid = clean_session(body.get("s") if isinstance(body, dict) else "")
+    sess = hub.session(sid)
+    now = time.monotonic()
+    if now - sess.last_feed < FEED_COOLDOWN_S:
+        return JSONResponse(
+            {"ok": False, "error": "Dinosauři ještě žvýkají — počkej chvilku, "
+                                   "než hodíš další porci! 🦕"},
+            status_code=429)
+    sess.last_feed = now
+    await touch_session(sid)   # krmeni je aktivita (a budicek pro spici scenu)
+    x = round(random.uniform(0.25, 0.75), 3)
+    await hub.broadcast(sid, {"type": "feed", "x": x})
+    log.info("session %s: hozeno žrádlo na x=%.3f", sid, x)
+    return {"ok": True, "x": x}
 
 
 @app.post("/api/session/touch")
