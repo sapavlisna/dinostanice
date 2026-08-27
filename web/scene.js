@@ -149,8 +149,12 @@ function laneCount(y, skip) {
   const motion = skip ? skip.motion : 'walk';
   let n = 0;
   for (const b of actors) {
-    if (b !== skip && b.motion === motion && !b.leaving
-        && Math.abs(b.yFrac - y) < LANE_TOL) n++;
+    if (b === skip || b.motion !== motion || b.leaving) continue;
+    // podle prideleneho lane, ne podle aktualniho y: plavec se od drahy
+    // vzdaluje vlnenim a uhybanim, takze by se na sve vlastni drahe
+    // "nepocital" a nove ryby by se sesypaly na uz obsazenou hloubku
+    const at = b.route ? b.yFrac : (b.laneY != null ? b.laneY : b.yFrac);
+    if (Math.abs(at - y) < LANE_TOL) n++;
   }
   return n;
 }
@@ -738,23 +742,61 @@ function traffic() {
 /* Míjení plavců (`dodge` v definici pohybu). Plavci nezastavují ani se neřadí
    do fronty jako chodci — když se dva potkají v téže hloubce, uhnou si: menší
    nahoru, větší dolů, a po minutí se vrátí ke své dráze. Uhnutí jen posune cíl
-   hloubky, o zbytek se stará swimDepth, takže je plynulé a nikdo nestojí. */
+   hloubky, o zbytek se stará swimDepth, takže je plynulé a nikdo nestojí.
+
+   Aby se uhýbání nerozkmitalo, drží se dvou pravidel: rozhoduje se podle
+   CÍLOVÉ hloubky (swimTargetY), ne podle aktuální, a jednou začaté míjení
+   se pamatuje, dokud se ryby v x opravdu neminou (DODGE_X_OUT > DODGE_X).
+   Bez prvního uhnutí ruší podmínku, která ho vyvolalo, bez druhého se vypne
+   v půlce míjení — v obou případech ryba mezi drahami cuká nahoru a dolů. */
 const DODGE_X = 1.8;       // násobek délky těla, od kterého se plavci uhýbají
+const DODGE_X_OUT = 3.0;   // ...a drží uhnuté, dokud se v x opravdu neminou
+
+/* Cílová hloubka plavce bez vlnění a bez uhnutí: dráha, nebo jídlo, když ryba
+   loví. Míjení se rozhoduje podle ní, ne podle `yFrac` — v tom je vlnění i už
+   započítané uhnutí, takže uhnutí ruší podmínku, která ho vyvolala. */
+function swimTargetY(a) {
+  return a.feed && !a.feed.gone ? a.feed.y : a.restY;
+}
+
+/* Rozehraná míjení: "idA|idB" -> která z dvojice jde nahoru. Drží se přes
+   snímky, protože o uhnutí se rozhoduje jednou za míjení, ne pořád znovu. */
+const dodging = new Map();
 
 function swimTraffic() {
   const fish = actors.filter(a => motionCfg(a.motion).dodge && !a.leaving);
-  for (const a of fish) a.dodge = 0;
+  for (const a of fish) { a.dodge = 0; a.dodgeGap = Infinity; }
+  const live = new Set();
   for (let i = 0; i < fish.length; i++) {
     for (let j = i + 1; j < fish.length; j++) {
       const a = fish[i], b = fish[j];
-      if (Math.abs(a.yFrac - b.yFrac) > LANE_TOL * 2) continue;
+      if (Math.abs(swimTargetY(a) - swimTargetY(b)) > LANE_TOL * 2) continue;
+      const gap = Math.abs(a.xFrac - b.xFrac);
+      if (gap > 0.5) continue;                   // pres okraj se nikdo nemiji
       const len = (bodyLenFrac(a) + bodyLenFrac(b)) / 2;
-      if (Math.abs(a.xFrac - b.xFrac) > len * DODGE_X) continue;
-      const up = bodyLenFrac(a) <= bodyLenFrac(b) ? a : b;
-      (up === a ? b : a).dodge = 1;
-      up.dodge = -1;
+      const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
+      let pair = dodging.get(key);
+      if (!pair) {
+        if (gap > len * DODGE_X) continue;
+        // kdo jde nahoru, se rozhodne jednou za mijeni: mensi nahoru. Kdyby se
+        // to pocitalo kazdy snimek, u podobne velkych ryb (bodyLenFrac se meni
+        // s hloubkou) by znamenka prehazovala tam a zpet
+        pair = { up: bodyLenFrac(a) <= bodyLenFrac(b) ? a.id : b.id };
+        dodging.set(key, pair);
+      } else if (gap > len * DODGE_X_OUT) {
+        continue;    // minuly se; uklid resi sweep pod cyklem
+      }
+      live.add(key);
+      // vic protijezdcu naraz: rozhoduje ten nejblizsi. Bez toho by uhnuti
+      // prepsal posledni par v iteraci a ryba by preskakovala mezi +1 a -1
+      for (const x of [a, b]) {
+        if (gap >= x.dodgeGap) continue;
+        x.dodgeGap = gap;
+        x.dodge = pair.up === x.id ? -1 : 1;
+      }
     }
   }
+  for (const key of dodging.keys()) if (!live.has(key)) dodging.delete(key);
 }
 
 /* Hloubka plavce. Ryba nemá jet po pravítku, ale zastávky ani odrazy od kraje
@@ -769,9 +811,10 @@ function swimTraffic() {
    - amplituda se škáluje hloubkou scény (`depthScale`), aby se vzdálená ryba
      vlnila v perspektivě stejně jako blízká. */
 function swimDepth(a, dt, cfg) {
-  const dodge = (a.dodge || 0) * (cfg.dodge || 0);
+  const hunt = a.feed && !a.feed.gone;
   // u jidla se uhnuti krati, at ryba k vlockam dosahne, ale nestoji v tele druhe
-  const want = a.feed && !a.feed.gone ? a.feed.y + dodge * 0.6 : a.restY + dodge;
+  const dodge = (a.dodge || 0) * (cfg.dodge || 0) * (hunt ? 0.6 : 1);
+  const want = swimTargetY(a) + dodge;
   const goal = Math.max(a.band.y0, Math.min(a.band.y1, want));
   a.homeY = toward(a.homeY, goal, dt * (cfg.chase || 0.12));
   const k = depthScale(a.homeY);

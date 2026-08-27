@@ -60,7 +60,10 @@ export default {
       speedSize: 0.45, beatSize: -0.55,
       wave: 0.0075, waveRate: [0.9, 1.8],
       sway: 0.030, swayRate: [0.045, 0.13],
-      chase: 0.22, dash: 1.7, dodge: 0.085,
+      // uhnutí je půlka na každou rybu, takže rozestup dvou míjejících se
+      // ryb je 2×`dodge` — pod rozestupem drah (0.125), aby uhýbající ryba
+      // nedoplavala na hloubku souseda
+      chase: 0.15, dash: 1.7, dodge: 0.055,
       turnEvery: [11, 28], turnMoving: true, spin: 0.45,
     },
   },
