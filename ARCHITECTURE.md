@@ -67,9 +67,15 @@ Podrobněji k jednotlivým krokům (`python tools/model_sheet.py [klíč...]`):
   UV), `outline_edges()` rozloží kresbu na obrys, hloubkové skoky a hranice
   materiálů.
 - `modelsheet.build()` z toho udělá polygony v milimetrech na listu a
-  `Placement`, což je právě ten převod mm ↔ souřadnice modelu. Oblasti
-  k vybarvení nejsou hranové pixely, ale souvislé plochy, které nerozděluje
-  ani hranice materiálu, ani skok v hloubce.
+  `Placement`, což je právě ten převod mm ↔ souřadnice modelu. Vnitřní kresba
+  se zjednodušila (commit `84972b8`): hranice se **trasují mezi plochami**
+  (`_trace_lines()`, `_regions()`, `_region_edges()`) místo obtahování ploch,
+  malé a úzké plochy se vstřebávají do nejbližší velké (filtr na plochu
+  `MIN_REGION_MM2` a vepsanou šířku `MIN_REGION_WIDTH_MM`). Důvod: obtahování ploch
+  kreslilo kolem celého zvířete dvojitou linku — nafouknutý tištěný obrys
+  a hranici plochy 1,5 mm od něj. Dnes je z toho jeden obrys a několik
+  velkých ploch. Obrys se navíc mírně zvětšuje (`OUTLINE_GROW_MM` = 1,5 mm),
+  aby se hrana modelu vzorkovala uvnitř vybarvené plochy, ne na tištěné lince.
 - `tools/model_sheet.py` — vyrobí `data/templates/<key>.svg`, náhled a
   `data/shapes3d/<key>.json`.
 - `tools/model_paint_demo.py` — uzavře kruh bez tiskárny: syntetické vybarvení,
@@ -91,7 +97,10 @@ ploténky). Vyplnění není totéž co čitelnost.
 
 ### Katalog tvorů (`dinostanice/creatures3d.py`)
 
-Osm tvorů; `axes`/`flip` u každého volí projekci — chodec bokorys, letec shora
+Čtrnáct tvorů: osm křídových dinosaurů (trex, velociraptor, triceratops,
+stegosaurus, parasaurolophus, apatosaurus, drak, pteranodon) a šest
+akvarijních ryb (clownfish, shark, puffer, swordfish, lionfish, manta).
+U každého se volí projekce `axes`/`flip` — chodec bokorys, letec shora
 s rozpětím křídel po šířce listu.
 
 Výjimkou je **drak**: shora z něj byla Rorschachova skvrna — rozpětí křídel je
@@ -101,12 +110,26 @@ skončilo jako tečka uprostřed těla. Kreslí se proto bokorysem jako chodci
 to jde jen tam, kde tvor má kromě křídel i tělo a hlavu; pteranodon je samé
 křídlo a z boku by z něj byl tenký profil.
 
-Indexy značek začínají na **8**: prvních osm patřilo první, zrušené větvi
-projektu (kresba → ohýbaný 2D pás). Zůstávají volné pro další tvory a tyhle se
-**nepřečíslovávají** — index je natvrdo v rohových značkách na už vytištěných
-listech. Proto taky `markers.py` přešel na `DICT_4X4_100`: je to nadmnožina
-`DICT_4X4_50` (prvních 50 kódů je shodných), takže se rozšířil prostor, ale nic
-se nepřepsalo.
+**Manta** se kreslí shora jako pteranodon — z boku je to tenká placka, ze které
+není co vybarvovat (vyplnění listu 0,05 proti 0,21 shora). Rozpětí křídel leží
+po svislé ose listu, tělo i bičíkovitý ocas po vodorovné, a hloubkové znaménko
+`-1` obrací pohled na hřbet (materiál „Top"), ne na bílé břicho.
+
+Rybí klíče jsou bez přípony `3d` — ta u dinosaurů odlišovala 3D větev od
+zrušené 2D, která už neexistuje.
+
+Indexy značek: **dinosauři 8–15**, **ryby 16–21**. Prvních osm patřilo první,
+zrušené větvi projektu (kresba → ohýbaný 2D pás). Zůstávají volné pro další
+tvory a tyhle se **nepřečíslovávají** — index je natvrdo v rohových značkách na
+už vytištěných listech. Ryby dostaly 16–21 místo recyklování indexů 0–7,
+protože doma zůstávají vytištěné listy staré větve s těmi indexy.
+
+`markers.py` používá `DICT_4X4_100` (100 kódů), což dává strop **25 tvorů**
+(4 značky na list × 25 = 100 indexů). Přechod na `DICT_4X4_250` by zvýšil
+strop na **62 tvorů** (250 kódů / 4 na list) a je zdarma: prvních 100 kódů
+`_250` je bit-identických s `_100`, takže už vytištěné listy zůstanou platné,
+a minimální Hammingova vzdálenost je u obou sad stejná (3/16 bitů), takže
+se nezhorší odolnost detekce. Rozhodne se, až se k limitu přiblížíme.
 
 Vedle geometrie nese katalog i **vlastnosti druhu pro scénu**:
 `scene` říká, do které sady tvorů (krajiny) model patří — marker index
@@ -146,9 +169,9 @@ jakýkoli souměrný model bez rigu:
 
 `capture.detect_sheet()` najde list, srovná ho do roviny a z ID značek řekne,
 který tvor to je; `known_indices()` mu vymezuje, které indexy vůbec existují
-(katalog `creatures3d.py`, dnes 8-15). Žádný rig se nestaví — model kostru má.
-`capture3d.save_catch()` ze srovnaného listu udělá texturu (`build_texture`)
-a uloží `texture.png` + `model.json`.
+(katalog `creatures3d.py`, dnes 8–21: osm dinosaurů a šest ryb). Žádný rig se
+nestaví — model kostru má. `capture3d.save_catch()` ze srovnaného listu udělá
+texturu (`build_texture`) a uloží `texture.png` + `model.json`.
 
 Textura projde týmž `to_texture()` jako ukázkové: osvětlení se narovná jen
 uvnitř kresby, tištěné linky se zaretušují okolní barvou a barva se rozlije
@@ -164,12 +187,19 @@ FBX export jim dává jméno armatury, které se model od modelu liší
 (`Armature|TRex_Walk` proti `CharacterArmature|Fast_Flying`).
 
 Oko se dokresluje, modely ho nemají — nese ho barva materiálu, ne geometrie.
-`auto_eye()` ho položí do obálky vrcholů, které visí na jointu `Head`, a ověří,
-že bod padl dovnitř kresby; když ne, posouvá ho k těžišti hlavy.
+`auto_eye()` ho položí do obálky vrcholů, které visí na jointu `eye_joint`
+(default `"Head"`; rybí armatura Quaterniova balíčku ho nemá, čtyři druhy
+proto ukazují na `"Main1"`),
+a ověří, že bod padl dovnitř kresby s odstupem `clear_mm` (oko + obrys); když ne,
+posouvá ho k těžišti hlavy. Odstup se hledá `cv2.distanceTransform`em místo
+testu jednoho pixelu, aby se kroužek oka bezpečně vešel a nesplynul s obrysem
+(`clear_mm` = poloměr oka 2,4 mm + šířka linky 0,9 mm).
 
 Letec se kreslí shora a oko mu neleží před tělem, ale na ose souměrnosti
 (`eye_bias={"centre_x": True}`) — jinak `auto_eye` míří do strany od hlavy,
-tedy mimo kresbu.
+tedy mimo kresbu. Čtyři druhy z rybí armatury mají oko jako vlastní materiál,
+takže velký kroužek na hlavě vnáší do kresby už vnitřní linka; tištěné oko je
+jim proto zornička a `eye_bias` ho posadí do středu toho kroužku.
 
 Kde to drhne: černý obrys z papíru se při otočení protahuje přes hřbet, takže
 se z textury musí vymazat (`to_texture()` ho zaretušuje okolní barvou).
@@ -185,33 +215,78 @@ Scéna je data. `scene.js` nezná žádné zóny ani konstanty krajiny — všec
 
 ```js
 export default {
-  key: 'cretaceous',           // musí sedět s registrem na serveru (scenes.py)
-  label: 'Křídová laguna',
-  catalogue: 'cretaceous',     // sada tvorů (Model3D.scene), kterou scéna přijímá
+  key: 'aquarium',             // musí sedět s registrem na serveru (scenes.py)
+  label: 'Akvárium',
+  catalogue: 'aquarium',       // sada tvorů (Model3D.scene), kterou scéna přijímá
   backdrop: async () => ...,   // továrna na kreslič krajiny (viz níže)
   lighting: { hemi, sun, fill },  // světla 3D vrstvy (Scene3D.setLighting)
-  bands: [                     // pásy: y0/y1 v podílu výšky plátna
-    { name: 'shore', y0: 0.80, y1: 0.95, motions: ['walk'], lane: 'near' },
-    ...                        // `motions` = kdo se v pásu smí pohybovat,
-  ],                           // `lane` odlišuje víc pásů téhož pohybu
-  motions: {                   // chování a měřítka per typ pohybu:
-    walk: { sizeFraction, baseSpeed, strideRate,
-            drift, driftRefHeight, farChance, rest: {...} },
-    fly: { ..., bob: true }, swim: {...}, sail: {...},
+  bands: [                     // pásy: y0/y1 v podílu výšky plátna, motions = kdo se smí
+    { name: 'water', y0: 0.15, y1: 0.66, motions: ['swim'],
+      lanes: [0.235, 0.36, 0.485, 0.605], rateScale: 1.0 },  // diskrétní dráhy,
+  ],                           // rateScale zpomaluje/zrychluje pohyb v pásu
+  motions: {
+    swim: {
+      sizeFraction: 0.140, baseSpeed: 0.070,
+      scale: {                  // relativní velikost per druh (normalizuje sizePx)
+        manta: 1.30, shark: 1.45, swordfish: 1.05, lionfish: 0.66, ...
+      },
+      scaleDefault: 0.85,       // fallback pro druhy mimo scale
+      speedSize: 0.45,          // exponent: rychlost roste s tělem POMALEJI
+      beatSize: -0.55,          // exponent: tempo animace klesá s tělem
+      wave: 0.0075, waveRate: [0.9, 1.8],   // dech plavce: amplituda a frekvence
+      sway: 0.030, swayRate: [0.045, 0.13], // pomalý drift mezi hloubkami
+      chase: 0.15,              // jak rychle ryba mění hloubku za jídlem
+      dash: 1.7,                // zrychlení za jídlem (násobek baseSpeed)
+      dodge: 0.055,             // uhnutí při míjení (na jednu rybu)
+      turnEvery: [11, 28],      // odstup otoček bez zastavení
+      turnMoving: true,         // otočka se nedělá na místě
+      spin: 0.45,               // trvání otočky
+      // rest: {...}            // plavec nemá — bez klipu zastávky
+    },
   },
-  paths: [ ... ],              // volitelné trasy chodců (viz Scéna)
-  ambientMin: 6,               // na kolik tvorů doplňovat z katalogu
+  food: {                       // krmení z mobilu — padá a klesá ke dnu
+    motion: 'swim', sink: true, look: 'flakes',
+    top: 0.11, floor: 0.655, sinkRate: 0.045, life: 18, bites: 5,
+  },
+  ambientMin: 8,               // na kolik ryb doplňovat z katalogu
+  invite: {                    // text výzvy na QR panelu (per scéna, ne globálně)
+    title: 'Vypusť si rybu',
+    sub: 'Naskenuj kód a vyfoť vybarvenou rybu',
+  },
 };
 ```
 
-`strideRate` v `motions` je jen default cílového tempa chodce (těl/s) — per
-druh ho přebíjí `strideRate` z katalogu, protože tempo je vlastnost druhu,
-ne krajiny. `rest` říká, jak často a jak dlouho chodec zastavuje; pohyb bez
-`rest` nezastaví nikdy (letec by spadl).
+**Parametry `motions` per druh pohybu:**
+
+- `sizeFraction`, `baseSpeed` — velikost tvora v nejbližším plánu jako podíl
+  šířky obrazovky a rychlost pro tvory bez měřeného kroku;
+- `scale` (volitelně per druh) — relativní velikost druhu; `sizePx` modelu je
+  normalizovaný, takže bez téhle mapy by byl žralok stejně velký jako klaun.
+  Druh, který v mapě není, padá na `scaleDefault`;
+- `speedSize`, `beatSize` — exponenty, podle kterých se rychlost a tempo
+  animace škálují tělem: větší ryba se sune, malá často švihá ocasem;
+- `strideRate` v `motions` je jen default cílového tempa chodce (těl/s) — per
+  druh ho přebíjí `strideRate` z katalogu, protože tempo je vlastnost druhu,
+  ne krajiny;
+- `wave`/`waveRate` — mírné vlnění (dech plavce); `sway`/`swayRate` — pomalý
+  drift kolem přidělené dráhy;
+- `dodge` — posun jedné ryby při míjení; rozestup páru = 2×`dodge`, musí zůstat
+  pod rozestupem drah (typicky 0.125), aby se ryby nevrážely do sebe;
+- `chase` — jak rychle ryba mění hloubku za jídlem; při lovu se `dodge` krátí
+  (faktor 0.6), aby se ryba ke jídlu mohla přiblížit bez vibrací;
+- `rest` — chodci ho mají (zastávka, skok, otočka), plavci ne: nemají klip
+  zastávky a hlavně nemají proč stát;
+- `paths` — volitelné trasy chodců (plavci nemají, ryby plavou volně).
+
+Pásy podporují `lanes` (explicitní seznam y-pozic drah nebo počet rovnoměrně
+rozložených) a `rateScale` (násobitel pro `strideRate`; zadní pás se běžně
+zpomaluje `rateScale=0.75`).
 
 Přidání scény = záznam v `dinostanice/scenes.py` (registr pro server) + tenhle
 JS modul + případně nový backdrop. Noční laguna (`cretaceous_night.js`) je
 levný důkaz mechanismu: spread denní definice, jiný backdrop-variant a světla.
+Akvárium (`aquarium.js`) ukazuje druhou variantu: diskrétní dráhy místo driftu,
+krmení s potápěním a výzvu per scéna (`invite`).
 
 ### Pozadí (`web/backdrops/<name>.js`)
 
@@ -426,6 +501,43 @@ trasy a tempa), `add()`, `feed()`, `gpu()`, `switchScene()` a debug vstupy do
 spacího UI — používá je `tools/shot_scene.py`, `tools/gait_report.py`
 i Playwright testy.
 
+#### Plavání ryb: diskrétní dráhy a uhýbání
+
+Akvárium má místo náhodného driftu **diskrétní dráhy** (`lanes` v bands) —
+ryba dostane přidělenou hloubku (`restY`) a drží se v jejím okolí. Vodorovně se
+plavec pohybuje jako chodec, jen bez fázové vazby na krok (země se nedotýká, tak
+není z čeho tempo počítat). Svislý pohyb se skládá ze tří vrstev:
+
+- `homeY` — hloubka, ke které ryba táhne; normálně je to střed přidělené
+  dráhy, za jídlem se k němu plynule přesune (`chase` je, kolik výšky
+  obrazovky za sekundu) a po nakrmení se stejně plynule vrátí;
+- `sway` — pomalý drift mezi hloubkami kolem `homeY`; frekvenci i fázi má každá
+  ryba vlastní, aby se dvě na jedné dráze nevlnily synchronně;
+- `wave` — dech plavce: mírné zvlnění, amplituda se škáluje perspektivou
+  (`depthScale`).
+
+Když se setkají ryby v **téže hloubce**, uhýbají si navzájem. Pravidla:
+
+1. **Rozhodnutí se počítá ze stabilní cílové hloubky**, nikoliv aktuální
+   (`swimTargetY`: přidělená dráha nebo pozice jídla). Bez toho by vlnění i
+   už započítané uhnutí rušily podmínku, která uhnutí vyvolala — přepínač
+   uhýbání pak měnil stav 9 až 38× za sekundu a ryba se viditelně třásla.
+
+2. **Jednou začaté míjení se pamatuje** přes snímky (`dodging` Map) a **drží
+   až do skutečného minutí v ose x** (hystereze `DODGE_X` = 1,8 pro spuštění,
+   `DODGE_X_OUT` = 3,0 pro ukončení). Znaménko (která ryba jde nahoru) se
+   rozhodne jednou na začátku míjení (menší ryba nahoru) a dál se nemění;
+   při více protijezdcích rozhoduje nejbližší, ne pořadí v poli.
+
+3. **`dodge` je posun jedné ryby**, takže rozestup míjejícího se páru je jeho
+   dvojnásobek — a ten musí zůstat pod rozestupem drah, jinak uhýbající ryba
+   doplave na hloubku souseda a rozhoupe i ryby tam. Při lovu se `dodge` krátí
+   (faktor 0,6), aby ryba na jídlo dosáhla a přitom nestála v těle druhé.
+
+Měřeno na 14 rybách po 60 s scénického času: bez těchto pravidel 23,5 viditelné
+změny svislého směru za sekundu a jedno uhnutí dlouhé 20 ms, s nimi 0,2 změny
+za sekundu a uhnutí, které vydrží celé míjení (3–13 s, u konvoje i 30 s).
+
 ### Lišta dole (`web/roster.js`)
 Vlevo obsazení scény po typech, vpravo posledních pět příchodů a odchodů: typ a
 jméno z odeslané fotky, u tvorů z katalogu `-`. Přírůstky a odchody se dějí samy
@@ -516,10 +628,17 @@ a upload projde, ale testy proti němu neběžely. Jediná systémová
 závislost je `libglib2.0-0`, bez ní se cv2 neimportuje. Node 24 k dispozici,
 ale frontend je čisté ES moduly bez build kroku a bez CDN (poběží offline).
 
-Testy: `python -m pytest -q` — 132 testů; `tests/test_server.py` (36 testů)
+Testy: `python -m pytest -q` — 175 testů; `tests/test_server.py` (36 testů)
 jede end-to-end přes FastAPI TestClient se syntetickými fotkami, žádný běžící
-server není potřeba. Chůzi ve scéně hlídá `tools/gait_report.py` (Playwright,
-potřebuje běžící server).
+server není potřeba. TestClient dostane patche na `store.CATCH_ROOT`,
+`store.TRASH_ROOT` a hlavně na `server.STATE_PATH` — to je **kritické**: bez
+patche testy čtou živý `data/state.json` a padají, když je stanice přepnutá na
+jinou scénu než default (úlovky neprochází scoping filtrem broadcastu). Session
+se po každém testu čistí (`server.hub.sessions.clear()`), aby neprosakovaly
+mezi nimi.
+
+Chůzi ve scéně hlídá `tools/gait_report.py` (Playwright, potřebuje běžící
+server).
 
 ## Konvence
 

@@ -283,3 +283,61 @@ na QR panelu, patička na /pridat · 7 mini QR panel drží mikrořádek /sablon
 8 redesign /sablony (klik na obrázek = tisk) + /dino3d ?mode=walk ·
 9 apatosaurus/triceratops/stegosaurus zpomaleni v katalogu; gait_report čte
 cíle z catalogue3d.json.
+
+---
+
+## Akvarijní kolo (2026-08-27)
+
+Druhá scéna a šest tvorů pro ni — důkaz, že „scéna jako data" nese i jinou
+krajinu než laguna s dinosaury.
+
+1. ☑ **Šest rybích druhů se šablonami** (`4027df0`): klaunská rybka, žralok,
+   čtverzubec, mečoun, perutýn, manta. Modely Quaternius CC0, bokorys (rybí
+   profil je nejčitelnější), výjimka manta — shora, z boku je to tenká placka
+   bez plochy k vybarvení. Značky 16–21; uvolněné indexy 0–7 se nerecyklují,
+   doma jsou vytištěné listy staré větve s těmi indexy. Rybí armatura nemá
+   joint `Head` (jointy `Main1..Main6`), proto nové pole `eye_joint` v katalogu.
+   Šablony vyplňují list lépe než dinosauří (0,21–0,53 proti 0,08–0,30).
+2. ☑ **Scéna akvárium s plaveckým chováním** (`b4a1398`): jeden vodní pás
+   (0,15–0,66 výšky) se čtyřmi hloubkovými drahami; plavec nikdy nezastaví,
+   otáčí se za pohybu, vlní se a driftuje kolem své dráhy, míjejícím se rybám
+   uhýbá. Žádné `rest` (není klip zastávky ani důvod stát), žádné `paths`.
+   Nové parametry definice scény: `scale`/`scaleDefault`, `speedSize`/`beatSize`,
+   `wave`, `sway`, `chase`, `dash`, `dodge`, `turnEvery`/`turnMoving`/`spin`,
+   `food.sink`. Krmení padá na hladinu a klesá ke dnu, ryby za ním plavou
+   do hloubky.
+3. ☑ **Výzva na QR panelu patří scéně** (`a40b5b3`): `invite: {title, sub}`.
+   Akvárium prosilo děti, ať přidají dinosaura.
+4. ☑ **Oprava třepání ryb** (`cfd20e0`): uhýbání se rozhodovalo z aktuální
+   hloubky, která obsahuje jak samotné uhnutí, tak vlnění plavce — uhnutí si
+   tak rušilo vlastní podmínku a přepínalo 9–38× za sekundu. Teď se rozhoduje
+   ze stabilní cílové hloubky (`swimTargetY`) a jednou začaté míjení se drží
+   do skutečného minutí v x. Měřeno (14 ryb, 60 s scénického času): viditelné
+   změny svislého směru 23,5 → 0,2 za sekundu, délka uhnutí 20 ms → 3–13 s.
+   Vypadlo z toho i špatné rozpočítání ryb na dráhy (3+1 místo 2+2+2+2).
+5. ☑ **Testy odstíněné od živého stavu stanice** (`7ff8f6e`): fixtury patchují
+   `server.STATE_PATH` do `tmp_path`. Bez toho čtou živý `data/state.json`
+   a při scéně `aquarium` celý balík zatuhne navždy na `ws.receive_json()` —
+   křídový úlovek neprojde scoping filtrem broadcastu. Platilo to i před
+   rybami. Sada je teď 175 testů.
+6. ☑ **Smazáno 5044 řádků staré 2D větve** (`36d9779`): `rig.py`,
+   `creatures.py`, `rigrender.js`, `anim.js`, generátory ze siluet, routy `/3d`.
+   Robustnostní testy zůstaly — přepsané nad 3D katalog, ne zrušené.
+
+**Otevřené věci:**
+- Perutýní šablona je z šesti nejslabší: ostny se kreslí jako samostatné pásky
+  a tělo se opticky rozpadá. Prošlo se všech 12 fází animace, lepší póza není.
+  Nabídnutá výměna za praporečníka čeká na Pavlovo rozhodnutí.
+- Konvoj: dvě stejně rychlé ryby na téže dráze drží uhnutí i 30 s a plavou
+  vedle sebe. Je to klidné a čitelné, ale kdyby to působilo jako „ryba
+  zapomněla na svou dráhu", dá se doplnit strop na délku uhnutí.
+- Dva žraloci na téže dráze si mohou nepatrně překrýt hřbety nebo ocasy
+  (jsou vyšší než rozestup 0,11); naživo neověřeno. `dodge` jde na 0,065
+  bez rizika oscilací.
+- Regresní brána na plavce (obdoba `gait_report.py`) neexistuje. Měřicí
+  harness je hotový v `E:\tmp\dinofish\fish_report.py`, chybí jen prahy
+  na změny `dodge`/s a p95 |dy/dt|.
+- Strop 25 tvorů z `DICT_4X4_100` (4 značky na list): přechod na
+  `DICT_4X4_250` zvedne strop na 62 bez zneplatnění vytištěných listů
+  (prvních 100 kódů je bit-identických, minimální Hammingova vzdálenost
+  zůstává 3/16). Rozhodne se, až se přiblížíme limitu.
