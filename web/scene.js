@@ -1400,6 +1400,10 @@ window.DinoScene = {
   foods: () => foods.map(f => ({ x: f.x, y: +f.y.toFixed(3),
                                  age: +(sceneTime - f.born).toFixed(2) })),
   feed: dropFood,                  // rucni krmeni (Playwright/ladeni)
+  // scenicky cas pro merici nastroje: frame() klampuje dt na 0.05 s, takze
+  // pri pomalem renderu (headless SwiftShader) bezi sceneTime pomaleji nez
+  // wall-clock — tempo se musi merit proti nemu, viz tools/gait_report.py
+  time: () => sceneTime,
   // ladeni zabavy pri cekani (Playwright): kratsi intervaly bez editace zdroju
   funTune: (every, hold) => { if (every) FUN_EVERY = every;
                               if (hold) LIE_HOLD = hold; },

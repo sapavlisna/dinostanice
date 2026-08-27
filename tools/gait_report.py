@@ -12,7 +12,9 @@ a světové X jejich zadních chodidel a spočítá:
     s tolerancí ±10 % na okrajích intervalu.
 
 Zastávky a otočky měření nekazí: počítá se jen přes snímky, kdy tvor
-skutečně jde (timeScale ~ plné tempo). Zadní pás má rateScale < 1 (bod 1),
+skutečně jde (timeScale ~ plné tempo). Čas se měří ve scénickém čase
+(DinoScene.time) — frame() klampuje dt, takže při pomalém headless renderu
+by wall-clock tempo vyšlo falešně nízko. Zadní pás má rateScale < 1 (bod 1),
 tak se každý naměřený úsek normalizuje na přední dráhu — tempo se dělí
 rateScale pásu, na kterém tvor v tu chvíli byl. Exit code 0 = vše v mezích.
 """
@@ -53,9 +55,14 @@ window.__probe = () => window.DinoScene.actors
              feet: feet.map(f => ({ n: f.name, x: f.matrixWorld.elements[12] })) };
   });
 window.__run = 0;
+// casova osa mereni je SCENICKY cas (DinoScene.time), ne wall-clock: frame()
+// klampuje dt na 0.05 s, takze kdyz headless render (SwiftShader) nestiha
+// 20 fps, sceneTime bezi pomaleji nez performance.now() a tempo deleno
+// wall-clockem by vyslo falesne nizko — cile strideRate plati na scenickou
+// sekundu (na TV s GPU obe osy splyvaji)
 window.__start = () => { window.__log = []; const gen = ++window.__run;
   (function tick(){ requestAnimationFrame(() => { if (gen !== window.__run) return;
-     window.__log.push({ t: performance.now()/1000, out: window.__probe() }); tick(); }); })(); };
+     window.__log.push({ t: window.DinoScene.time(), out: window.__probe() }); tick(); }); })(); };
 0;
 """
 
