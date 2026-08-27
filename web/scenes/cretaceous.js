@@ -7,7 +7,13 @@
      backdrop   async továrna na kreslič krajiny {draw, drawFront, sun, depthScale}
      lighting   světla 3D vrstvy (Scene3D.setLighting)
      bands      pásy scény: y0/y1 v podílu výšky plátna, `motions` říká, kdo
-                se v pásu smí pohybovat, `lane` odlišuje víc pásů téhož pohybu
+                se v pásu smí pohybovat, `lane` odlišuje víc pásů téhož pohybu.
+                `lanes` (bod 2) dělá z pásu diskrétní vodorovné dráhy: seznam
+                y hodnot (nebo počet), tvor jednu dostane při spawnu a drží ji
+                bez driftu; na jinou přeskočí až za okrajem obrazovky.
+                `rateScale` (bod 1) škáluje cílové TEMPO chodců na pásu —
+                vzdálený břeh je pomalejší, ale chodidla drží na zemi,
+                protože rychlost se z tempa dopočítává
      motions    chování a měřítka per typ pohybu (viz níže)
      ambientMin na kolik tvorů scénu doplnit z katalogu
 
@@ -25,14 +31,14 @@
 
    paths (volitelné) — trasy chodců (bod 9). Část chodců (ne všichni) dostane
    při příchodu trasu a jde po ní místo volného bloumání po pásu:
-     name     jméno trasy (ukazuje se v editoru, klávesa d)
+     name     jméno trasy
      loop     true = dokola, false = ping-pong (na konci se otočí)
      species  klíč druhu, pro který trasa platí; null = kdokoli
      points   lomená čára v podílech obrazovky (x šířky, y výšky); body smí
               za okraj (±0.25). `do`: 'walk' projde, 'stop' postojí
               (`dwell` = [min,max] s), 'turn' obrátí směr průchodu.
-   Trasy se dají kreslit editorem v ladicím panelu (d → sekce Trasy);
-   „kopírovat JSON" vysype pole k vložení sem. */
+   Trasy jsou prostě napsané tady v datech (editor byl zrušen); trasa vedená
+   po y některé dráhy se počítá i do kolizí na té dráze. */
 
 export default {
   key: 'cretaceous',
@@ -48,17 +54,23 @@ export default {
   bands: [
     { name: 'sky', y0: 0.06, y1: 0.38, motions: ['fly'] },
     // pruh pisku mezi lesem a lagunou, aby chodci mohli i za vodou; lezi mezi
-    // 0,516 a 0,570 a 3D tvor stoji nohama presne na yFrac, musi se tam vejit
-    { name: 'shoreFar', y0: 0.525, y1: 0.565, motions: ['walk'], lane: 'far' },
+    // 0,516 a 0,570 a 3D tvor stoji nohama presne na yFrac, musi se tam vejit.
+    // Dve drahy: uzky pas vic linek neunese, tvor je i zmenseny vysoky desitky
+    // px a linky by splyvaly. Zadni breh jde na ~3/4 tempa (je dal, bod 1).
+    { name: 'shoreFar', y0: 0.525, y1: 0.565, motions: ['walk'], lane: 'far',
+      lanes: [0.532, 0.558], rateScale: 0.75 },
     { name: 'water', y0: 0.645, y1: 0.755, motions: ['swim'] },
     { name: 'surface', y0: 0.645, y1: 0.745, motions: ['sail'] },
-    { name: 'shore', y0: 0.80, y1: 0.95, motions: ['walk'], lane: 'near' },
+    // tri drahy predniho brehu: rozestup 0.065 vysky (~58 px na FHD) drzi
+    // linky chodidel zretelne oddelene, telesny prekryv resi z-order podle y
+    { name: 'shore', y0: 0.80, y1: 0.95, motions: ['walk'], lane: 'near',
+      lanes: [0.815, 0.88, 0.945] },
   ],
   motions: {
     walk: {
       lengthFraction: 0.17, sizeFraction: 0.234, baseSpeed: 0.030,
       strideRate: [0.12, 0.22],
-      drift: 0.3, driftRefHeight: 0.15, farChance: 0.35,
+      farChance: 0.35,
       rest: { walk: [11, 34], stand: [3, 9], fade: 0.7, jumpFade: 0.25,
               jump: 0.35, turn: 0.45, spin: 0.5 },
     },
@@ -68,16 +80,15 @@ export default {
     sail: { lengthFraction: 0.15, baseSpeed: 0.018 },
   },
   paths: [
-    // ukázka: procházka po předním břehu s jednou zastávkou; mírné vlnění
-    // v y drží prokluz chodidel pod prahem (vodorovná rychlost ~ ušlá dráha)
+    // ukázka: rovná procházka po prostřední dráze předního břehu (y 0.88)
+    // s jednou zastávkou — vede po dráze, takže nekříží ostatní linky a
+    // vodorovný průběh drží prokluz chodidel na nule
     {
       name: 'přední břeh', loop: false, species: null,
       points: [
-        { x: -0.20, y: 0.875, do: 'walk' },
-        { x: 0.18, y: 0.845, do: 'walk' },
-        { x: 0.46, y: 0.900, do: 'stop', dwell: [3, 8] },
-        { x: 0.78, y: 0.860, do: 'walk' },
-        { x: 1.20, y: 0.885, do: 'walk' },
+        { x: -0.20, y: 0.88, do: 'walk' },
+        { x: 0.46, y: 0.88, do: 'stop', dwell: [3, 8] },
+        { x: 1.20, y: 0.88, do: 'walk' },
       ],
     },
   ],

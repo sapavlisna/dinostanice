@@ -76,8 +76,8 @@
   "pose": "Armature|Triceratops_Walk",
   "size": 19.77,
   "strideRate": [
-   0.17,
-   0.28
+   0.12,
+   0.18
   ]
  },
  {
@@ -103,8 +103,8 @@
   "pose": "Armature|Stegosaurus_Walk",
   "size": 21.8,
   "strideRate": [
-   0.16,
-   0.26
+   0.12,
+   0.18
   ]
  },
  {
@@ -157,8 +157,8 @@
   "pose": "Armature|Apatosaurus_Walk",
   "size": 47.92,
   "strideRate": [
-   0.05,
-   0.09
+   0.04,
+   0.06
   ]
  },
  {

@@ -62,13 +62,13 @@ CATALOGUE = [
     Model3D("velociraptor3d", "Velociraptor", "velociraptor.glb", 9,
             stride_rate=(0.30, 0.40)),
     Model3D("triceratops3d", "Triceratops", "triceratops.glb", 10,
-            stride_rate=(0.17, 0.28)),
+            stride_rate=(0.12, 0.18)),
     Model3D("stegosaurus3d", "Stegosaurus", "stegosaurus.glb", 11,
-            stride_rate=(0.16, 0.26)),
+            stride_rate=(0.12, 0.18)),
     Model3D("parasaurolophus3d", "Parasaurolophus", "parasaurolophus.glb", 12,
             stride_rate=(0.14, 0.25)),
     Model3D("apatosaurus3d", "Apatosaurus", "apatosaurus.glb", 13,
-            stride_rate=(0.05, 0.09)),
+            stride_rate=(0.04, 0.06)),
     # Letec se kresli shora a natoceny tak, aby rozpeti kridel — jeho nejvetsi
     # rozmer — leželo po sirce listu.
     # Letci se kresli shora, takze oko nelezi pred telem, ale na ose

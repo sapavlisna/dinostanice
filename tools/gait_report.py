@@ -7,27 +7,34 @@ a světové X jejich zadních chodidel a spočítá:
 
   - zpětný prokluz chodidel (fail při >3 % ujeté dráhy),
   - těl/s, px/s, dobu přejezdu obrazovky a délku cyklu,
-  - srovnání těl/s proti cílové tabulce (STRIDE_RATE ve web/scene.js),
+  - srovnání těl/s proti cílům `strideRate` z data/models3d/catalogue3d.json
+    (jediný zdroj pravdy, plní ho tools/model_export3d.py z creatures3d.py),
     s tolerancí ±10 % na okrajích intervalu.
 
 Zastávky a otočky měření nekazí: počítá se jen přes snímky, kdy tvor
-skutečně jde (timeScale ~ plné tempo). Exit code 0 = vše v mezích.
+skutečně jde (timeScale ~ plné tempo). Zadní pás má rateScale < 1 (bod 1),
+tak se každý naměřený úsek normalizuje na přední dráhu — tempo se dělí
+rateScale pásu, na kterém tvor v tu chvíli byl. Exit code 0 = vše v mezích.
 """
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-# Cílové intervaly těl/s — stejná čísla jako STRIDE_RATE ve web/scene.js.
-TARGETS = {
-    "trex3d": (0.11, 0.18),
-    "apatosaurus3d": (0.05, 0.09),
-    "triceratops3d": (0.17, 0.28),
-    "stegosaurus3d": (0.16, 0.26),
-    "velociraptor3d": (0.30, 0.40),
-    "parasaurolophus3d": (0.14, 0.25),
-}
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_targets():
+    cat = json.loads((ROOT / "data/models3d/catalogue3d.json")
+                     .read_text(encoding="utf-8"))
+    return {e["key"]: tuple(e["strideRate"]) for e in cat
+            if e["motion"] == "walk" and e.get("strideRate")}
+
+
+TARGETS = load_targets()
 SLIP_MAX = 3.0      # % ujeté dráhy
 TOL = 0.10          # tolerance na okrajích cílového intervalu
 W = 1600
@@ -41,6 +48,7 @@ window.__probe = () => window.DinoScene.actors
     });
     return { key: a.key, dir: a.dir, x: a.xFrac,
              rate: a.rate, ts: a.m3.action.timeScale,
+             rs: a.band.rateScale || 1,
              bodyPx: a.m3.length * a.m3.root.scale.x,
              feet: feet.map(f => ({ n: f.name, x: f.matrixWorld.elements[12] })) };
   });
@@ -95,7 +103,9 @@ def analyze(log, where):
                 continue
             dt = log[k]["t"] - log[k - 1]["t"]
             body_px = (p["bodyPx"] + q["bodyPx"]) / 2
-            bodies += dx * W / body_px
+            # normalizace na přední dráhu: zadní pás jde záměrně na rateScale
+            # tempa (bod 1), cíl v katalogu ale platí pro plné tempo
+            bodies += dx * W / body_px / q.get("rs", 1)
             px += dx * W
             t_act += dt
             for f, foot in enumerate(q["feet"]):
@@ -115,7 +125,8 @@ def analyze(log, where):
             "bodies_s": bodies_s, "px_s": px_s,
             "cross": W / px_s if px_s else 0.0,
             "cycle": design.get("cycle") or 0.0,
-            "design": design.get("bodiesPerS") or 0.0,
+            "design": (design.get("bodiesPerS") or 0.0)
+                      / (design.get("rateScale") or 1),
             "slip": max((100 * w / n if n else 0.0) for w, n in slip.values())
                     if slip else 0.0,
         })
@@ -125,8 +136,9 @@ def analyze(log, where):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8100/")
-    ap.add_argument("--seconds", type=float, default=25,
-                    help="délka měření; kratší okno zkreslí zastávky")
+    ap.add_argument("--seconds", type=float, default=60,
+                    help="délka měření; kratší okno zkreslí zastávky "
+                         "a kolizní čekání na dráze (bod 3)")
     args = ap.parse_args()
 
     log, where, errors = measure(args.url, args.seconds)

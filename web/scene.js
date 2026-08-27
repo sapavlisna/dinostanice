@@ -28,7 +28,9 @@ const hintEl = document.getElementById('hint');
 const MAX_ACTORS = 18;
 // Jen pojistka proti grotesknimu tempu animace; cil urcuje strideRate
 // z katalogu (per druh) nebo z definice sceny (default per motion).
-const GAIT_RATE = { min: 0.4, max: 1.8 };
+// Min 0.2: pomalejsi cile (bod 9) x0.75 zadni drahy (bod 1) legitimne
+// potrebuji rate ~0.23 (trex), drivejsich 0.4 by zpomaleni tise orezalo.
+const GAIT_RATE = { min: 0.2, max: 1.8 };
 // Jak dlouho trvaji prechody scen: odchod tvora (zmenseni do ztracena)
 // a prolnuti krajin.
 const LEAVE_S = 0.8;
@@ -108,12 +110,72 @@ function pickBand(motion) {
 }
 
 /* Svisly drift se skaluje vyskou pasu: v uzkem vzdalenem brehu by tvor s plnym
-   driftem kmital mezi okraji kazde ~4 s. Reference je vyska predniho brehu. */
+   driftem kmital mezi okraji kazde ~4 s. Reference je vyska predniho brehu.
+   Pas s diskretnimi drahami (lanes) drift nema — tvor drzi svou linku. */
 function driftFor(band, motion) {
   const cfg = motionCfg(motion);
-  if (!cfg.drift) return 0;
+  if (!cfg.drift || laneList(band)) return 0;
   return (Math.random() * 2 - 1) * cfg.drift
        * Math.min(1, (band.y1 - band.y0) / (cfg.driftRefHeight || 0.15));
+}
+
+/* Diskretni drahy pasu (bod 2): `lanes` v definici pasu je bud explicitni
+   seznam y, nebo pocet rovnomerne rozlozenych linek. Pas bez `lanes` funguje
+   postaru (nahodne y + drift) — letci a plavci drahy nepotrebuji. */
+function laneList(band) {
+  if (Array.isArray(band.lanes)) return band.lanes;
+  if (band.lanes > 1) {
+    const pad = (band.y1 - band.y0) * 0.1;
+    return Array.from({ length: band.lanes }, (_, i) =>
+      band.y0 + pad + (band.y1 - band.y0 - 2 * pad) * i / (band.lanes - 1));
+  }
+  return null;
+}
+
+/* Cilove tempo druhu × rateScale pasu (bod 1): zadni pas zpomali TEMPO cyklu
+   a rychlost po scene se z nej dopocita — chodidla tak drzi na zemi, jen se
+   slape volneji. Vola se pri spawnu i pri kazdem prehozeni pasu. */
+function setWalkRate(a) {
+  if (!a.natural) return;
+  const want = a.strideWant * (a.band.rateScale || 1);
+  a.autoRate = Math.max(GAIT_RATE.min, Math.min(GAIT_RATE.max, want / a.natural))
+             * a.rateJitter;
+  a.autoSpeed = a.natural * a.autoRate * bodyFrac(a);
+}
+
+/* Kolik chodcu uz stoji/jde na dane vodorovne lince (draha i trasa po ni). */
+function laneCount(y, skip) {
+  let n = 0;
+  for (const b of actors) {
+    if (b !== skip && b.motion === 'walk' && !b.leaving
+        && Math.abs(b.yFrac - y) < LANE_TOL) n++;
+  }
+  return n;
+}
+
+/* Usazeni tvora na pas: pas s drahami mu prideli jednu pevnou linku (drzi ji
+   az do prehozeni pasu za okrajem), pas bez drah nahodne y a drift postaru.
+   Draha se vybira nejmene obsazena — nahodna volba umi poslat vetsinu tvoru
+   na jednu linku a kolizni fronty (bod 3) pak zastavi celou drahu. */
+function dropOnBand(a, band) {
+  a.band = band;
+  const lanes = laneList(band);
+  if (lanes) {
+    let low = Infinity, best = [];
+    for (const y of lanes) {
+      const n = laneCount(y, a);
+      if (n < low) { low = n; best = [y]; }
+      else if (n === low) best.push(y);
+    }
+    a.laneY = best[Math.floor(Math.random() * best.length)];
+    a.yFrac = a.laneY;
+    a.drift = 0;
+  } else {
+    a.laneY = null;
+    a.yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
+    a.drift = driftFor(band, a.motion);
+  }
+  setWalkRate(a);
 }
 
 function depthScale(yFrac) {
@@ -132,8 +194,8 @@ function span([lo, hi]) {
   return lo + Math.random() * (hi - lo);
 }
 
-/* Trasy (bod 9): tvor s trasou jde po lomené čáře z definice scény (případně
-   přepsané editorem v ladicím panelu, viz Tune.pathsFor). Souřadnice bodů
+/* Trasy (bod 9): tvor s trasou jde po lomené čáře z definice scény — trasa
+   je prostě napsaná v datech, žádný uživatelský editor. Souřadnice bodů
    jsou podíly obrazovky; vzdálenost po čáře se měří izotropně (y škálované
    poměrem stran), aby svislý kus úsečky nebyl "zadarmo". Trasa je autorita
    nad pásy: autor ji kreslí po břehu, scéna ji tvrdě neclampuje. */
@@ -190,7 +252,7 @@ function followRoute(a, go) {
   const r = a.route, pts = r.path.points;
   const n = segCount(r.path);
   if (n < 1) return;
-  if (r.seg >= n) { r.seg = n - 1; r.s = 1; }   // editor mohl body smazat
+  if (r.seg >= n) { r.seg = n - 1; r.s = 1; }   // pojistka proti vadným datům
   let left = go;
   let guard = pts.length * 2 + 4;   // dva turn body vedle sebe nesmí zacyklit
   while (left > 0 && guard-- > 0) {
@@ -230,10 +292,13 @@ function followRoute(a, go) {
    pásech, ať má scéna obojí. */
 function pickRoute(a) {
   if (a.motion !== 'walk' || !sceneDef || Math.random() >= ROUTE_CHANCE) return null;
-  const fit = Tune.pathsFor(sceneDef).filter(p =>
+  const fit = (sceneDef.paths || []).filter(p =>
     (!p.species || p.species === a.key) && p.points.length >= 2);
   if (!fit.length) return null;
   const path = fit[Math.floor(Math.random() * fit.length)];
+  // kapacita: trasa vedena po draze je magnet — bez limitu se na jeji lince
+  // sejde vetsina chodcu a kolizni fronta (bod 3) drahu zastavi
+  if (laneCount(path.points[0].y, a) >= 2) return null;
   const { seg, s } = snapRoute(path, a.xFrac, a.yFrac);
   const [p0, p1] = segAt(path, seg);
   // po trase se vydá směrem, kterým už byl otočený, pokud to segment dovolí
@@ -251,7 +316,6 @@ function addActor(what, opts) {
   const motion = what.motion || 'walk';
   const cfg = motionCfg(motion);
   const band = pickBand(motion);
-  const yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
   // Novy ulovek (ne-silent) ma ohlaseny vstup: vzdy zleva, at dite vi, kam
   // koukat (teamLab vzor) — mobil po uploadu rika „sleduj levy kraj".
   const silent = !!(opts && opts.silent);
@@ -260,7 +324,7 @@ function addActor(what, opts) {
   // zaroven casteji maval kridly nebo vesloval
   const pace = 0.75 + Math.random() * 0.5;
   const actor = {
-    ...what, motion, yFrac, dir, band, pace,
+    ...what, motion, yFrac: band.y0, dir, band, pace,
     // Tvory, kteri uz ve sceně "byli" (obnovene ulovky, doplnek z katalogu),
     // rozsazuje zlaty rez, ne nahoda: nahodnych sest cisel se casto sesype do
     // jednoho rohu a pul obrazovky zustane prazdna.
@@ -277,7 +341,7 @@ function addActor(what, opts) {
     fade: cfg.rest ? cfg.rest.fade : 0.7,
     mix: 0,
     face: dir,
-    drift: driftFor(band, motion),
+    drift: 0,
     born: sceneTime,
     label: what.label || 'tvor',
     who: (opts && opts.who) || '',
@@ -290,22 +354,40 @@ function addActor(what, opts) {
   if (actor.m3 && actor.m3.strideBodies) {
     // Chodec: tempo cyklu se vybere kolem prirozeneho tempa druhu a rychlost po
     // scene se z nej dopocita, ne naopak — chodidla tak zustanou na zemi.
-    // Cilove tempo (tel/s) je vlastnost druhu (katalog), default dava scena.
+    // Cilove tempo (tel/s) je vlastnost druhu (katalog), default dava scena;
+    // vylosovany cil a jitter se pamatuji, aby sel prepocitat pri zmene pasu.
     actor.natural = actor.m3.strideBodies / actor.m3.duration;   // delek tela/s
     const [lo, hi] = actor.strideRate || cfg.strideRate || [0.12, 0.22];
-    const want = lo + Math.random() * (hi - lo);
-    actor.autoRate = Math.max(GAIT_RATE.min, Math.min(GAIT_RATE.max, want / actor.natural))
-                   * (0.94 + 0.12 * Math.random());
-    actor.autoSpeed = actor.natural * actor.autoRate * bodyFrac(actor);
+    actor.strideWant = lo + Math.random() * (hi - lo);
+    actor.rateJitter = 0.94 + 0.12 * Math.random();
   } else if (actor.m3) {
     actor.autoRate = pace;         // letec: rychleji maka kridly, rychleji leti
   }
+  dropOnBand(actor, band);
   actor.route = pickRoute(actor);
   if (actor.route) {
     routePos(actor);
+    // trasa urcuje drahu: pas (a jeho rateScale) se prevezme podle y trasy
+    const on = bandsFor('walk').find(b =>
+      actor.yFrac >= b.y0 - 0.02 && actor.yFrac <= b.y1 + 0.02);
+    if (on) { actor.band = on; setWalkRate(actor); }
     actor.face = actor.dir;
     actor.drift = 0;
     actor.restAt = Infinity;   // zastávky určují waypointy, ne náhoda
+  }
+  // Tichy spawn nesmi tvora porodit do prekryvu na teze drahe/trase — kolizni
+  // stop (bod 3) by prekryte tvory zmrazil na miste. Par pokusu najit volno:
+  // na trase jinam po jeji delce, na pasu jina draha nebo posun x.
+  for (let t = 0; silent && t < 10 && crowded(actor); t++) {
+    if (actor.route) {
+      actor.route.seg = Math.floor(Math.random() * segCount(actor.route.path));
+      actor.route.s = Math.random();
+      routePos(actor);
+    } else if (t % 2) {
+      dropOnBand(actor, actor.band);
+    } else {
+      actor.xFrac = (actor.xFrac + 0.37) % 1;
+    }
   }
   applyGait(actor);
   actors.push(actor);
@@ -347,6 +429,7 @@ function beginExit(a, quiet) {
   a.route = null;
   a.feed = null;
   a.pause = '';
+  a.blocked = false;
   a.restUntil = 0;
   a.restAt = Infinity;
   a.drift = 0;
@@ -423,10 +506,11 @@ function makeRoom() {
    přeskok padne za okraj obrazovky, takže ho není vidět. */
 function swapBand(a) {
   const fit = bandsFor(a.motion);
-  if (fit.length < 2) return;
-  a.band = fit[(fit.indexOf(a.band) + 1) % fit.length];
-  a.yFrac = a.band.y0 + Math.random() * (a.band.y1 - a.band.y0);
-  a.drift = driftFor(a.band, a.motion);
+  // i na jedinem pasu se za okrajem prehodi draha, at se sestava linek meni;
+  // dropOnBand zaroven prepocita tempo podle rateScale noveho pasu (bod 1)
+  const next = fit.length < 2 ? a.band
+             : fit[(fit.indexOf(a.band) + 1) % fit.length];
+  dropOnBand(a, next);
 }
 
 function toward(value, goal, step) {
@@ -455,8 +539,12 @@ function rest(a, dt) {
     if (jump) Scene3D.restart(a.m3, 'jump');
   }
   if (R && a.pause && sceneTime > a.restUntil) {
-    // na trase o otočkách i dalších zastávkách rozhodují waypointy, ne náhoda
-    if (!a.route && a.pause === 'stand' && Math.random() < R.turn) a.dir = -a.dir;
+    // na trase o otočkách i dalších zastávkách rozhodují waypointy, ne náhoda;
+    // po kolizním stání (blocked) tvor pokračuje dál, neotáčí se
+    if (!a.route && !a.blocked && a.pause === 'stand' && Math.random() < R.turn) {
+      a.dir = -a.dir;
+    }
+    a.blocked = false;
     a.pause = '';
     a.restAt = a.route ? Infinity : sceneTime + span(R.walk);
   }
@@ -470,6 +558,87 @@ function rest(a, dt) {
   if (a.m3) {
     Scene3D.speed(a.m3, a.rate * (1 - a.mix));
     Scene3D.blend(a.m3, a.shown || 'stand', a.mix);
+  }
+}
+
+/* Kolize na draze (bod 3). Diskretni drahy delaji ze srazek 1D ulohu: resi
+   se jen chodci na teze vodorovne lince (y v toleranci — pokryva i tvora na
+   trase vedene po draze). Dojizdejici zastavi stavajici rest masinerii
+   (obcas si skoci) a stoji, dokud se odstup nezvetsi. Protijdouci: otoci se
+   submisivnejsi (mensi na obrazovce) — je to jednodussi nez vynucovat jeden
+   smer na drahu, protoze novy ulovek vchazi vzdy zleva a tvorove se navic
+   otaceji nahodne pri zastavkach. Letcu a plavcu se kolize netykaji.
+   Tvoru je <= MAX_ACTORS, O(n^2) kazdy snimek je levne. */
+const LANE_TOL = 0.02;      // stejna draha = y se rovna v teto toleranci
+const STOP_AT = 1.05;       // nasobek prumerne delky tel: tady dojizdejici stoji
+const RESUME_AT = 1.25;     // ...a stoji, dokud odstup nepreroste tuhle mez
+const MEET_AT = 1.35;       // protijdouci: vzdalenost, kdy se mensi otoci
+const MEET_CD_S = 4;        // po otocce ze setkani chvili neotacet znovu —
+                            // jinak tvor sevreny mezi dvema protijdoucimi
+                            // flipuje smer kazdy snimek a fronta zamrzne
+const BLOCK_JUMP = 0.15;    // sance, ze si cekajici misto stani skoci
+
+function bodyLenFrac(a) {
+  return a.m3 ? bodyFrac(a)
+       : (motionCfg(a.motion).lengthFraction || 0.17) * depthScale(a.yFrac);
+}
+
+/* Ma tvor na sve drahe nekoho tak blizko, ze by se s nim prekryval? */
+function crowded(a) {
+  return actors.some(b => b !== a && b.motion === 'walk' && !b.leaving
+    && Math.abs(b.yFrac - a.yFrac) < LANE_TOL
+    && Math.abs(b.xFrac - a.xFrac)
+       < (bodyLenFrac(a) + bodyLenFrac(b)) / 2 * 1.2);
+}
+
+/* Plynule zastaveni pres rest masinerii; drzi se, dokud to traffic() kazdy
+   snimek prodluzuje. Kratke restUntil po uvolneni samo dobehne a tvor jde. */
+function holdStill(a) {
+  const R = motionCfg(a.motion).rest;
+  if (!R || (a.m3 && !a.m3.action)) return;
+  if (!a.pause) {
+    const jump = a.m3 && a.m3.breakDur.jump && Math.random() < BLOCK_JUMP;
+    a.pause = jump ? 'jump' : 'stand';
+    a.fade = jump ? R.jumpFade : R.fade;
+    a.restUntil = sceneTime + (jump ? a.m3.breakDur.jump : 0.8);
+    if (jump) Scene3D.restart(a.m3, 'jump');
+  } else if (a.pause === 'stand') {
+    a.restUntil = Math.max(a.restUntil, sceneTime + 0.8);
+  }
+  a.blocked = true;
+}
+
+function traffic() {
+  const walkers = actors.filter(a => a.motion === 'walk' && !a.leaving);
+  for (let i = 0; i < walkers.length; i++) {
+    for (let j = i + 1; j < walkers.length; j++) {
+      const a = walkers[i], b = walkers[j];
+      if (Math.abs(a.yFrac - b.yFrac) > LANE_TOL) continue;
+      const gap = b.xFrac - a.xFrac;
+      if (Math.abs(gap) > 0.5) continue;         // pres okraj se srazky neresi
+      const len = (bodyLenFrac(a) + bodyLenFrac(b)) / 2;
+      if (a.dir === b.dir) {
+        // dojizdeni: zastavi ten vzadu (hystereze proti cukani stop-start)
+        const back = (gap > 0) === (a.dir > 0) ? a : b;
+        if (!back.exiting
+            && Math.abs(gap) < len * (back.blocked ? RESUME_AT : STOP_AT)) {
+          holdStill(back);
+        }
+      } else if ((gap > 0) === (a.dir > 0) && Math.abs(gap) < len * MEET_AT) {
+        // jdou proti sobe: otoci se submisivnejsi; tvor na trase se otaci
+        // podel trasy (route.dir), odchazejici se nechava dojit ven.
+        // Tvor v rozpracovane otocce (face != dir) nebo v cooldownu se
+        // nevybira — viz MEET_CD_S.
+        const pick = [a, b].filter(x => !x.exiting && x.face === x.dir
+                                     && sceneTime > (x.meetCd || 0))
+          .sort((x, y) => (x.route ? 1 : 0) - (y.route ? 1 : 0)
+                       || bodyLenFrac(x) - bodyLenFrac(y))[0];
+        if (!pick) continue;
+        pick.meetCd = sceneTime + MEET_CD_S;
+        if (pick.route) pick.route.dir = -pick.route.dir;
+        else pick.dir = -pick.dir;
+      }
+    }
   }
 }
 
@@ -491,6 +660,7 @@ function update(dt) {
     }
   }
   updateFoods();
+  traffic();
   for (const a of actors) {
     // krmeni: chodec bez trasy v okruhu k jidlu zamiri; u jidla postoji
     // (stavajici rest maserie) a pak se vrati k driftu
@@ -766,7 +936,6 @@ function draw(dt) {
   if (backdrop && backdrop.drawFront) backdrop.drawFront(fxCtx, W, H, sceneTime);
   drawFoods();
   drawTags();
-  Tune.drawOverlay(fxCtx, W, H);   // editor tras; mimo editaci nekresli nic
 }
 
 let frameErrors = 0;
@@ -1018,7 +1187,6 @@ function connect() {
    v pixelech za sekundu, at se da porovnat s tim, co je videt. */
 Tune.init({
   apply: () => actors.forEach(applyGait),
-  scene: () => sceneDef,           // editor tras edituje aktivni scenu
   read: () => {
     const rows = new Map();
     for (const a of actors) {
@@ -1157,6 +1325,9 @@ window.DinoScene = {
   where: () => actors.map(a => ({
     label: a.label, key: a.key, motion: a.motion,
     band: a.band.name, lane: a.band.lane || null,
+    laneY: a.laneY != null ? +a.laneY.toFixed(3) : null,
+    rateScale: a.band.rateScale || 1,
+    blocked: !!a.blocked,
     route: a.route ? a.route.path.name || '' : null,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
     exiting: !!a.exiting, feeding: !!a.feed,
