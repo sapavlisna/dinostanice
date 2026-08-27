@@ -103,7 +103,7 @@ def main() -> None:
         eye = "oko ano" if shape.eye else "OKO SE NENASLO"
         pose = shape.anim.split("_")[-1]
         print(f"{spec.key:20} {pose:8} t={shape.time:.2f}  "
-              f"{len(shape.regions):>2} oblasti  {eye}")
+              f"{len(shape.regions):>2} vnitrnich linek  {eye}")
 
 
 if __name__ == "__main__":

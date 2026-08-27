@@ -22,8 +22,15 @@ from .template import LINE_MM
 
 DRAW_MARGIN_X_MM = 32.0   # znacky v rozich zabiraji 9 + 16 mm
 DRAW_MARGIN_Y_MM = 30.0
-MIN_REGION_MM2 = 3.0
-SIMPLIFY_MM = 0.35
+# Kresba ma byt pro dite prehledna: silny obrys a par velkych ploch. Drobne
+# a uzke oblasti (bodce, prsty, hloubkove skoky podel ocasu) se proto slucuji
+# se sousedem, misto aby z nich byly milimetrove prouzky.
+MIN_OUTLINE_MM2 = 12.0        # samostatny kus obrysu, ktery jeste ma smysl tisknout
+MIN_REGION_MM2 = 40.0         # plocha, kterou dite pastelkou vybarvi
+MIN_REGION_WIDTH_MM = 5.0     # vepsany kruh oblasti; uzsi pruh se nevybarvuje
+MIN_LINE_MM = 15.0            # kratke ohryzky hranic do kresby nepatri
+SIMPLIFY_MM = 0.35            # obrys musi zustat verny projekci modelu (UV)
+LINE_SIMPLIFY_MM = 1.2        # vnitrni linky smi byt plynulejsi, dite je obtahuje
 # Tisteny obrys je o chlup vetsi nez projekce modelu: dite pri vybarvovani
 # nedojede presne k lince a model by mel bily lem. Vnitrni oblasti i UV
 # zustavaji na presne projekci, takze hrana modelu vzorkuje ~1,5 mm uvnitr
@@ -64,7 +71,7 @@ class SheetShape:
     key: str
     label: str
     outline: list          # [vnejsi polygon, ...] — prvni je silueta
-    regions: list          # vnitrni oblasti k vybarveni (uzavrene polygony)
+    regions: list          # vnitrni linky (hranice mezi oblastmi), obtazene tam a zpet
     eye: tuple | None
     placement: Placement
     anim: str
@@ -113,6 +120,75 @@ def _trace(mask: np.ndarray, ppm: float, origin_px: np.ndarray, offset_mm: np.nd
         step = np.linalg.norm(np.diff(np.vstack([pts, pts[:1]]), axis=0), axis=1).mean()
         out.append(_chaikin(pts) if len(pts) >= 4 and step > 2.0 else pts)
     return out
+
+
+def _trace_lines(line_mask: np.ndarray, ppm: float, origin_px: np.ndarray,
+                 offset_mm: np.ndarray) -> list[np.ndarray]:
+    """Tenkou masku linek prevede na polygony, ktere linku obkresli tam a zpet.
+
+    Vnitrni kresba nejsou obrysy oblasti, ale samotne hranice mezi nimi: kdyby
+    se trasovaly oblasti, obtahla by se s nimi i silueta a vedle tisteneho
+    (zvetseneho) obrysu by vznikla druha, paralelni linka.
+    """
+    out = []
+    cnts, _ = cv2.findContours(line_mask.astype(np.uint8), cv2.RETR_EXTERNAL,
+                              cv2.CHAIN_APPROX_NONE)
+    for c in cnts:
+        # kontura tenke linky obejde tam a zpet, delka je tedy pulka obvodu
+        if cv2.arcLength(c, True) / 2 / ppm < MIN_LINE_MM:
+            continue
+        c = cv2.approxPolyDP(c, LINE_SIMPLIFY_MM * ppm, True).reshape(-1, 2).astype(float)
+        if len(c) < 3:
+            continue
+        pts = (c - origin_px) / ppm + offset_mm
+        out.append(_chaikin(pts) if len(pts) >= 4 else pts)
+    return out
+
+
+def _inscribed_mm(region: np.ndarray, ppm: float) -> float:
+    """Prumer nejvetsiho kruhu, ktery se do oblasti vejde — jeji sirka.
+
+    Plocha sama nestaci: ocas rozsekany hloubkovym skokem da dlouhou oblast
+    o velke plose a sirce pod milimetr.
+    """
+    ys, xs = np.nonzero(region)
+    sub = region[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
+    sub = cv2.copyMakeBorder(sub, 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=0)
+    return 2 * float(cv2.distanceTransform(sub, cv2.DIST_L2, 5).max()) / ppm
+
+
+def _regions(mask: np.ndarray, border: np.ndarray, extent: np.ndarray,
+             ppm: float) -> np.ndarray:
+    """Siluetu rozdeli na nekolik velkych oblasti.
+
+    Drobne a uzke ostruvky se nezahazuji, ale propadnou nejblizsi velke
+    oblasti — kdyby se jen smazaly, zustala by po nich v kresbe dira.
+    `extent` (zvetsena maska) rika, kam se oblasti rozlejou: linky pak dojedou
+    az k tistenemu obrysu a nekonci pred nim ve vzduchu.
+    """
+    n, comp = cv2.connectedComponents((mask & ~border).astype(np.uint8), connectivity=4)
+    keep = [i for i in range(1, n)
+            if (comp == i).sum() / ppm ** 2 >= MIN_REGION_MM2
+            and _inscribed_mm(comp == i, ppm) >= MIN_REGION_WIDTH_MM]
+    if not keep:
+        return np.zeros_like(comp)
+    seed = np.isin(comp, keep)
+    _, lbl = cv2.distanceTransformWithLabels((~seed).astype(np.uint8), cv2.DIST_L2, 5,
+                                             labelType=cv2.DIST_LABEL_PIXEL)
+    lut = np.zeros(int(lbl.max()) + 1, np.int32)
+    lut[lbl[seed]] = comp[seed]
+    out = lut[lbl]
+    out[~extent] = 0
+    return out
+
+
+def _region_edges(labels: np.ndarray) -> np.ndarray:
+    """Pixely, kde se stykaji dve rozdilne oblasti."""
+    edge = np.zeros(labels.shape, bool)
+    for ax, s in ((0, 1), (0, -1), (1, 1), (1, -1)):
+        sh = np.roll(labels, s, ax)
+        edge |= (labels > 0) & (sh > 0) & (sh != labels)
+    return edge
 
 
 def fill_ratio(model: Model, anim: str, time: float,
@@ -248,31 +324,39 @@ def build(
     origin_px = np.zeros(2)
     offset_mm = np.array([off_x, off_y])
 
-    # vnejsi obrys se trasuje ze zvetsene masky (OUTLINE_GROW_MM); vnitrni
-    # oblasti i Placement/UV zustavaji na presne projekci modelu. Rastr masky
-    # konci presne na bboxu, takze pred dilataci je treba pridat okraj, jinak
-    # by se zvetseny obrys na krajich seriznul.
+    # vnejsi obrys se trasuje ze zvetsene masky (OUTLINE_GROW_MM); Placement/UV
+    # zustavaji na presne projekci modelu. Rastr masky konci presne na bboxu,
+    # takze pred dilataci je treba pridat okraj, jinak by se zvetseny obrys na
+    # krajich seriznul. V tomto orameckovanem rastru se pak pocita vsechno.
     pad = int(round(OUTLINE_GROW_MM * px_per_mm))
-    k = 2 * pad + 1
-    grown = cv2.dilate(
-        cv2.copyMakeBorder(view.mask.astype(np.uint8), pad, pad, pad, pad,
-                           cv2.BORDER_CONSTANT, value=0),
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
-    outline = _trace(grown, px_per_mm, origin_px + pad, offset_mm, MIN_REGION_MM2 * 4)
+    origin_px = origin_px + pad
 
-    # oblasti k vybarveni: co nerozdeluje hranice materialu ani skok v hloubce
-    border = layers["material"] | layers["depth"]
-    interior = view.mask & ~border
-    n, comp = cv2.connectedComponents(interior.astype(np.uint8), connectivity=4)
-    regions = []
-    for i in range(1, n):
-        regions.extend(_trace(comp == i, px_per_mm, origin_px, offset_mm, MIN_REGION_MM2))
+    def framed(a):
+        return cv2.copyMakeBorder(a.astype(np.uint8), pad, pad, pad, pad,
+                                  cv2.BORDER_CONSTANT, value=0).astype(bool)
+
+    k = 2 * pad + 1
+    mask = framed(view.mask)
+    grown = cv2.dilate(mask.astype(np.uint8),
+                       cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))).astype(bool)
+    outline = _trace(grown, px_per_mm, origin_px, offset_mm, MIN_OUTLINE_MM2)
+
+    # vnitrni kresba: hranice mezi velkymi oblastmi (hlava, telo, nohy,
+    # plotenky). Hranice materialu a hloubkove skoky oblasti jen vymezuji.
+    border = framed(layers["material"] | layers["depth"])
+    labels = _regions(mask, border, grown, px_per_mm)
+    regions = _trace_lines(_region_edges(labels), px_per_mm, origin_px, offset_mm)
 
     eye = None
     if eye_joint is not None:
+        # oko drzi odstup nejen od obrysu, ale i od vnitrnich linek — krouzek
+        # prekryty linkou hlavy je stejne necitelny jako krouzek na obrysu
         sheet_mask = np.zeros((int(SHEET_H_MM * 4), int(SHEET_W_MM * 4)), np.uint8)
         for poly in outline:
             cv2.fillPoly(sheet_mask, [np.round(poly * 4).astype(np.int32)], 1)
+        for poly in regions:
+            cv2.polylines(sheet_mask, [np.round(poly * 4).astype(np.int32)], True, 0,
+                          max(1, int(round(LINE_MM * 4))))
         eye = auto_eye(model, place, verts, sheet_mask.astype(bool), eye_joint,
                        r_mm=eye_r_mm, **eye_bias)
 

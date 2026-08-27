@@ -128,8 +128,10 @@ Podle `out/audit/siluety.md` (5 z 8 ok koliduje s obrysem):
   plochy. POZOR: přegenerovat SVG + shapes3d.json naráz; staré výtisky se
   rozejdou o ~2 mm (zdokumentovat).
 - Artefakt triceratopse: `_trace` filtrovat plochu po `approxPolyDP`.
-- Tenké dvojlinkové fragmenty: filtr podle šířky (`4*plocha/obvod < 2 mm`) — M,
-  může počkat.
+- ☑ Zjednodušení šablon (nález 5): vnitřní kresba už nejsou obrysy oblastí,
+  ale hranice mezi nimi (`_trace_lines`), takže silueta se nekreslí dvakrát;
+  drobné a úzké oblasti propadnou sousedovi (`_regions`, `MIN_REGION_MM2`,
+  `MIN_REGION_WIDTH_MM`). 4-22 oblastí → 0-6 linek na tvora.
 - Ověření: přegenerovat, `out/audit_siluet/` náhledy očima, audit skript znovu.
 
 Závislosti: žádné. Odhad: M (vč. regenerace a vizuální kontroly).
@@ -257,8 +259,6 @@ snímky), `tools/shot3d.py` přesměrován na /dino3d.
   samostatný úkol, až se scene.js usadí.
 - Bod 12: povýšení `tmp/test_zastaveni.py` na řádný e2e test — odloženo
   (tatáž závislost na usazení scene.js).
-- Bod 7: filtr tenkých dvojlinkových fragmentů šablon (nález 5) — odloženo
-  dle plánu (M, kosmetika).
 - Bod 11: rotace úlovků „na výletě" nad kapacitu, útěk před trexem,
   suvenýr/kartička — nápady zapsané v out/audit/researcher.md, neděláno.
 - Frontend review B5 (2D rig prolínání zastávky), C6 (trimTail eps per
