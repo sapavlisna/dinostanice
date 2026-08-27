@@ -270,3 +270,16 @@ snímky), `tools/shot3d.py` přesměrován na /dino3d.
 - Stará 2D rig větev: zamrzlá, funkční pro staré výtisky (indexy 0–7);
   odstranit, až se staré listy vyhodí (mapa závislostí
   v out/audit/backend.md).
+
+## Pavlovy opravy po zhlédnutí TV (2026-08-27)
+
+Devět bodů zpětné vazby, vše hotovo (commity 17b272f, 424ee48, tento):
+1 zadní pás tempo ×0.75 · 2 diskrétní dráhy (3 vpředu, 2 vzadu, výběr dle
+obsazenosti, drift zrušen) · 3 kolize na dráze (zastavení s hysterezí, občas
+skok; protijdoucí — otočí se menší; cooldowny proti deadlockům) · 4 stromy
+ostrova zvětšené do popředí — zadní chodci mizí za nimi · 5 uživatelský editor
+tras odstraněn (trasy jen v definici scény) · 6 rozcestník /sablony + /rezim
+na QR panelu, patička na /pridat · 7 mini QR panel drží mikrořádek /sablony ·
+8 redesign /sablony (klik na obrázek = tisk) + /dino3d ?mode=walk ·
+9 apatosaurus/triceratops/stegosaurus zpomaleni v katalogu; gait_report čte
+cíle z catalogue3d.json.
