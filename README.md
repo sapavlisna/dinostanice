@@ -17,8 +17,8 @@ docker compose down               # konec
 
 Port je **8100**, protože 8000 na tomhle stroji drží `fs25-modssearcher`.
 Přepíše se proměnnou `DINO_PORT` (v `.env` nebo na příkazové řádce).
-Úlovky se přes bind mount ukládají rovnou do `data/catch/`, takže přestavbu
-image přežijí.
+Úlovky (`data/catch/`), koš smazaných (`data/trash/`) i nastavení scény
+(`data/state.json`) jsou bind mountnuté ven, takže přestavbu image přežijí.
 
 Nebo přímo, bez kontejneru:
 
@@ -28,17 +28,24 @@ Nebo přímo, bez kontejneru:
 
 Skript vypíše dvě adresy: **scénu** (otevři na PC vyvedeném do televize, klávesa
 `F` přepne na celou obrazovku) a **stránku pro mobil**. V rohu scény svítí QR
-kód, kterým se mobil připojí sám, a pod ním odkaz na `/sablony` — přehled všech
-předloh s náhledy, tiskem a prokliky na 3D modely.
+kód, kterým se mobil připojí sám — první minutu a půl velký, pak se sám zmenší
+a po delším klidu se jednou za čas připomene. Pod scénou je odkaz na
+`/sablony` — přehled všech předloh s náhledy, tiskem a prokliky na 3D modely.
 
-Klávesy ve scéně: `F` celá obrazovka, `H` skryje QR nápovědu, `I` lištu dole,
-`D` otevře ladicí panel s tempem a rychlostí jednotlivých druhů (viz níže).
+Klávesy ve scéně: `F` celá obrazovka, `H` ručně skryje/ukáže QR panel (a vypne
+jeho automatiku), `I` lištu dole, `D` otevře ladicí panel s tempem, rychlostí
+a editorem tras (viz níže).
 
 Dole běží lišta: vlevo kolik je ve scéně kterého tvora, vpravo posledních pět
 příchodů a odchodů (`+`/`−`, typ a jméno z odeslané fotky; u tvorů z katalogu
 jméno není, tak je tam `-`).
 
 ## Co tvorové ve scéně dělají
+
+Nový úlovek přichází **vždy zleva** a pár sekund nad ním visí jmenovka se
+jménem z fotky, takže dítě ví, kam koukat a že je to ten jeho. Když má tvor
+odejít (smazání, výměna za nový úlovek), neodpaří se — dojde, doletí nebo
+dopluje za okraj vlastním tempem.
 
 Chodci nejdou pořád dokola: každých 11–34 s se zastaví a 3–9 s postojí, občas
 místo toho vyskočí a po stání se skoro v polovině případů otočí a jdou zpátky.
@@ -47,6 +54,14 @@ podruhé vepředu, takže se každý aspoň jednou ukáže zblízka.
 Zastavení se plynule prolne do klidové pózy z katalogu, takže se nikdo nezasekne
 v půlce kroku. Kromě toho se každý sune šikmo po pásu břehu, aby nešli všichni
 po jedné lince.
+
+Část chodců navíc dostane **trasu** — lomenou čáru nakreslenou v definici
+scény (nebo v editoru tras, klávesa `D`), se zastávkami a otočkami tam, kde je
+autor chce. Zbytek bloumá po pásech postaru, ať má scéna obojí.
+
+Z mobilu se dá **krmit**: tlačítko na stránce pro přidání shodí do scény trs
+kapradí a chodci v okolí k němu zamíří, poží a jdou dál. Krmení má cooldown,
+ať děti scénu nezasypou.
 
 ## Ladění chůze
 
@@ -58,10 +73,45 @@ Klávesa `D` ve scéně vytáhne panel, kde se dá u každého druhu za běhu m�
   naopak rozladí; je to šroubek pro případ, že měřený krok sedí špatně.
 
 Prázdné pole znamená automat (v šedém textu je vidět, co si scéna spočítala
-sama). Vpravo svítí, co z toho vyšlo: rychlost v px/s, jak dlouho trvá přejezd
-obrazovky, délka jednoho cyklu a naměřená délka kroku v délkách těla. Nastavení
-drží `localStorage`, takže přežije reload, a tlačítko **kopírovat JSON** vysype
-hodnoty, které se dají zapéct do scény natrvalo.
+sama). Automat míří na přirozené tempo druhu z katalogu (paleo odhady: sauropod
+se plouží, velociraptor si vykračuje) a tvora posouvá po fázové křivce klipu,
+takže prokluz chodidel drží kolem 1 % ujeté dráhy. Vpravo svítí, co z toho
+vyšlo: rychlost v px/s, jak dlouho trvá přejezd obrazovky, délka cyklu
+a naměřená délka kroku v délkách těla. Nastavení drží `localStorage`, takže
+přežije reload, a tlačítko **kopírovat JSON** vysype hodnoty, které se dají
+zapéct natrvalo. V panelu je i **editor tras** — kreslení lomené čáry přímo
+do scény, waypointy se zastávkou/otočkou, export JSON do definice scény.
+
+Regresní kontrola chůze: `python tools/gait_report.py` osadí běžící scénu
+chodci, chvíli měří a spadne, když prokluz nebo tempo vyjedou z mezí.
+
+## Více obrazovek (sessions)
+
+Scéna bez parametru je domácí televize (session `tv`). `/?s=<id>` otevře
+druhou nezávislou obrazovku: vlastní QR kód, vlastní úlovky, vlastní krajina —
+co se nahraje u jedné, u druhé se neukáže. Session vzniká sama prvním
+otevřením, nic se nezakládá.
+
+Vedlejší sessions po čtvrthodině bez aktivity **usnou**: na TV běží dvě minuty
+odpočet, pak scéna ztmavne a zbude velké QR. Probudí ji sken QR, upload nebo
+krmení; nic se přitom nemaže. Domácí `tv` se neuspává nikdy.
+
+## Režim stanice (/rezim)
+
+Stránka pro rodiče (odkaz „Zpět na scénu · Šablony · Přidat" má i zpáteční
+směr):
+
+- **Krajina** — přepnutí scény za běhu (Křídová laguna / Noční laguna).
+  Krajiny se prolnou, tvorové staré krajiny odejdou a přijdou ti, kdo patří
+  do nové. Úlovky cizí krajiny se nemažou — čekají na přepnutí zpátky;
+  upload do cizí krajiny se uloží a mobil dostane vysvětlení.
+- **Ukázkoví tvorové** — zapne/vypne doplňování scény z katalogu. Vypnutí
+  nemaže, jen se přestane doplňovat.
+- **Vyprázdnit stanici** — smaže úlovky téhle obrazovky (s potvrzením).
+
+Smazané úlovky (i jednotlivé, mazané ze stránky pro mobil) nekončí v nicotě,
+ale v koši `data/trash/` — jsou to dětské výtvory a omylem stisknuté tlačítko
+je nesmí zničit. Koš se čistí po 30 dnech.
 
 ## Jak vytisknout šablony
 
@@ -83,6 +133,10 @@ v milimetrech drží celou pipeline pohromadě. Na každém listu je nahoře kon
 - Všechny **čtyři černé čtverečky v rozích** ať jsou vidět. Se dvěma to ještě
   projde, s jedním pipeline schválně odmítne — z jediné značky vychází
   registrace až o desítky milimetrů vedle, a to potichu.
+
+Když fotka neprojde, server neodpoví obecným „nepovedlo se", ale konkrétní
+českou radou (rozmazané, moc daleko, zakryté značky, nevybarveno…). Odmítnuté
+fotky se schovávají v `data/rejected/` — jsou to nejcennější testovací data.
 
 ## Jak to funguje
 
@@ -133,30 +187,24 @@ Plachetnice a letadlo se kreslí v `tools/make_vehicles.py` — skládají se
 z primitiv do bitmapy a pak trasují, protože ručně kladené body polygonu vedle
 traceované siluety vypadají hrubě.
 
-## 3D modely nafouknuté z kresby
+## 3D modely nafouknuté z kresby (konzervovaná metoda)
 
-**Vypečené modely jsou smazané** — nahradila je větev, která vychází z hotových
-3D modelů (níž). `/3d` proto hlásí, že žádný model není hotový; vrátí se jedním
-během `python tools/make_model3d.py`. Metoda samotná je pořád v kódu a pod testy.
+Tuhle větev nahradila větev z hotových 3D modelů (níž); prohlížeč `/3d`
+i vypečené modely jsou smazané. Metoda samotná zůstává v kódu a pod testy
+(`dinostanice/inflate.py`, `model3d.py`, `tests/test_model3d.py`) a dá se
+kdykoli vypéct znovu: `python tools/make_model3d.py`.
 
-`http://<adresa>:8100/3d` ukáže úlovek jako otáčitelný 3D model. Hloubka se
-v kresbě nenachází, takže se dopočítá „jako u plyšáka": co je dál od obrysu, to
-víc vystoupí z papíru. Z boku je model přesně ta kresba, otočením se barvy
-přetáhnou přes hřbet.
-
-```powershell
-python tools/make_model3d.py            # vypeče všechny do data/models3d/
-python tools/shot3d.py --catch trex-1a85    # snímky ze čtyř úhlů do out/
-```
-
-Celé zvíře je **jedna spojitá kůže**; nohy se do hloubky rozestrkávají váhovým
-polem, které u kyčle plyne k nule, takže se kůže přes rameno zkosí místo aby se
-rozpadla. Tytéž váhy ohýbají nohu v kyčli při chůzi.
+Hloubka se v kresbě nenachází, takže se dopočítá „jako u plyšáka": co je dál
+od obrysu, to víc vystoupí z papíru. Z boku je model přesně ta kresba, otočením
+se barvy přetáhnou přes hřbet. Celé zvíře je **jedna spojitá kůže**; nohy se do
+hloubky rozestrkávají váhovým polem, které u kyčle plyne k nule, takže se kůže
+přes rameno zkosí místo aby se rozpadla. Tytéž váhy ohýbají nohu v kyčli při
+chůzi.
 
 Zvířatům to sluší; **plachetnici ne** — z trupu a plachet vyjde sedací vak,
 protože nafukování počítá s měkkým oblým tělem.
 
-## Zkouška: předloha z 3D modelu
+## Předloha z 3D modelu
 
 Obrácený postup — místo aby se z ploché siluety dopočítávala hloubka, vychází se
 z hotových rigovaných modelů (`data/models_src/*.glb`, CC0 od Quaternia)
@@ -178,8 +226,8 @@ python tools/make_pteranodon.py        # ptakoještěr: kostra a let z holé geo
 Létající tvor se kreslí **shora** a natočený tak, aby rozpětí křídel leželo po
 šířce listu — z boku jsou křídla jen tenký profil, ze kterého není co vybarvovat.
 
-Živě na `http://<adresa>:8100/dino3d` — výběr tvora, všechny animace,
-otáčení myší. Běží vedle staré pipeline, která zůstává beze změny.
+Živě na `http://<adresa>:8100/dino3d` — výběr tvora i úlovku, všechny animace,
+otáčení myší. Snímky bez televize: `python tools/shot3d.py --creature trex3d`.
 
 ### Na televizi
 
@@ -188,6 +236,10 @@ Krajina zůstává malovaná do 2D plátna, tvorové se kreslí do průhledné W
 vrstvy nad ní a kapradí v popředí je zase nad nimi, takže dinosaurus stojí
 v trávě a ne nad ní. Kamera je ortografická a nastavená v pixelech obrazovky,
 takže obě vrstvy sedí bez dopočítávání perspektivy.
+
+Scéna je **data**: pásy, chování, osvětlení a krajina žijí v definici
+`web/scenes/<key>.js`, samotný `web/scene.js` je generický stroj nad ní.
+Druhá krajina (noční laguna) je proto pár řádků navrch.
 
 Než něco přinesou děti, scéna se doplní tvory z katalogu s ukázkovými texturami,
 aby televize nesvítila naprázdno. Každý úlovek jednoho z nich vystřídá.
@@ -204,10 +256,12 @@ fotku mobilem (perspektiva, osvětlení, rozostření, šum, JPEG). Celá pipeli
 tak dá vyvíjet a regresně testovat, aniž by kdokoli něco vytiskl:
 
 ```powershell
-python -m pytest -q          # 143 testů, ~100 s
+python -m pytest -q          # 185 testů
 ```
 
-`out/robustness_report.md` shrnuje, kde přesně se snímání láme a proč.
+Součástí je `tests/test_server.py` (36 testů) — end-to-end přes FastAPI
+TestClient: upload syntetické fotky, sessions, uspávání, mazání přes koš,
+limity. `out/robustness_report.md` shrnuje, kde přesně se snímání láme a proč.
 
 ## Struktura
 
@@ -215,14 +269,22 @@ python -m pytest -q          # 143 testů, ~100 s
 |---|---|
 | `dinostanice/` | pipeline: tvary, šablony, snímání, rig, kvalita, úložiště |
 | `dinostanice/silhouette.py` | odvození páteře a končetin z bitmapy siluety |
-| `dinostanice/inflate.py`, `model3d.py` | nafouknutí kresby do 3D a složení modelu |
+| `dinostanice/scenes.py` | registr scén (krajin) pro server |
+| `dinostanice/inflate.py`, `model3d.py` | nafouknutí kresby do 3D (konzervovaná metoda) |
 | `data/models3d/` | modely pro prohlížeč: GLB s UV, textury, katalog |
 | `data/silhouettes/` | zdrojové siluety + `credits.json` s licencemi |
 | `data/shapes/` | předpočítaná geometrie tvorů |
-| `web/` | scéna na TV, renderer, animace, krajina, stránka pro mobil, tisk |
-| `web/scene3d.js` | 3D tvorové ve scéně: ortokamera v pixelech, klonování modelů |
+| `web/` | scéna na TV, renderer, animace, stránky pro mobil, tisk, režim |
+| `web/scene3d.js` | 3D tvorové ve scéně: ortokamera v pixelech, měřený krok |
+| `web/scenes/` | definice scén (pásy, chování, trasy, světla) — scéna jako data |
+| `web/backdrops/` | malované krajiny s variantami (den/noc) |
 | `tools/print_sheets.py` | tisková sada PDF |
+| `tools/gait_report.py` | regresní brána chůze: prokluz a tempo per druh |
 | `tests/` | regresní sada nad syntetickými daty |
+| `tests/test_server.py` | end-to-end testy serveru přes TestClient |
 | `data/templates/` | vygenerované šablony (SVG + PDF k tisku), server je vydává na `/templates` |
 | `data/catch/` | úlovky — co děti nafotily |
+| `data/trash/` | koš smazaných úlovků (30 dní) |
+| `data/rejected/` | posledních 50 odmítnutých fotek (testovací data) |
+| `data/state.json` | trvalá nastavení: ukázkoví tvorové, krajina domácí TV |
 | `out/` | pracovní výstupy, náhledy, reporty |

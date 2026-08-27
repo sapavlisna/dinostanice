@@ -9,7 +9,7 @@ Legenda stavu: ☐ čeká · ◐ rozpracováno · ☑ hotovo · ✗ odloženo
 
 ---
 
-## 1. ☐ Klouzání chodidel — fázově vázaná rychlost  [priorita 1a]
+## 1. ☑ Klouzání chodidel — fázově vázaná rychlost  [priorita 1a]
 
 Změřeno (`out/audit/animator.md`): stojná noha se v klipu hýbe 12–172 %
 průměrné rychlosti (RMS ~50 %), konstantní rychlost scény tedy nemůže sedět
@@ -29,7 +29,7 @@ nikdy; BAKED `speed` 0.75/0.6 klouzání navíc zdvoj- až ztrojnásobuje
 
 Závislosti: žádné. Odhad: S/M (~40 řádků ve 2 souborech + měření).
 
-## 2. ☐ Přirozené tempo per druh  [priorita 1b, po bodu 1]
+## 2. ☑ Přirozené tempo per druh  [priorita 1b, po bodu 1]
 
 - `STRIDE_RATE` per druh (trex 0.11–0.18, apatosaurus 0.05–0.09, … tabulka
   v `out/audit/animator.md`), `GAIT_RATE` rozšířit na 0.4–1.8 (dnes cíle
@@ -41,7 +41,7 @@ Závislosti: žádné. Odhad: S/M (~40 řádků ve 2 souborech + měření).
 
 Závislosti: bod 1 (bez něj ladění temp nemá smysl). Odhad: S.
 
-## 3. ☐ Kritická stabilita TV a serveru  [vsunuto z review — levné, chrání exponát]
+## 3. ☑ Kritická stabilita TV a serveru  [vsunuto z review — levné, chrání exponát]
 
 Frontend (`out/audit/frontend.md`): scéna běží hodiny, dnes ji položí:
 - A3 rAF smyčka bez záchytné sítě (výjimka = zamrzlá TV navždy) + A4 žádná
@@ -65,7 +65,7 @@ Backend (`out/audit/backend.md`):
 Závislosti: žádné (bod 1 mění tatáž místa ve scene.js — koordinovat pořadí).
 Odhad: M celkem (samé S položky + 2 M).
 
-## 4. ☐ Vrstvy scény + zákaz chůze po vodě  [priorita 2]
+## 4. ☑ Vrstvy scény + zákaz chůze po vodě  [priorita 2]
 
 - Zóny jako data: `bands: [{name, y0, y1, motions, lane}]` místo pěti pevných
   jmen (architekt A2); `zone()` a `swapBand` vybírají z dat („pásy, které umí
@@ -80,7 +80,7 @@ Odhad: M celkem (samé S položky + 2 M).
 Závislosti: žádné tvrdé; dělá základ pro body 8 (více scén) a 9 (trasy).
 Odhad: M.
 
-## 5. ☐ UX: QR sekce + reset + start od nuly  [priorita 3]
+## 5. ☑ UX: QR sekce + reset + start od nuly  [priorita 3]
 
 Podle `out/audit/ux.md` (a, c, d):
 - a) QR panel: přesun do pravého horního rohu, stavy plný/mini (auto-zmenšení
@@ -96,7 +96,7 @@ Podle `out/audit/ux.md` (a, c, d):
 
 Závislosti: žádné. Odhad: M.
 
-## 6. ☐ Sessions s auto-cleanup  [priorita 4]
+## 6. ☑ Sessions s auto-cleanup  [priorita 4]
 
 Kombinace architekt D1–D4 + UX e):
 - Server: `sessions: dict[str, Session]` (id, scene, clients, last_seen),
@@ -115,7 +115,7 @@ Kombinace architekt D1–D4 + UX e):
 
 Závislosti: bod 5 (stránka /rezim, reset API). Odhad: L.
 
-## 7. ☐ Opravy siluet a šablon  [priorita 6, ale nezávislé — lze kdykoli]
+## 7. ☑ Opravy siluet a šablon  [priorita 6, ale nezávislé — lze kdykoli]
 
 Podle `out/audit/siluety.md` (5 z 8 ok koliduje s obrysem):
 - `auto_eye` (`modelsheet.py:157-186`): kontrola přes `cv2.distanceTransform`
@@ -134,7 +134,7 @@ Podle `out/audit/siluety.md` (5 z 8 ok koliduje s obrysem):
 
 Závislosti: žádné. Odhad: M (vč. regenerace a vizuální kontroly).
 
-## 8. ☐ Více scén + katalog per scéna  [priorita 5]
+## 8. ☑ Více scén + katalog per scéna  [priorita 5]
 
 Architekt (souhrn v `out/audit/architekt.md`):
 - Scéna jako data: `web/scenes/<key>.js` (backdrop import, lighting, bands,
@@ -151,7 +151,7 @@ Závislosti: bod 4 (bands), bod 5 (/rezim), bod 6 (session nese scénu).
 Odhad: L. Druhá scéna jako obsah (akvárium) = samostatný budoucí projekt;
 tady jen mechanismus + případně backdrop varianta „noc" jako levný důkaz.
 
-## 9. ☐ Trasy zvířat (waypointy per scéna)  [priorita 1c — přirozený pohyb]
+## 9. ☑ Trasy zvířat (waypointy per scéna)  [priorita 1c — přirozený pohyb]
 
 Podle `out/audit/animator.md` bod 3:
 - Formát `paths` v definici scény (po bodu 8; do té doby `web/paths.json`):
@@ -166,7 +166,7 @@ Podle `out/audit/animator.md` bod 3:
 
 Závislosti: bod 1 (walked), bod 4 (bands/vrstvy). Odhad: M.
 
-## 10. ☐ Mrtvý kód — úklid  [priorita 7]
+## 10. ☑ Mrtvý kód — úklid  [priorita 7]
 
 Podle `out/audit/backend.md` (mrtvý kód) — pořadí:
 1. Gate: `capture.known_indices()` přepsat bez závislosti na starém
@@ -185,7 +185,7 @@ Podle `out/audit/backend.md` (mrtvý kód) — pořadí:
 
 Závislosti: žádné. Odhad: M.
 
-## 11. ☐ Nápady z rešerše (volitelné, nice-to-have)  [priorita 7]
+## 11. ☑ Nápady z rešerše (body 1, 2, 5 hotové; zbytek odloženo)  [priorita 7]
 
 Podle `out/audit/researcher.md`, nejvyšší poměr efekt/práce:
 - Ohlášený vstup nového úlovku (vždy zleva za okrajem) + jmenovka nad tvorem
@@ -195,9 +195,9 @@ Podle `out/audit/researcher.md`, nejvyšší poměr efekt/práce:
 - Rotace úlovků nad kapacitu („odešel na výlet, vrátí se") místo vytlačení. M
 - Odchod tvora vždy odehrát (odejde za okraj), nikdy pop. S
 
-## 12. ☐ Testy  [průběžně, podle `out/audit/tester.md`]
+## 12. ◐ Testy  [průběžně, podle `out/audit/tester.md`]
 
-- HNED (S): oživit `test_roundtrip` — filtr `if not c.rigid` (dnes se celý
+- ☑ HNED (S): oživit `test_roundtrip` — filtr `if not c.rigid` (dnes se celý
   soubor tiše přeskakuje, prázdný parameter set).
 - S bodem 3: server API testy (testclient + synth fotka): upload→catch+kind,
   vadná fotka→česká chyba, DELETE, WS broadcast, limity.
@@ -220,6 +220,17 @@ všeho dalšího (a sahá do týchž souborů jako 1 — udělat hned po něm, a
 nehádají); 4 je priorita 2; 5 priorita 3; 7 (siluety) je nezávislé a krátké,
 vsune se před velké 6/8; 6 sessions staví na 5; 8 staví na 4+5+6; 9 na 1+4.
 
+## Incident (2026-08-26 večer)
+
+Při ověřování bodu 5 agent zavolal `POST /api/scene/reset` proti živému
+kontejneru a nenávratně smazal 4 reálné úlovky (Kuba/Triceratops,
+Dino/Triceratops, Pavel/Tyrannosaurus, Velociraptor). Záloha neexistovala
+(`out/catch-zaloha` je starší sada, `.dockerignore` vylučuje data/catch
+z image). Fotky zůstávají v mobilech — jde je nahrát znovu. Náprava:
+mazání teď jde do `data/trash/` s 30denní retencí (commit a01c7a8).
+Pravidlo pro další práci: destruktivní ověřování VÝHRADNĚ proti
+izolovaným datům (TestClient + tmp_path), nikdy proti běžícímu serveru.
+
 ## Rozhodnutí učiněná bez Pavla (k revizi)
 
 - Session cleanup úlovky NEMAŽE — scéna „usne", data zůstanou (mazání dětských
@@ -229,3 +240,33 @@ vsune se před velké 6/8; 6 sessions staví na 5; 8 staví na 4+5+6; 9 na 1+4.
   výtisky doma, znalost pod testy) — jen se odpojí `/3d` stránka mrtvá daty.
 - Obrys šablon se zvětší o ~2 mm ven → nové výtisky se rozejdou se starými;
   starým výtiskům pomůže větší bleed v to_texture (fallback zůstane).
+
+---
+
+## Stav po fázi 3 (2026-08-27)
+
+**Hotovo (commitnuto po bodech):** 1–11 dle výše; testová sada 185 testů
+(36 serverových nových + oživený roundtrip), regresní brány
+`tools/gait_report.py` (prokluz/tempo) a `tools/shot_scene.py` (JS chyby,
+snímky), `tools/shot3d.py` přesměrován na /dino3d.
+
+**Zbývá / odloženo a proč:**
+- Bod 12: extrakce `scenelogic.js` + Node testy — odloženo; scene.js se
+  během přestavby měnil v každém bodu, extrakce by se opakovaně rozbíjela.
+  Chování je kryté Playwright ověřeními a gait_report bránou. Vhodný
+  samostatný úkol, až se scene.js usadí.
+- Bod 12: povýšení `tmp/test_zastaveni.py` na řádný e2e test — odloženo
+  (tatáž závislost na usazení scene.js).
+- Bod 7: filtr tenkých dvojlinkových fragmentů šablon (nález 5) — odloženo
+  dle plánu (M, kosmetika).
+- Bod 11: rotace úlovků „na výletě" nad kapacitu, útěk před trexem,
+  suvenýr/kartička — nápady zapsané v out/audit/researcher.md, neděláno.
+- Frontend review B5 (2D rig prolínání zastávky), C6 (trimTail eps per
+  kanál), C8 (rychlost letců dle hloubky) — vědomě odloženo (kvalita
+  obrazu, ne stabilita; 2D rig větev je zamrzlá).
+- Backend review P1-9 retence data/catch (strop počtu úlovků) a P1-10
+  autentizace/zúžení /catch statiky — vyžaduje Pavlovo rozhodnutí
+  (domácí LAN vs. Tailscale expozice).
+- Stará 2D rig větev: zamrzlá, funkční pro staré výtisky (indexy 0–7);
+  odstranit, až se staré listy vyhodí (mapa závislostí
+  v out/audit/backend.md).
