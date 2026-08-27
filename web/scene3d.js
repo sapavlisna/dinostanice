@@ -18,12 +18,19 @@ const FORWARD_YAW = Math.PI / 2;   // modely koukaji na +Z, obrazovka doprava je
 // naklon ukaze kridla, kam padla kresba. `anchor` rika, za co tvor visi:
 // chodec za nohy na y=0 (modely maji pocatek na zemi), letec/plavec/lod za
 // stred tela — nestoji na zemi, vznasi se.
+// `turn`/`bank` jsou jen default: uhel je vec vzhledu krajiny, tak ho smi
+// preladit definice sceny (motions.<typ>.turn/bank) a spawn ho posle sem.
 const MOTION = {
   walk: { turn: 0.34, bank: 0, anchor: 'ground' },
   fly: { turn: 0.95, bank: -0.42, anchor: 'centre' },
   swim: { turn: 0.34, bank: 0, anchor: 'centre' },
   sail: { turn: 0.20, bank: 0, anchor: 'centre' },
 };
+
+// nula je platne natoceni (cisty profil), takze `||` by ji snedlo
+function angle(given, dflt) {
+  return typeof given === 'number' && isFinite(given) ? given : dflt;
+}
 
 // Chodidla se poznaji podle jmena kostry; podle nich se meri delka kroku.
 // Koncove kosti (_end) se vynechavaji, jsou to jen spicky bez vlastniho pohybu.
@@ -299,8 +306,8 @@ export async function spawn(entry) {
 
   const mo = MOTION[entry.motion] || MOTION.walk;
   const grounded = mo.anchor === 'ground';
-  const yaw = FORWARD_YAW - mo.turn;
-  const bank = mo.bank;
+  const yaw = FORWARD_YAW - angle(entry.turn, mo.turn);
+  const bank = angle(entry.bank, mo.bank);
 
   const box = measure(model);
   const centre = box.getCenter(new THREE.Vector3());

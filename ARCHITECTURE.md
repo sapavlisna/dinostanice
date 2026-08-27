@@ -268,6 +268,10 @@ export default {
 - `strideRate` v `motions` je jen default cílového tempa chodce (těl/s) — per
   druh ho přebíjí `strideRate` z katalogu, protože tempo je vlastnost druhu,
   ne krajiny;
+- `turn`, `bank` (volitelně) — natočení modelu k divákovi a náklon kolem osy
+  pohledu v radiánech; bez nich platí default z tabulky `MOTION` ve
+  `scene3d.js`. Úhel je vlastnost vzhledu krajiny, ne 3D vrstvy, takže se ladí
+  per scéna: chodec v křídě 0,524 (30°), ryba v akváriu 0,436 (25°);
 - `wave`/`waveRate` — mírné vlnění (dech plavce); `sway`/`swayRate` — pomalý
   drift kolem přidělené dráhy;
 - `dodge` — posun jedné ryby při míjení; rozestup páru = 2×`dodge`, musí zůstat
@@ -330,11 +334,25 @@ počátek, svislá osa jde dolů jako v canvasu). Scéna tak umísťuje tvory ve
 stejných souřadnicích, ve kterých kreslí krajinu, a nemusí řešit perspektivu.
 
 Modely koukají na +Z; `place` je natáčí kolem Y podle směru chůze, ne
-zrcadlením — zrcadlit by znamenalo obrátit i texturu. Natočení a kotva jsou
-per typ pohybu v tabulce `MOTION`: chodec je natočený lehce k divákovi
-(`turn` 0,34 rad), letec víc (0,95 rad) a ještě nakloněný kolem osy pohledu
-(`bank`), protože z čistého profilu jsou z něj jen dvě čárky. `anchor` říká,
-za co tvor visí: chodec za nohy na `y = 0`, letec/plavec/loď za střed těla.
+zrcadlením — zrcadlit by znamenalo obrátit i texturu. Kotva je per typ pohybu
+v tabulce `MOTION`: `anchor` říká, za co tvor visí — chodec za nohy na
+`y = 0`, letec/plavec/loď za střed těla. `turn` (odklon od čistého profilu)
+a `bank` (náklon kolem osy pohledu) jsou tam jen jako default, protože úhel
+patří ke vzhledu krajiny: přebíjí ho `motions.<typ>.turn/bank` z definice
+scény a `spawn` ho dostane jako parametr. Letec má `turn` velký (0,95 rad)
+a ještě `bank`, protože z čistého profilu jsou z něj jen dvě čárky.
+
+Kolik natočení chodce a plavce snesou, je změřené (kontaktní listy
+`out/turn_*_sheet.png`): silueta je ortho projekce listu a UV = pozice na
+listu, takže s rostoucím odklonem se ukazuje víc čelní plochy, kde je barva
+jen protažená od obrysu. Do ~30° drží kresba spojité plochy, kolem 45–50° se
+čelo hrudi a předek lebky mění v šmouhu a nad 60° je z dětské kresby mapa
+bez vzoru. Rychlost se přitom nerozbije: `strideBodies` bere průmět kroku
+(`sin(yaw)`), takže větší natočení znamená menší dráhu na cyklus a prokluz
+chodidel zůstává v 1–2 %. Plavci se dává o pět stupňů méně než chodci — je
+drobný a poznává se podle siluety (meč mečouna, vějíř trnů perutýna), kterou
+natočení krátí. Kamerou to řešit nejde: krajina je malovaná 2D kulisa ve
+třech plátnech a s otočenou kamerou by se rozešla s pásy scény.
 
 Měřítko se váže na `sizePx` — odmocninu z plochy siluety, ne na délku. Kdyby
 všichni měli stejnou délku, apatosaurus (samý krk a ocas) by vedle tyranosaura

@@ -1223,8 +1223,13 @@ async function loadModel(item, opts) {
     ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump],
         lie: spec.clips[cf.lie], fast: spec.clips[cf.fast] }
     : undefined;
+  // natoceni k divakovi patri ke vzhledu krajiny, ne k 3D vrstve — bere se
+  // z definice sceny presne pro tenhle pohyb (bez fallbacku na walk, aby
+  // letec nedostal uhel chodce); kdyz ho scena nema, plati default 3D vrstvy
+  const mo = ((sceneDef && sceneDef.motions) || {})[spec.motion] || {};
   const m3 = await Scene3D.spawn({
     id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks,
+    turn: mo.turn, bank: mo.bank,
     texture: item.texture || (item.url || `/catch/${item.id}/`) + 'texture.png',
   });
   return addActor({ m3, id: item.id, key: spec.key, strideRate: spec.strideRate,

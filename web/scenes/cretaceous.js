@@ -27,6 +27,10 @@
      driftRefHeight  výška pásu, pro kterou platí plný drift
      farChance       šance, že nový tvor padne na vedlejší (far) lane
      bob             sinusové houpání (letci)
+     turn/bank       (volitelně) natočení modelu k divákovi v radiánech a
+                     náklon kolem osy pohledu; bez nich platí default 3D
+                     vrstvy (MOTION v scene3d.js). Úhel je vlastnost vzhledu
+                     krajiny, ne 3D vrstvy — proto se ladí tady.
      rest            umožňuje zastavit (kolizní fronta, dwell na trase,
                      krmení) a otočit se na místě; bez něj tvor nezastaví
                      nikdy. Náhodné zastávky "jen tak" neexistují — tvor
@@ -74,6 +78,11 @@ export default {
   motions: {
     walk: {
       sizeFraction: 0.234, baseSpeed: 0.030,
+      // 30° od čistého profilu: dinosaurus je na obrazovce vysoký stovky px,
+      // takže se vejde i bližší bok a předek hrudi — z ploché kulisy je objem.
+      // Od ~45° se textura na čelních plochách roztahuje do šmouhy (kresba na
+      // listu je bokorys, UV = pozice na listu), viz out/turn_strop_walk_sheet.png.
+      turn: 0.524,
       strideRate: [0.12, 0.22],
       farChance: 0.35,
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },

@@ -22,6 +22,7 @@
      turnMoving          otočka se nedělá na místě: ryba do ní zpomalí, projde
                          čelem k divákovi a zabere na druhou stranu
      spin                jak dlouho otočka trvá
+     turn                natočení k divákovi v radiánech (viz cretaceous.js)
 
    `rest` tu záměrně NENÍ: plavec nemá do čeho prolnout (katalog mu dává jen
    klip plavání) a hlavně nemá proč stát — žádné zastávky, žádné lehání,
@@ -50,6 +51,11 @@ export default {
     swim: {
       // ryba je proti dinosaurovi drobná; velikost per druh dolaďuje `scale`
       sizeFraction: 0.140, baseSpeed: 0.070,
+      // 25°, o pět stupňů méně než chodec: ryba má na obrazovce jen stovku px
+      // a poznává se podle siluety, kterou natočení krátí — ve 30° se mečounovi
+      // zkrátí meč a perutýnovi se vějíř trnů sbalí do svazku
+      // (out/turn_swim_sheet.png), ve 25° obojí drží a bok už dá objem
+      turn: 0.436,
       scale: {
         clownfish: 0.58, butterflyfish: 0.55, angelfish: 0.60, guppy: 0.48,
         puffer: 0.68, lionfish: 0.66, anglerfish: 0.74, seahorse: 0.50,
