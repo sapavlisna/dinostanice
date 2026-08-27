@@ -350,7 +350,7 @@ export function create(variant = 'day') {
     return { canvas: c, y0: y0 };
   }
 
-  function buildLand(W, H, rand) {
+  function buildLand(W, H, rand, fg) {
     const y0 = Math.round(H * LAND_BAND[0]);
     const c = makeCanvas(W, H * (LAND_BAND[1] - LAND_BAND[0])), g = c.getContext('2d');
     g.translate(0, -y0);
@@ -451,11 +451,21 @@ export function create(variant = 'day') {
     g.closePath();
     g.fill();
 
+    // Cykasy stavaly na 0.527–0.541, tj. castecne MEZI zadnimi drahami
+    // chodcu (0.532/0.558) — to dve platna vykreslit neumi. Sude jdou vys
+    // na pisek NAD horni drahu (zustavaji vzadu), liche dolu k vodni care
+    // POD dolni drahu a do popredniho bufferu (fg) — u vody vypadaji
+    // prirozene a horni hrana pisku si necha sve kapradinove trsy.
     const cyc = Math.round(W / H * 7);
     for (let i = 0; i < cyc; i++) {
       const cxp = rand() * W;
-      drawCycad(g, cxp, H * (FAR_SAND_TOP + 0.012 + rand() * 0.014),
-                H * (0.030 + rand() * 0.016), rgba(mix(P.FOREST_BANDS[3], P.SKY_HAZE, 0.10), 1));
+      const ry = rand(), rh = rand();
+      const col = rgba(mix(P.FOREST_BANDS[3], P.SKY_HAZE, 0.10), 1);
+      if (i % 2 === 0) {
+        drawCycad(g, cxp, H * (0.516 + ry * 0.011), H * (0.030 + rh * 0.016), col);
+      } else {
+        drawCycad(fg, cxp, H * (0.5635 + ry * 0.0035), H * (0.030 + rh * 0.016), col);
+      }
     }
     // Tiny fern tufts at the very top of the far sand strip: their base lies
     // above the far walking band (y0 = 0.525), so walkers there pass in front
@@ -471,7 +481,7 @@ export function create(variant = 'day') {
   // A spit of land reaching into the lagoon and a small island: without them
   // the scene reads as flat horizontal stripes. Vraci polohu ostrova, at
   // buildIslandTrees muze jeho stromy prekreslit do popredi (bod 4).
-  function drawHeadland(g, W, H, rand) {
+  function drawHeadland(g, fg, W, H, rand) {
     let x;
     const top = H * 0.556, tipX = W * 0.300, tipY = H * 0.612;
     const w1 = waveFn(rand, 3, 9.0 / W, 0.5);
@@ -509,14 +519,19 @@ export function create(variant = 'day') {
     g.fill();
     g.restore();
 
+    // Stromy poloostrova maji patu na 0.570–0.612, tedy POD obema zadnimi
+    // drahami chodcu (0.532/0.558) — chodec ma zajit ZA ne, proto se kresli
+    // do popredniho bufferu (fg) nad 3D tvory. Terén poloostrova (trava,
+    // pisek) zustava tady vzadu; pata stromu je nad ~0.62, plavecky pas
+    // (od 0.645) tedy nezakryji.
     for (let i = 0; i < 18; i++) {
       const tx = Math.pow(rand(), 1.2) * tipX * 0.92;
       const f3 = tx / tipX;
       const ty = lerp(top, tipY, Math.pow(f3, 1.9)) + H * (0.014 - 0.007 * f3);
       const th = H * (0.072 - f3 * 0.036) * (0.8 + rand() * 0.5);
       const col = rgba(mix(P.FOREST_BANDS[3], P.SKY_HAZE, 0.05), 1);
-      if (rand() < 0.45) drawAraucaria(g, tx, ty, th, th * 0.30, col, rand);
-      else drawFir(g, tx, ty, th, th * 0.32, col, rand);
+      if (rand() < 0.45) drawAraucaria(fg, tx, ty, th, th * 0.30, col, rand);
+      else drawFir(fg, tx, ty, th, th * 0.32, col, rand);
     }
 
     const ix = W * 0.660, iy = H * 0.624, iw = W * 0.038, ih = H * 0.010;
@@ -536,14 +551,14 @@ export function create(variant = 'day') {
     return { ix, iy, iw, ih };
   }
 
-  function buildShore(W, H, rand) {
+  function buildShore(W, H, rand, fg) {
     const y0 = Math.round(H * SHORE_BAND[0]);
     const c = makeCanvas(W, H * (SHORE_BAND[1] - SHORE_BAND[0])), g = c.getContext('2d');
     g.translate(0, -y0);
     let x;
     const edge = waveFn(rand, 3, 5.1 / W, 0.5);
 
-    const island = drawHeadland(g, W, H, rand);
+    const island = drawHeadland(g, fg, W, H, rand);
 
     // Wet sand, then dry sand, then the rocky foreground shelf.
     const wg = g.createLinearGradient(0, H * WATER_BOT, 0, H * WET_SAND_BOT);
@@ -722,8 +737,18 @@ export function create(variant = 'day') {
     const sky = buildSky(W, H, rand);
     const far = buildClouds(W, H, rand, { count: 8, y0: 0.05, y1: 0.15, size: 0.11, alpha: 0.30, flat: true, band: [0, 0.23] });
     const near = buildClouds(W, H, rand, { count: 6, y0: 0.13, y1: 0.29, size: 0.17, alpha: 0.62, flat: false, band: [0.02, 0.37] });
-    const land = buildLand(W, H, rand);
-    const shore = buildShore(W, H, rand);
+    // Spolecny popredni buffer pro vegetaci vzdaleneho brehu, jejiz pata
+    // lezi POD zadnimi chodeckymi drahami (0.532/0.558): stromy poloostrova
+    // a cykasy u vzdalene vodni cary. drawFront ho vrstvi NAD 3D tvory,
+    // takze zadni chodec za ne spravne zachazi (stejny princip jako
+    // buildIslandTrees u ostrova).
+    const farFrontY0 = Math.round(H * 0.44);
+    const farFront = makeCanvas(W, Math.round(H * 0.64) - farFrontY0);
+    const fg = farFront.getContext('2d');
+    fg.translate(0, -farFrontY0);
+
+    const land = buildLand(W, H, rand, fg);
+    const shore = buildShore(W, H, rand, fg);
     const islandTrees = buildIslandTrees(W, H, rand, shore.island);
     const front = buildFrontFerns(W, H, rand);
 
@@ -772,6 +797,7 @@ export function create(variant = 'day') {
     return {
       W: W, H: H, sky: sky, vig: vig, cloudFar: far, cloudNear: near, land: land,
       shore: shore.canvas, shoreY0: shore.y0, front: front, islandTrees: islandTrees,
+      farFront: farFront, farFrontY0: farFrontY0,
       shoreEdge: function (x) { return shoreEdge(shore.edge, x, H); },
       ripples: ripples, sparks: sparks, blades: blades, waterGrad: null
     };
@@ -927,13 +953,15 @@ export function create(variant = 'day') {
   }
 
   function drawFront(ctx, W, H, t) {
-    // Rostliny lezi ve trech hloubkach: trsy u vzdaleneho brehu a u vodni cary
-    // se kresli do spodniho platna (draw), takze tvorove chodi PRED nimi, a
-    // rohove kapradi s travou a vinetaci sem, do platna NAD 3D tvory —
-    // dinosaurus tak stoji v zeleni, ne nad ni. Stromy ostrova v lagune (bod 4)
-    // patri sem ze stejneho duvodu: lezi ve vysce zadni chodecke drahy, takze
-    // musi zakryvat chodce pred sebou, ne byt zakryvany.
+    // Rostliny lezi v nekolika hloubkach: trsy s patou NAD zadnimi drahami
+    // (horni hrana vzdaleneho pisku) a u predni vodni cary se kresli do
+    // spodniho platna (draw), takze tvorove chodi PRED nimi. Sem, do platna
+    // NAD 3D tvory, patri vegetace s patou POD zadnimi drahami (0.532/0.558):
+    // farFront (stromy poloostrova, cykasy u vzdalene vodni cary), stromy
+    // ostrova v lagune a rohove kapradi s travou a vinetaci — zadni chodec
+    // za ne zachazi a dinosaurus vpredu stoji v zeleni, ne nad ni.
     if (!state || state.W !== W || state.H !== H) state = build(W, H);
+    ctx.drawImage(state.farFront, 0, state.farFrontY0);
     ctx.drawImage(state.islandTrees.canvas, 0, state.islandTrees.y0);
     ctx.drawImage(state.front.canvas, 0, state.front.y0);
     drawBlades(ctx, W, H, t, state);
