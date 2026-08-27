@@ -30,6 +30,10 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(store, "CATCH_ROOT", str(catch_root))
     monkeypatch.setattr(store, "REJECTED_ROOT", str(rejected_root))
     monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
+    # i krajina defaultni televize musi jit z tmp_path: se zivym data/state.json
+    # (stanice prepnuta na akvarium) by ulovky z kridy neprosly scoping filtrem
+    # a test cekajici na broadcast by visel navzdy
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
     server.hub.sessions.clear()   # sessions z minulych testu nesmi prosakovat
     with TestClient(server.app) as c:
         yield c
@@ -43,6 +47,7 @@ def fast_idle_client(monkeypatch, tmp_path):
     monkeypatch.setattr(store, "CATCH_ROOT", str(tmp_path / "catch"))
     monkeypatch.setattr(store, "REJECTED_ROOT", str(tmp_path / "rejected"))
     monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
     monkeypatch.setattr(server, "IDLE_WARN_S", 0.15)
     monkeypatch.setattr(server, "IDLE_SLEEP_S", 0.5)
     monkeypatch.setattr(server, "IDLE_TICK_S", 0.03)
