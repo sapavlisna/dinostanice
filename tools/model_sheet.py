@@ -63,7 +63,8 @@ def build_one(spec: Model3D, anim: str | None = None, time: float | None = None)
         clip, t = ms.best_pose(model, spec.candidates(model), axes=spec.axes, flip=spec.flip)
         t = time if time is not None else t
     shape = ms.build(model, key=spec.key, label=spec.label, anim=clip, time=t, ppm=14.0,
-                     axes=spec.axes, flip=spec.flip, eye_bias=spec.eye_bias)
+                     axes=spec.axes, flip=spec.flip, eye_joint=spec.eye_joint,
+                     eye_bias=spec.eye_bias)
 
     (ROOT / "data/shapes3d").mkdir(exist_ok=True)
     ms.save(shape, ROOT / f"data/shapes3d/{spec.key}.json")

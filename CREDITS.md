@@ -3,11 +3,15 @@
 Předlohy k vybarvení se generují z hotových 3D modelů, takže jediný cizí
 materiál v projektu jsou právě ty modely.
 
-Všechny kromě ptakoještěra jsou z packu **Animated Dinosaurs** od
-[Quaternia](https://quaternius.com/), pod **CC0 1.0**, každý rigovaný se šesti
-animacemi (Idle, Walk, Run, Attack, Jump, Death). Staženo přes poly.pizza,
-protože tamní kopie je v GLB i s kostrou. CC0 nevyžaduje uvedení autora —
-je tu z úcty k jeho práci, ne z licenční povinnosti.
+Až na ptakoještěra jsou všechny od [Quaternia](https://quaternius.com/) a pod
+**CC0 1.0**; staženo přes poly.pizza, protože tamní kopie jsou v GLB i
+s kostrou. CC0 nevyžaduje uvedení autora — je tu z úcty k jeho práci, ne
+z licenční povinnosti.
+
+## Křídová laguna
+
+Pack **Animated Dinosaurs**, každý model rigovaný se šesti animacemi
+(Idle, Walk, Run, Attack, Jump, Death).
 
 | soubor | tvor | zdroj |
 |---|---|---|
@@ -20,6 +24,24 @@ je tu z úcty k jeho práci, ne z licenční povinnosti.
 | `data/models_src/dragon.glb` | Drak (létající) | [poly.pizza](https://poly.pizza/m/LlwD0QNUPj) |
 
 Drak není z dinosauřího packu, ale ze stejné dílny — je to druhý létající tvor.
+
+## Ryby (akvárium)
+
+Ze stejné dílny a rovněž **CC0 1.0** je i rybí šestice. Prvních pět nese
+společnou armaturu `Fish_Armature` se šesti klipy (Swimming_Normal,
+Swimming_Fast, Swimming_Impulse, Attack, Death, Out_Of_Water) — až na žraloka,
+který má vlastní kostru a tři klipy. Manta pochází z packu
+[Animated Fish Bundle](https://poly.pizza/bundle/Animated-Fish-Bundle-ZkGbjS8m8g)
+a nese jediný klip Swim.
+
+| soubor | tvor | zdroj |
+|---|---|---|
+| `data/models_src/clownfish.glb` | Klaunská rybka | [poly.pizza](https://poly.pizza/m/769fHo3eEB) |
+| `data/models_src/shark.glb` | Žralok | [poly.pizza](https://poly.pizza/m/YYsK3gRCBZ) |
+| `data/models_src/puffer.glb` | Čtverzubec | [poly.pizza](https://poly.pizza/m/UKHtgpxTOk) |
+| `data/models_src/swordfish.glb` | Mečoun | [poly.pizza](https://poly.pizza/m/7hMOlBjln0) |
+| `data/models_src/lionfish.glb` | Perutýn | [poly.pizza](https://poly.pizza/m/czsz9Baw86) |
+| `data/models_src/manta.glb` | Manta | [poly.pizza](https://poly.pizza/m/yzD8b7ZHZm) |
 
 ## Ptakoještěr
 

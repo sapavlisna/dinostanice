@@ -48,7 +48,12 @@ def export(spec, index_only=False) -> dict:
         "scene": spec.scene,
         "glb": f"/models3d/{spec.key}.glb",
         "texture": f"/models3d/{spec.key}_texture.png",
-        "clips": {name.split("_")[-1]: name for name in sorted(model.animations)},
+        # Kratke jmeno klipu: nejdriv pryc prefix armatury, pak jeji jmeno
+        # z FBX exportu. Rybi klipy nesou prefix s podtrzitkem
+        # ("Fish_Armature|Attack"), takze bez oriznuti po "|" by z Attacku
+        # zbylo "Armature|Attack" a scena by roli nenasla.
+        "clips": {name.split("|")[-1].split("_")[-1]: name
+                  for name in sorted(model.animations)},
         "clipFor": spec.clip_roles(),
         "pose": shape.anim,
         "size": round(float(np.ptp(verts[:, 2])), 2),

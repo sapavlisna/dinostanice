@@ -467,7 +467,13 @@ def test_api_scenes_registry(client):
 def test_dino3d_scene_filter(client):
     everything = client.get("/api/dino3d").json()
     cretaceous = client.get("/api/dino3d?scene=cretaceous").json()
-    assert len(everything) == len(cretaceous) > 0    # dnes je vse z kridy
+    aquarium = client.get("/api/dino3d?scene=aquarium").json()
+    # filtr musi katalog opravdu rozdelit, ne vratit vsechno
+    assert 0 < len(cretaceous) < len(everything)
+    assert 0 < len(aquarium) < len(everything)
+    assert len(cretaceous) + len(aquarium) == len(everything)
+    assert all(m["scene"] == "cretaceous" for m in cretaceous)
+    assert all(m["scene"] == "aquarium" and m["motion"] == "swim" for m in aquarium)
     assert client.get("/api/dino3d?scene=neexistuje").json() == []
 
 

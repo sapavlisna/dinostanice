@@ -205,5 +205,129 @@
   },
   "pose": "Flying",
   "size": 2.66
+ },
+ {
+  "key": "clownfish",
+  "label": "Klaunská rybka",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/clownfish.glb",
+  "texture": "/models3d/clownfish_texture.png",
+  "clips": {
+   "Attack": "Fish_Armature|Attack",
+   "Death": "Fish_Armature|Death",
+   "Water": "Fish_Armature|Out_Of_Water",
+   "Fast": "Fish_Armature|Swimming_Fast",
+   "Impulse": "Fish_Armature|Swimming_Impulse",
+   "Normal": "Fish_Armature|Swimming_Normal"
+  },
+  "clipFor": {
+   "move": "Normal",
+   "fast": "Fast"
+  },
+  "pose": "Fish_Armature|Swimming_Normal",
+  "size": 4.94
+ },
+ {
+  "key": "shark",
+  "label": "Žralok",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/shark.glb",
+  "texture": "/models3d/shark_texture.png",
+  "clips": {
+   "Bite": "SharkArmature|SharkArmature|SharkArmature|Swim_Bite|SharkArmature|Swim_Bite",
+   "Fast": "SharkArmature|SharkArmature|SharkArmature|Swim_Fast|SharkArmature|Swim_Fast",
+   "Swim": "SharkArmature|SharkArmature|SharkArmature|Swim|SharkArmature|Swim"
+  },
+  "clipFor": {
+   "move": "Swim",
+   "fast": "Fast"
+  },
+  "pose": "SharkArmature|SharkArmature|SharkArmature|Swim|SharkArmature|Swim",
+  "size": 5.43
+ },
+ {
+  "key": "puffer",
+  "label": "Čtverzubec",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/puffer.glb",
+  "texture": "/models3d/puffer_texture.png",
+  "clips": {
+   "Attack": "Fish_Armature|Attack",
+   "Death": "Fish_Armature|Death",
+   "Water": "Fish_Armature|Out_Of_Water",
+   "Fast": "Fish_Armature|Swimming_Fast",
+   "Impulse": "Fish_Armature|Swimming_Impulse",
+   "Normal": "Fish_Armature|Swimming_Normal"
+  },
+  "clipFor": {
+   "move": "Normal",
+   "fast": "Fast"
+  },
+  "pose": "Fish_Armature|Swimming_Normal",
+  "size": 3.98
+ },
+ {
+  "key": "swordfish",
+  "label": "Mečoun",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/swordfish.glb",
+  "texture": "/models3d/swordfish_texture.png",
+  "clips": {
+   "Attack": "Fish_Armature|Attack",
+   "Death": "Fish_Armature|Death",
+   "Water": "Fish_Armature|Out_Of_Water",
+   "Fast": "Fish_Armature|Swimming_Fast",
+   "Impulse": "Fish_Armature|Swimming_Impulse",
+   "Normal": "Fish_Armature|Swimming_Normal"
+  },
+  "clipFor": {
+   "move": "Normal",
+   "fast": "Fast"
+  },
+  "pose": "Fish_Armature|Swimming_Normal",
+  "size": 6.28
+ },
+ {
+  "key": "lionfish",
+  "label": "Perutýn",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/lionfish.glb",
+  "texture": "/models3d/lionfish_texture.png",
+  "clips": {
+   "Attack": "Fish_Armature|Attack",
+   "Death": "Fish_Armature|Death",
+   "Water": "Fish_Armature|Out_Of_Water",
+   "Fast": "Fish_Armature|Swimming_Fast",
+   "Impulse": "Fish_Armature|Swimming_Impulse",
+   "Normal": "Fish_Armature|Swimming_Normal"
+  },
+  "clipFor": {
+   "move": "Normal",
+   "fast": "Fast"
+  },
+  "pose": "Fish_Armature|Swimming_Normal",
+  "size": 6.36
+ },
+ {
+  "key": "manta",
+  "label": "Manta",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/manta.glb",
+  "texture": "/models3d/manta_texture.png",
+  "clips": {
+   "Swim": "Armature|Swim"
+  },
+  "clipFor": {
+   "move": "Swim",
+   "fast": "Swim"
+  },
+  "pose": "Armature|Swim",
+  "size": 11.71
  }
 ]

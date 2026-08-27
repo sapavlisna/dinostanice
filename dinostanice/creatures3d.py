@@ -6,7 +6,8 @@ se dopocitavaji, ladi se jen vyjimky. Klipy se hledaji podle holeho jmena
 
 Indexy znacek zacinaji na osmi: prvnich osm patrilo prvni, zrusene vetvi
 projektu. Zustavaji volne pro dalsi tvory a tyhle se neprecisluji — listy
-jsou vytistene a index je na nich natvrdo v rohovych znackach.
+jsou vytistene a index je na nich natvrdo v rohovych znackach. Ryby proto
+dostaly 16-21, ne recyklovanou nulu.
 """
 from dataclasses import dataclass, field
 
@@ -19,7 +20,10 @@ from dataclasses import dataclass, field
 CLIP_FOR_DEFAULT = {
     "walk": {"move": "Walk", "stand": "Idle", "jump": "Jump", "lie": "Death"},
     "fly": {"move": "Flying"},
-    "swim": {"move": "Swim"},
+    # Plavci: `move` je klidne plavani, `fast` sprint. Kdo `fast` nema (manta
+    # nese jediny klip), prepise si ho zpatky na `move` — scena tak nemusi
+    # hadat, jestli role existuje.
+    "swim": {"move": "Swim", "fast": "Fast"},
     "sail": {"move": "Sail"},
 }
 
@@ -47,6 +51,9 @@ class Model3D:
     axes: tuple = (2, 1, 0)
     flip: tuple = (1, -1, 1)
     eye_bias: dict = field(default_factory=dict)
+    # Joint, z jehoz obalky se odvodi oko. Dinosauri a drak maji "Head", rybi
+    # armatura Quaterniova packu jen "Main1".."Main6" (Main1 je hlavova).
+    eye_joint: str = "Head"
     # Kandidati na pozu predlohy. Zustava u chuze zamerne: pusteni vsech animaci
     # do vyberu sice list vyplni lip, ale Attack tvora prekroutí — apatosaurovi
     # premaluje ocas pres telo a stegosaurovi schova plotenky.
@@ -94,6 +101,55 @@ CATALOGUE = [
     Model3D("pteranodon3d", "Pteranodon", "pteranodon.glb", 15, motion="fly",
             axes=(0, 2, 1), flip=(1, -1, -1), poses=("Flying",),
             eye_bias={"centre_x": True, "down": 0.55}),
+
+    # --- akvarium -----------------------------------------------------------
+    # Klice jsou bez suffixu "3d": ten u dinosauru odlisoval 3D vetev od
+    # zrusene 2D (kresba -> ohybany pas), ktera uz neexistuje, takze u novych
+    # tvoru je zbytecny.
+    #
+    # Indexy 16-21, ne 0-7. Prvnich osm je sice volnych, ale doma jeste lezi
+    # vytistene listy zrusene vetve s temi indexy v rohovych znackach — kdyby
+    # se recyklovaly, poznal by se stary list jako ryba.
+    #
+    # Ryby se kresli bokorysem: rybi profil je nejcitelnejsi silueta a ma
+    # velke plochy k vybarveni. Vyjimka je manta (viz jeji zaznam).
+    # `stride_rate` zustava None zamerne: je to tempo chuze v delkach tela za
+    # sekundu, odvozene z kroku. Plavec zemi nedotyka, takze u nej neni z ceho
+    # tempo pocitat — rychlost i frekvenci vlneni urcuje scena.
+    #
+    # Rybi armatura Quaterniova packu ma jointy Main1..Main6 (Main1 = hlava),
+    # zadny "Head"; zralok a manta "Head" maji.
+    #
+    # Ctyri druhy z rybi armatury maji oko jako vlastni material, takze uz ho
+    # do kresby vnasi vnitrni linka — velky krouzek na hlave. Tistene oko je
+    # jim proto zornicka a `eye_bias` ho posadi do stredu toho krouzku;
+    # vychozich forward=0,68 / down=0,34 mirilo mimo (rybi Main1 je cela
+    # predni pulka tela, ne hlava, takze zlomky jeji obalky vychazi jinam).
+    Model3D("clownfish", "Klaunská rybka", "clownfish.glb", 16, motion="swim",
+            scene="aquarium", poses=("Swimming_Normal",), eye_joint="Main1",
+            eye_bias={"forward": 0.74, "down": 0.59}, clip_for={"move": "Normal"}),
+    Model3D("shark", "Žralok", "shark.glb", 17, motion="swim",
+            scene="aquarium", poses=("Swim",)),
+    Model3D("puffer", "Čtverzubec", "puffer.glb", 18, motion="swim",
+            scene="aquarium", poses=("Swimming_Normal",), eye_joint="Main1",
+            eye_bias={"forward": 0.72, "down": 0.31}, clip_for={"move": "Normal"}),
+    Model3D("swordfish", "Mečoun", "swordfish.glb", 19, motion="swim",
+            scene="aquarium", poses=("Swimming_Normal",), eye_joint="Main1",
+            eye_bias={"forward": 0.20, "down": 0.38}, clip_for={"move": "Normal"}),
+    Model3D("lionfish", "Perutýn", "lionfish.glb", 20, motion="swim",
+            scene="aquarium", poses=("Swimming_Normal",), eye_joint="Main1",
+            eye_bias={"forward": 0.41, "down": 0.73}, clip_for={"move": "Normal"}),
+    # Manta se kresli shora jako pteranodon: z boku je to 1 mm tenka placka,
+    # ze ktere neni co vybarvovat (fill 0,05 proti 0,21 shora). Rozpeti kridel
+    # lezi po svisle ose listu, telo i bicikovity ocas po vodorovne. Hloubkove
+    # znamenko -1 obraci pohled na hrbet (material "Top"), ne na bile bricho.
+    # Oko nesedi na ose soumernosti jako u pteranodona, ale u kraje hlavy —
+    # tam ho manta doopravdy ma, po strane za rohatym hlavovym lalokem. Ma
+    # jediny klip Swim, takze `fast` padne zpatky na nej.
+    Model3D("manta", "Manta", "manta.glb", 21, motion="swim",
+            scene="aquarium", axes=(2, 0, 1), flip=(1, -1, -1),
+            eye_bias={"forward": 0.30, "down": 0.18},
+            poses=("Swim",), clip_for={"fast": "Swim"}),
 ]
 
 BY_KEY = {m.key: m for m in CATALOGUE}
