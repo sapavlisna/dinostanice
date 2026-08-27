@@ -65,10 +65,13 @@ def save_photo(catch_id, data):
     return os.path.basename(path)
 
 
+DEFAULT_SESSION = "tv"
+
+
 def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
-               markers=0, photo=None, kind="rig"):
+               markers=0, photo=None, kind="rig", session=DEFAULT_SESSION):
     """`kind` rozlisuje, co v adresari lezi: ohybany 2D rig, nebo textura
-    k hotovemu 3D modelu."""
+    k hotovemu 3D modelu. `session` rika, ktere televizi ulovek patri."""
     meta = {
         "id": catch_id,
         "url": f"/catch/{catch_id}/",
@@ -81,6 +84,7 @@ def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
         "markers": int(markers),
         "photo": photo,
         "kind": kind,
+        "session": session,
     }
     with open(os.path.join(catch_dir(catch_id), "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)
@@ -95,8 +99,11 @@ def read_meta(catch_id):
         return json.load(f)
 
 
-def list_catches():
-    """All finished catches, oldest first. Half-written directories are skipped."""
+def list_catches(session=None):
+    """All finished catches, oldest first. Half-written directories are skipped.
+
+    `session` filtruje ulovky jedne televize; starsi meta bez klice `session`
+    patri defaultni. None = vsechno (interni pouziti, uklid)."""
     ensure_root()
     out = []
     for entry in os.scandir(CATCH_ROOT):
@@ -111,8 +118,11 @@ def list_catches():
             meta = read_meta(entry.name)
         except (OSError, json.JSONDecodeError):
             continue
-        if meta:
-            out.append(meta)
+        if not meta:
+            continue
+        if session is not None and meta.get("session", DEFAULT_SESSION) != session:
+            continue
+        out.append(meta)
     out.sort(key=lambda m: (m.get("created", ""), m["id"]))
     return out
 

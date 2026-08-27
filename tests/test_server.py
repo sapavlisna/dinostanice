@@ -32,6 +32,23 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(store, "CATCH_ROOT", str(catch_root))
     monkeypatch.setattr(store, "REJECTED_ROOT", str(rejected_root))
     monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
+    server.hub.sessions.clear()   # sessions z minulych testu nesmi prosakovat
+    with TestClient(server.app) as c:
+        yield c
+
+
+@pytest.fixture
+def fast_idle_client(monkeypatch, tmp_path):
+    """Jako client, ale s milisekundovymi casy uspavani — konstanty se musi
+    zkratit PRED startem TestClienta, background task cte IDLE_TICK_S az
+    v behu smycky."""
+    monkeypatch.setattr(store, "CATCH_ROOT", str(tmp_path / "catch"))
+    monkeypatch.setattr(store, "REJECTED_ROOT", str(tmp_path / "rejected"))
+    monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
+    monkeypatch.setattr(server, "IDLE_WARN_S", 0.15)
+    monkeypatch.setattr(server, "IDLE_SLEEP_S", 0.5)
+    monkeypatch.setattr(server, "IDLE_TICK_S", 0.03)
+    server.hub.sessions.clear()
     with TestClient(server.app) as c:
         yield c
 
@@ -95,10 +112,13 @@ def png_with_header(w, h):
             + chunk(b"IDAT", b"") + chunk(b"IEND", b""))
 
 
-def upload(client, data, filename="photo.jpg", name="Test"):
+def upload(client, data, filename="photo.jpg", name="Test", s=None):
+    form = {"name": name}
+    if s is not None:
+        form["s"] = s
     return client.post("/api/upload",
                        files={"photo": (filename, data, "image/jpeg")},
-                       data={"name": name})
+                       data=form)
 
 
 def test_upload_model_catch(client):
@@ -292,3 +312,168 @@ def test_rezim_page(client):
     r = client.get("/rezim")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
+
+
+# --- Sessions (bod 6) ----------------------------------------------------
+
+def test_sessions_rigs_isolated(client):
+    body = upload(client, model_photo_jpg(), s="aaa").json()
+    assert body["ok"] is True
+    assert body["session"] == "aaa"
+
+    ids = lambda r: [m["id"] for m in r.json()]
+    assert ids(client.get("/api/rigs?s=aaa")) == [body["id"]]
+    assert ids(client.get("/api/rigs?s=bbb")) == []
+    # default "tv" cizi ulovek nevidi — a naopak
+    assert ids(client.get("/api/rigs")) == []
+
+    tv = upload(client, model_photo_jpg()).json()
+    assert tv["session"] == "tv"
+    assert ids(client.get("/api/rigs")) == [tv["id"]]
+    assert ids(client.get("/api/rigs?s=aaa")) == [body["id"]]
+
+
+def test_old_meta_without_session_counts_as_default(client):
+    catch_id = upload(client, model_photo_jpg()).json()["id"]
+    path = server.os.path.join(store.catch_dir(catch_id), "meta.json")
+    with open(path, encoding="utf-8") as f:
+        meta = json.load(f)
+    del meta["session"]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+    assert [m["id"] for m in client.get("/api/rigs").json()] == [catch_id]
+    assert client.get("/api/rigs?s=aaa").json() == []
+
+
+def test_sessions_ws_routing(client):
+    with client.websocket_connect("/ws?s=aaa") as ws_a, \
+         client.websocket_connect("/ws?s=bbb") as ws_b:
+        id_a = upload(client, model_photo_jpg(), s="aaa").json()["id"]
+        id_b = upload(client, model_photo_jpg(), s="bbb").json()["id"]
+        # kazdy klient dostane JEN svuj prirustek: prvni zprava B je jeho
+        # vlastni add, nikoli add z A (ktery vznikl driv)
+        msg_a = ws_a.receive_json()
+        assert (msg_a["type"], msg_a["id"]) == ("add", id_a)
+        msg_b = ws_b.receive_json()
+        assert (msg_b["type"], msg_b["id"]) == ("add", id_b)
+
+        # remove jde do session ulovku, ne vsem
+        assert client.delete(f"/api/rigs/{id_b}").status_code == 200
+        assert ws_b.receive_json() == {"type": "remove", "id": id_b}
+        assert client.delete(f"/api/rigs/{id_a}").status_code == 200
+        assert ws_a.receive_json() == {"type": "remove", "id": id_a}
+
+
+def test_qr_carries_session(client):
+    r = client.get("/api/qr?s=abc")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert "s=abc" in r.headers["X-Upload-Url"]
+    # bez parametru zustava hole /pridat — QR domaci televize se nemeni
+    assert "s=" not in client.get("/api/qr").headers["X-Upload-Url"]
+    # neplatne id spadne do defaultu, zadna chyba
+    assert "s=" not in client.get("/api/qr?s=..%2F..").headers["X-Upload-Url"]
+
+
+def test_reset_scoped_to_session(client):
+    id_a = upload(client, model_photo_jpg(), s="aaa").json()["id"]
+    id_b = upload(client, model_photo_jpg(), s="bbb").json()["id"]
+
+    with client.websocket_connect("/ws?s=aaa") as ws_a:
+        r = client.post("/api/scene/reset?s=aaa")
+        assert r.json() == {"ok": True, "deleted": 1}
+        assert ws_a.receive_json() == {"type": "cleared"}
+
+    assert client.get("/api/rigs?s=aaa").json() == []
+    assert [m["id"] for m in client.get("/api/rigs?s=bbb").json()] == [id_b]
+    assert server.os.path.isdir(store.catch_dir(id_b))
+    assert not server.os.path.isdir(store.catch_dir(id_a))
+
+
+def test_session_touch_and_state(client):
+    # touch session zalozi a nastavi last_seen
+    r = client.post("/api/session/touch", json={"s": "abc"})
+    assert r.json() == {"ok": True, "s": "abc", "sleeping": False}
+    assert "abc" in server.hub.sessions
+    before = server.hub.sessions["abc"].last_seen
+
+    state = client.get("/api/session/abc").json()
+    assert state["ok"] is True and state["sleeping"] is False
+    assert state["idle_s"] < 5
+
+    server.hub.sessions["abc"].last_seen -= 100
+    client.post("/api/session/touch", json={"s": "abc"})
+    assert server.hub.sessions["abc"].last_seen >= before
+
+    assert client.get("/api/session/neni").status_code == 404
+
+
+def test_pridat_with_session_touches(client):
+    assert "kid7" not in server.hub.sessions
+    assert client.get("/pridat?s=kid7").status_code == 200
+    assert "kid7" in server.hub.sessions
+    # bez parametru se nic nezaklada (default nikdy nespi)
+    n = len(server.hub.sessions)
+    client.get("/pridat")
+    assert len(server.hub.sessions) == n
+
+
+def test_idle_tick_logic(monkeypatch):
+    """Deterministicka cast hlidace: prah varovani/uspani, vyjimka pro default
+    "tv", zahazovani opustenych sessions z pameti. Cerstvy Hub, zadny server."""
+    import asyncio
+
+    monkeypatch.setattr(server, "hub", server.Hub())
+    now = 1_000_000.0
+    hub = server.hub
+    # hluboko za prahem uspani, ale pod TTL — uklid pameti je jina vec
+    hub.session("tv").last_seen = now - (server.SESSION_TTL_S - 10)
+    hub.session("kid").last_seen = now - server.IDLE_SLEEP_S - 1
+    hub.session("fresh").last_seen = now - 1
+    hub.session("gone").last_seen = now - server.SESSION_TTL_S - 1
+
+    async def run():
+        # jeden bh smycky: tick uspava/zahazuje, touch pak budi (v jednom
+        # event loopu — asyncio.Lock hubu nesmi mezi loopy)
+        await server.idle_tick(now=now)
+        assert "gone" not in hub.sessions      # opustena session zmizela z pameti
+        assert hub.sessions["kid"].sleeping is True
+        assert hub.sessions["fresh"].sleeping is False
+        # default "tv" se NEUSPAVA, at je necinna jakkoli dlouho
+        assert hub.sessions["tv"].sleeping is False
+        await server.touch_session("kid")      # touch spici session probudi
+        assert hub.sessions["kid"].sleeping is False
+
+    asyncio.run(run())
+
+
+def test_idle_sleep_wake_over_ws(fast_idle_client):
+    """Cely obeh pres bezici background task: idle odpocet -> sleep -> touch
+    -> wake. Casy jsou milisekundove (fixture je zkracuje pred startem)."""
+    client = fast_idle_client
+    with client.websocket_connect("/ws?s=nap1") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "idle"
+        assert 0 <= msg["seconds_left"] <= server.IDLE_SLEEP_S
+
+        # idle chodi kazdy tick, nez prijde sleep
+        for _ in range(200):
+            msg = ws.receive_json()
+            if msg["type"] == "sleep":
+                break
+            assert msg["type"] == "idle"
+        assert msg["type"] == "sleep"
+        assert client.get("/api/session/nap1").json()["sleeping"] is True
+
+        r = client.post("/api/session/touch", json={"s": "nap1"})
+        assert r.json()["sleeping"] is False
+        msg = ws.receive_json()
+        assert msg == {"type": "wake"}
+        assert client.get("/api/session/nap1").json()["sleeping"] is False
+
+
+def test_sleeping_session_greets_new_client_with_sleep(client):
+    server.hub.session("zzz").sleeping = True
+    with client.websocket_connect("/ws?s=zzz") as ws:
+        assert ws.receive_json() == {"type": "sleep"}

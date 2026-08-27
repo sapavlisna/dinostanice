@@ -106,6 +106,15 @@
   .roster-confirm-text { margin: 0 0 12px; font-size: 15px; }
   .roster-empty { color: var(--muted); font-size: 15px; padding: 12px 6px; }
   .action.danger { background: var(--bad); color: #2a0e0e; }
+
+  /* decentni paticka: drzi stanici vzhuru (touch), kdyz se blizi uspani */
+  .stay-foot { margin-top: 26px; text-align: center; }
+  .stay-foot button {
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    border-radius: 999px; padding: 10px 18px; font-size: 15px; cursor: pointer;
+  }
+  .stay-foot button:active { background: var(--card); }
+  #stayNote { display: block; margin-top: 8px; color: var(--ok); font-size: 14px; }
 </style>
 </head>
 <body>
@@ -139,11 +148,29 @@
 
 <div id="status" class="status"></div>
 
+<div class="stay-foot">
+  <button id="stay" type="button">Ještě chvíli ⏰</button>
+  <span id="stayNote"></span>
+</div>
+
 <script>
 "use strict";
 
 const MAX_SIDE = 2000;
 const QUALITY = 0.85;
+
+// Session (bod 6): QR televize vede na /pridat?s=<id>; bez parametru je to
+// domaci default "tv". Otevreni stranky je aktivita (budi spici stanici).
+const SID = new URLSearchParams(location.search).get("s") || "tv";
+
+function touchSession() {
+  return fetch("/api/session/touch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ s: SID }),
+  }).catch(() => {});
+}
+touchSession();
 
 const fileInput = document.getElementById("file");
 const sheet = document.getElementById("sheet");
@@ -241,6 +268,7 @@ sendBtn.addEventListener("click", async () => {
   const body = new FormData();
   body.append("photo", pending, "photo.jpg");
   body.append("name", nameInput.value.trim());
+  body.append("s", SID);
 
   let res, data;
   try {
@@ -355,7 +383,7 @@ function rosterAskDelete(row, r) {
 async function loadRoster() {
   let rigs = [];
   try {
-    const data = await (await fetch("/api/rigs")).json();
+    const data = await (await fetch("/api/rigs?s=" + encodeURIComponent(SID))).json();
     rigs = data.rigs || data;
   } catch (e) { /* seznam prostě zůstane prázdný */ }
   rosterList.replaceChildren();
@@ -370,6 +398,17 @@ async function loadRoster() {
 }
 
 loadRoster();
+
+// „Ještě chvíli" (bod 6): explicitni touch — stanice nezhasne, i kdyz se
+// zrovna nic nenahrava. Upload sam je touch, tam neni potreba nic.
+const stayBtn = document.getElementById("stay");
+const stayNote = document.getElementById("stayNote");
+stayBtn.addEventListener("click", async () => {
+  stayBtn.disabled = true;
+  await touchSession();
+  stayNote.textContent = "Stanice zůstane vzhůru. 🌞";
+  setTimeout(() => { stayNote.textContent = ""; stayBtn.disabled = false; }, 4000);
+});
 </script>
 </body>
 </html>

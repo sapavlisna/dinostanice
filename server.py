@@ -9,8 +9,10 @@ import io
 import json
 import logging
 import os
+import re
 import socket
 import time
+from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
@@ -45,6 +47,22 @@ MAX_SIDE = 4000          # detection gains nothing above this, but the warp cost
 MIN_SIDE = 400
 TRIM_MM = 0.6            # pull the cut inside the printed outline so the black line is gone
 
+# --- Sessions (bod 6) ---------------------------------------------------
+# Session = jedna televize se svym QR, svymi ulovky a svym broadcastem.
+# Default session "tv" je dnesni chovani jedne televize: `/` bez `?s=`,
+# upload bez `s`, stara meta.json bez klice `session` — vsechno patri sem.
+DEFAULT_SESSION = store.DEFAULT_SESSION
+SESSION_RE = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
+IDLE_SLEEP_S = 15 * 60   # bez skenu QR / uploadu takhle dlouho scena usne
+IDLE_WARN_S = 13 * 60    # 2 minuty pred usnutim bezi na TV odpocet
+IDLE_TICK_S = 10         # jak casto background task sessions kontroluje
+SESSION_TTL_S = 2 * 3600  # session bez klientu a aktivity se zahodi z pameti
+# Default session "tv" doma bezi porad — uspavat ji po 15 minutach bez uploadu
+# by otravovalo. Uspavani proto plati jen pro explicitne zalozene sessions
+# (`?s=` jine nez "tv"). Kdyby mela nekdy usinat i domaci TV, staci ji odtud
+# vyndat.
+IDLE_EXEMPT = {DEFAULT_SESSION}
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("dinostanice")
@@ -68,24 +86,52 @@ app.mount("/models3d", StaticFiles(directory=MODELS3D_DIR), name="models3d")
 app.mount("/templates", StaticFiles(directory=TEMPLATES_DIR), name="templates")
 
 
+@dataclass
+class Session:
+    id: str
+    clients: set = field(default_factory=set)
+    last_seen: float = field(default_factory=time.monotonic)
+    sleeping: bool = False
+
+
+def clean_session(raw):
+    """Neplatne nebo prazdne id spadne do defaultni session — zadna chyba,
+    exponat obsluhuji deti."""
+    raw = (raw or "").strip()
+    return raw if SESSION_RE.match(raw) else DEFAULT_SESSION
+
+
 class Hub:
+    """Klienti a broadcast per session. Neznama session tise vznika pri prvnim
+    dotyku (WS connect, touch, upload) — tak prezije i restart serveru:
+    reconnect sceny si ji znovu zalozi."""
+
     def __init__(self):
-        self.clients = set()
+        self.sessions: dict[str, Session] = {}
         self.lock = asyncio.Lock()
 
-    async def add(self, ws):
-        async with self.lock:
-            self.clients.add(ws)
+    def session(self, sid):
+        s = self.sessions.get(sid)
+        if s is None:
+            s = self.sessions[sid] = Session(sid)
+        return s
 
-    async def drop(self, ws):
+    async def add(self, sid, ws):
         async with self.lock:
-            self.clients.discard(ws)
+            self.session(sid).clients.add(ws)
 
-    async def broadcast(self, message):
+    async def drop(self, sid, ws):
+        async with self.lock:
+            s = self.sessions.get(sid)
+            if s:
+                s.clients.discard(ws)
+
+    async def broadcast(self, sid, message):
         # Paralelne a s timeoutem: televize v suspendu drzi half-open TCP a
         # seriove `await send_json` by povesilo odpoved na upload.
         async with self.lock:
-            targets = list(self.clients)
+            s = self.sessions.get(sid)
+            targets = list(s.clients) if s else []
         if not targets:
             return
         results = await asyncio.gather(
@@ -95,10 +141,69 @@ class Hub:
             if isinstance(res, BaseException):
                 log.warning("broadcast klientovi selhal (%s), odpojuji ho",
                             type(res).__name__)
-                await self.drop(ws)
+                await self.drop(sid, ws)
 
 
 hub = Hub()
+
+
+async def touch_session(sid):
+    """Aktivita v session: sken QR (otevreni /pridat), uspesny upload, nebo
+    explicitni touch z mobilu. Spici scenu probudi."""
+    s = hub.session(sid)
+    s.last_seen = time.monotonic()
+    if s.sleeping:
+        s.sleeping = False
+        await hub.broadcast(sid, {"type": "wake"})
+        log.info("session %s probuzena", sid)
+    return s
+
+
+async def idle_tick(now=None):
+    """Jeden pruchod hlidace necinnosti; vyclenene z idle_loop() kvuli testum.
+
+    Uspani NENI mazani: ulovky na disku zustavaji netknute, scena jen ztmavne
+    a ceka na sken QR. Sessions bez klientu a bez aktivity > SESSION_TTL_S se
+    zahodi jen z pameti."""
+    now = time.monotonic() if now is None else now
+    for sid, s in list(hub.sessions.items()):
+        idle = now - s.last_seen
+        if not s.clients and idle > SESSION_TTL_S:
+            del hub.sessions[sid]
+            log.info("session %s zahozena z pameti (bez klientu %d min)",
+                     sid, int(idle / 60))
+            continue
+        if sid in IDLE_EXEMPT or s.sleeping:
+            continue
+        if idle >= IDLE_SLEEP_S:
+            s.sleeping = True
+            await hub.broadcast(sid, {"type": "sleep"})
+            log.info("session %s usnula (bez aktivity %d min)", sid, int(idle / 60))
+        elif idle >= IDLE_WARN_S:
+            # posila se kazdy tick — odpocet na TV se prubezne srovnava se serverem
+            await hub.broadcast(
+                sid, {"type": "idle", "seconds_left": int(IDLE_SLEEP_S - idle)})
+
+
+async def idle_loop():
+    while True:
+        await asyncio.sleep(IDLE_TICK_S)
+        try:
+            await idle_tick()
+        except Exception:
+            log.exception("hlidac necinnosti selhal, jede dal")
+
+
+@app.on_event("startup")
+async def _start_idle_watch():
+    app.state.idle_task = asyncio.create_task(idle_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_idle_watch():
+    task = getattr(app.state, "idle_task", None)
+    if task:
+        task.cancel()
 
 
 def _read_state():
@@ -205,7 +310,7 @@ def clean_name(name):
     return name[:40]
 
 
-def _process_model_sheet(spec, warped, markers, data, name):
+def _process_model_sheet(spec, warped, markers, data, name, session):
     """List tvora postaveneho z 3D modelu: staci prenest barvy, rig uz existuje."""
     shape = modelsheet.load(os.path.join(SHAPES3D_DIR, f"{spec.key}.json"))
     coverage = capture3d.ink_coverage(warped, shape)
@@ -216,7 +321,8 @@ def _process_model_sheet(spec, warped, markers, data, name):
         photo = store.save_photo(catch_id, data)
         return store.write_meta(catch_id, creature=spec.key, label=spec.label,
                                 motion=spec.motion, name=name, coverage=coverage,
-                                markers=markers, photo=photo, kind="model")
+                                markers=markers, photo=photo, kind="model",
+                                session=session)
     except Exception:
         store.delete_catch(catch_id)
         raise
@@ -237,7 +343,7 @@ def _capture_advice(bgr, err):
     return "; ".join(advice)
 
 
-def process(data, name):
+def process(data, name, session=DEFAULT_SESSION):
     """The whole pipeline. Blocking — never call this straight from the event loop."""
     started = time.perf_counter()
     bgr = decode_photo(data)
@@ -249,7 +355,7 @@ def process(data, name):
 
     spec = BY_MARKER3D.get(creature_index)
     if spec is not None:
-        meta = _process_model_sheet(spec, warped, markers, data, name)
+        meta = _process_model_sheet(spec, warped, markers, data, name, session)
         meta["took_ms"] = int((time.perf_counter() - started) * 1000)
         return meta
 
@@ -263,7 +369,8 @@ def process(data, name):
         photo = store.save_photo(catch_id, data)
         meta = store.write_meta(catch_id, creature=creature.key, label=creature.label,
                                 motion=creature.motion, name=name, coverage=coverage,
-                                markers=markers, photo=photo, kind="rig")
+                                markers=markers, photo=photo, kind="rig",
+                                session=session)
     except Exception:
         store.delete_catch(catch_id)
         raise
@@ -291,7 +398,11 @@ def scene_page():
 
 
 @app.get("/pridat")
-def upload_page():
+async def upload_page(s: str = ""):
+    # sken QR = aktivita v session (a budicek pro spici scenu); bez `s` je to
+    # domaci default, ktery neusina, tak neni co budit
+    if s:
+        await touch_session(clean_session(s))
     return _page("upload.html", "Stránka pro přidání zatím není nasazená.")
 
 
@@ -349,7 +460,9 @@ def _keep_rejected(data, reason):
 
 
 @app.post("/api/upload")
-async def api_upload(photo: UploadFile = File(...), name: str = Form("")):
+async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
+                     s: str = Form("")):
+    sid = clean_session(s)
     data = await photo.read(MAX_UPLOAD + 1)
     if not data:
         return JSONResponse({"ok": False, "error": "fotka nedorazila, zkus to znovu"},
@@ -360,7 +473,7 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form("")):
 
     try:
         async with PROCESS_SEM:
-            meta = await run_in_threadpool(process, data, clean_name(name))
+            meta = await run_in_threadpool(process, data, clean_name(name), sid)
     except CaptureError as e:
         log.warning("upload odmítnut: %s", e)
         _keep_rejected(data, str(e))
@@ -372,24 +485,28 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form("")):
             {"ok": False, "error": f"zpracování fotky selhalo ({type(e).__name__})"},
             status_code=500)
 
-    log.info("úlovek %s: %s kind=%s markers=%s coverage=%.3f took_ms=%s",
-             meta["id"], meta["creature"], meta.get("kind"), meta.get("markers"),
-             meta.get("coverage", 0.0), meta.get("took_ms"))
-    await hub.broadcast({"type": "add", "url": meta["url"], "id": meta["id"],
-                         "label": meta["label"], "name": meta["name"],
-                         "creature": meta["creature"],
-                         "kind": meta.get("kind", "rig")})
+    log.info("úlovek %s: %s kind=%s session=%s markers=%s coverage=%.3f took_ms=%s",
+             meta["id"], meta["creature"], meta.get("kind"), sid,
+             meta.get("markers"), meta.get("coverage", 0.0), meta.get("took_ms"))
+    await touch_session(sid)     # uspesny upload = aktivita (a budicek)
+    await hub.broadcast(sid, {"type": "add", "url": meta["url"], "id": meta["id"],
+                              "label": meta["label"], "name": meta["name"],
+                              "creature": meta["creature"],
+                              "kind": meta.get("kind", "rig")})
     return {"ok": True, **meta}
 
 
 @app.get("/api/rigs")
-def api_rigs():
-    return store.list_catches()
+def api_rigs(s: str = ""):
+    # bez parametru default session — stavajici klienti (scena, /pridat,
+    # /rezim) tak funguji beze zmeny chovani
+    return store.list_catches(session=clean_session(s))
 
 
 @app.delete("/api/rigs/{catch_id}")
 async def api_delete(catch_id: str):
     try:
+        meta = store.read_meta(catch_id)
         removed = store.delete_catch(catch_id)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
@@ -401,8 +518,9 @@ async def api_delete(catch_id: str):
     if not removed:
         return JSONResponse({"ok": False, "error": "takový úlovek tu není"},
                             status_code=404)
-    log.info("úlovek %s smazán", catch_id)
-    await hub.broadcast({"type": "remove", "id": catch_id})
+    sid = clean_session((meta or {}).get("session"))
+    log.info("úlovek %s smazán (session %s)", catch_id, sid)
+    await hub.broadcast(sid, {"type": "remove", "id": catch_id})
     leftover = await run_in_threadpool(store.purge_deleted)
     if leftover:
         log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
@@ -416,36 +534,64 @@ def api_scene_settings():
 
 
 @app.post("/api/scene/settings")
-async def api_scene_settings_set(request: Request):
+async def api_scene_settings_set(request: Request, s: str = ""):
+    # nastaveni (ambient) je ulozene globalne, ale zprava jde jen scene te
+    # session, ktera si prepina — cizi televize nema proc reagovat
+    sid = clean_session(s)
     body = await request.json()
     state = _read_state()
     state["ambient"] = bool(body.get("ambient", state["ambient"]))
     _write_state(state)
     log.info("nastavení scény: ambient=%s", state["ambient"])
-    await hub.broadcast({"type": "settings", "ambient": state["ambient"]})
+    await hub.broadcast(sid, {"type": "settings", "ambient": state["ambient"]})
     return state
 
 
 @app.post("/api/scene/reset")
-async def api_scene_reset():
-    """Vyprázdní stanici: smaže všechny úlovky (ambientní doplňky z katalogu
-    v `data/catch` nejsou, tak se jich to netýká) a pošle jedinou zprávu
-    scéně, ať si nespustí topUp() N-krát za sebou."""
+async def api_scene_reset(s: str = ""):
+    """Vyprázdní stanici: smaže úlovky JEN dané session (ambientní doplňky
+    z katalogu v `data/catch` nejsou, tak se jich to netýká) a pošle jedinou
+    zprávu scéně, ať si nespustí topUp() N-krát za sebou."""
+    sid = clean_session(s)
     deleted = 0
-    for meta in store.list_catches():
+    for meta in store.list_catches(session=sid):
         if store.delete_catch(meta["id"]):
             deleted += 1
     leftover = await run_in_threadpool(store.purge_deleted)
     if leftover:
         log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
                     leftover)
-    log.info("stanice vyprázdněna: smazáno %d úlovků", deleted)
-    await hub.broadcast({"type": "cleared"})
+    log.info("stanice %s vyprázdněna: smazáno %d úlovků", sid, deleted)
+    await hub.broadcast(sid, {"type": "cleared"})
     return {"ok": True, "deleted": deleted}
 
 
+@app.post("/api/session/touch")
+async def api_session_touch(request: Request):
+    """Explicitni „ještě chvíli" z mobilu (a budicek pro spici scenu)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    sid = clean_session(body.get("s") if isinstance(body, dict) else "")
+    sess = await touch_session(sid)
+    return {"ok": True, "s": sess.id, "sleeping": sess.sleeping}
+
+
+@app.get("/api/session/{sid}")
+def api_session_state(sid: str):
+    """Stav session pro ladeni a testy; nic nevytvari ani neprodluzuje."""
+    sess = hub.sessions.get(clean_session(sid))
+    if sess is None:
+        return JSONResponse({"ok": False, "error": "session neexistuje"},
+                            status_code=404)
+    return {"ok": True, "id": sess.id, "sleeping": sess.sleeping,
+            "clients": len(sess.clients),
+            "idle_s": round(time.monotonic() - sess.last_seen, 3)}
+
+
 @app.get("/api/qr")
-def api_qr(request: Request):
+def api_qr(request: Request, s: str = ""):
     port = request.url.port or int(os.environ.get("DINO_PORT", 0)) or 80
     # Point the phone at whatever address the scene itself is being viewed on:
     # over Tailscale or any other tunnel, our LAN address is unreachable.
@@ -455,6 +601,10 @@ def api_qr(request: Request):
         # nerekne nic — tam musi adresu hostitele dodat DINO_HOST
         host = PUBLIC_HOST or ("" if IN_CONTAINER else lan_ip()) or host
     target = f"http://{host}:{port}/pridat"
+    sid = clean_session(s)
+    if sid != DEFAULT_SESSION:
+        # default zustava hole /pridat — QR domaci televize se nemeni
+        target += f"?s={sid}"
     img = qrcode.make(target, box_size=8, border=2)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -464,8 +614,16 @@ def api_qr(request: Request):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    sid = clean_session(ws.query_params.get("s"))
     await ws.accept()
-    await hub.add(ws)
+    await hub.add(sid, ws)
+    # reconnect do spici session nesmi scenu probudit do plneho svetla —
+    # klient se hned dozvi, ze se spi (budi jen sken QR / touch)
+    if hub.session(sid).sleeping:
+        try:
+            await ws.send_json({"type": "sleep"})
+        except Exception:
+            pass
     try:
         while True:
             await ws.receive_text()
@@ -474,7 +632,7 @@ async def ws_endpoint(ws: WebSocket):
     except Exception:
         pass
     finally:
-        await hub.drop(ws)
+        await hub.drop(sid, ws)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,12 @@ import * as Scene3D from './scene3d.js';
 import * as Tune from './tune.js';
 import * as Roster from './roster.js';
 
+/* Session (bod 6): TV bez `?s=` je domaci default "tv" — dnesni chovani jedne
+   televize. `?s=<id>` oddeli druhou obrazovku: vlastni QR, vlastni ulovky,
+   vlastni broadcast. Neznamou session si server tise zalozi. */
+const SID = new URLSearchParams(location.search).get('s') || 'tv';
+const SIDQ = 's=' + encodeURIComponent(SID);
+
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d', { alpha: false });
 const fx = document.getElementById('stagefx');
@@ -507,7 +513,7 @@ function clearCatches() {
 }
 
 async function fetchCast() {
-  const res = await fetch('/api/rigs');
+  const res = await fetch('/api/rigs?' + SIDQ);
   if (!res.ok) return null;
   const data = await res.json();
   // server zatim limit neumi; po tydnech provozu by scena bootovala minuty
@@ -561,7 +567,7 @@ let wsDelay = 3000;
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(proto + '://' + location.host + '/ws');
+  const ws = new WebSocket(proto + '://' + location.host + '/ws?' + SIDQ);
   let ping = 0;
   ws.onopen = () => {
     wsDelay = 3000;
@@ -579,6 +585,7 @@ function connect() {
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'add') {
       qrArrived();      // zmenseni patri kazdemu prirustku, bez ohledu na kind
+      idleHide();       // upload = touch na serveru, odpocet uz nebezi
       try {
         const a = await arrive(msg, { who: msg.name });
         if (a) {
@@ -599,6 +606,12 @@ function connect() {
       if (ambientEnabled) topUp();
     } else if (msg.type === 'cleared') {
       clearCatches();
+    } else if (msg.type === 'idle') {
+      idleWarn(msg.seconds_left);
+    } else if (msg.type === 'sleep') {
+      sleepScene();
+    } else if (msg.type === 'wake') {
+      wakeScene();
     }
   };
   ws.onclose = () => {
@@ -675,6 +688,52 @@ function qrInit() {
   qrScheduleIdleRemind();
 }
 
+/* Uspavani (bod 6). Server posila `idle` s odpoctem (prubezne, kazdy tick),
+   pak `sleep`; probuzeni skenem QR / touch prijde jako `wake`. Nic se nemaze
+   a rAF smycka jede dal — spanek je jen ztmaveni + velke QR. Default session
+   "tv" server neuspava, tyhle stavy tam nikdy neprijdou. */
+const idleEl = document.getElementById('idlebar');
+const sleepEl = document.getElementById('sleep');
+let idleDeadline = 0, idleTicker = 0;
+
+function fmtLeft(s) {
+  const m = Math.floor(s / 60), ss = Math.max(0, Math.floor(s % 60));
+  return m + ':' + String(ss).padStart(2, '0');
+}
+
+function idleRender() {
+  const left = Math.max(0, (idleDeadline - performance.now()) / 1000);
+  idleEl.textContent = 'Stanice za ' + fmtLeft(left)
+                     + ' usne 🌙 — naskenuj QR, ať zůstane vzhůru';
+}
+
+function idleWarn(secondsLeft) {
+  idleDeadline = performance.now() + (secondsLeft || 0) * 1000;
+  idleRender();
+  idleEl.classList.add('show');
+  if (!idleTicker) idleTicker = setInterval(idleRender, 500);
+  if (!qrManual) qrSetMini(false);   // velke QR, at jde naskenovat pres mistnost
+}
+
+function idleHide() {
+  clearInterval(idleTicker);
+  idleTicker = 0;
+  idleEl.classList.remove('show');
+}
+
+function sleepScene() {
+  idleHide();
+  document.body.classList.add('sleeping');
+  sleepEl.classList.add('show');
+}
+
+function wakeScene() {
+  idleHide();
+  document.body.classList.remove('sleeping');
+  sleepEl.classList.remove('show');
+  if (!qrManual) { qrSetMini(false); qrInit(); }  // probuzeni = novy start panelu
+}
+
 function qrToggleManual() {
   qrManual = true;
   clearTimeout(qrShrinkTimer);
@@ -713,11 +772,18 @@ window.DinoScene = {
     cycle: a.m3 && a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
   })),
   ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
+  session: () => SID,
+  // ladici vstupy do spaciho UI (Playwright): server je jediny, kdo tyhle
+  // stavy doopravdy ridi, ale vizual se musi dat prohlednout i bez cekani
+  debugIdle: (s) => idleWarn(s == null ? 120 : s),
+  debugSleep: sleepScene,
+  debugWake: wakeScene,
 };
 
 const qr = document.getElementById('qr');
-qr.src = '/api/qr';
+qr.src = '/api/qr?' + SIDQ;
 qr.onerror = () => { hintEl.style.display = 'none'; };
+document.getElementById('sleepqr').src = qr.src;
 
 Roster.init();
 Scene3D.onNote(note);
