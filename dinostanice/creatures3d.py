@@ -41,7 +41,8 @@ class Model3D:
     # Vyjimky z CLIP_FOR_DEFAULT (role -> klic v `clips`).
     clip_for: dict = field(default_factory=dict)
     # Bokorys pro chodce, pohled shora pro letce: rozepjata kridla jsou z boku
-    # jen tenky profil, ze ktereho neni co vybarvovat.
+    # jen tenky profil, ze ktereho neni co vybarvovat. Vyjimka je drak — ten ma
+    # dost tela i hlavy, aby ho bokorys unesl, viz komentar u jeho zaznamu.
     axes: tuple = (2, 1, 0)
     flip: tuple = (1, -1, 1)
     eye_bias: dict = field(default_factory=dict)
@@ -73,20 +74,22 @@ CATALOGUE = [
             stride_rate=(0.14, 0.25)),
     Model3D("apatosaurus3d", "Apatosaurus", "apatosaurus.glb", 13,
             stride_rate=(0.04, 0.06)),
-    # Letec se kresli shora a natoceny tak, aby rozpeti kridel — jeho nejvetsi
-    # rozmer — leželo po sirce listu.
-    # Letci se kresli shora, takze oko nelezi pred telem, ale na ose
-    # soumernosti listu (centre_x) — bbox hlavy je kvuli hrebeni ci rohum
-    # nesoumerny a forward=0.5 by oko poslal mimo osu.
-    # Drak ma pozu natvrdo: best_pose vybira podle vyplneni listu a trefi
-    # kridla uprostred mavnuti, ze kterych dite draka nepozna. Flying_Idle
-    # v t=0.125 je okamzik s nejvetsim rozpetim — kridla vodorovne
-    # rozprostrena, membrany viditelne shora.
+    # Drak se kresli bokorysem jako chodci, i kdyz ve scene leti. Shora z nej
+    # byla Rorschachova skvrna: rozpeti kridel je vetsi nez telo, takze po fitu
+    # na list zbyla z hlavy boule na hrane a oko skoncilo jako tecka uprostred
+    # tela. Z boku ma hlavu s rohem a otevrenou hubou, oko na spravnem miste
+    # a kridlo jako plachtu se zebry — na rozdil od pteranodona, ktery je same
+    # kridlo, ma drak dost tela a hlavy, aby ho dite poznalo. Poza je natvrdo
+    # z Death (t=0.37): drak se v nem naklani dopredu s rozepjatym kridlem,
+    # takze membrana lezi v rovine listu a ma plochu k vybarveni. Ve Flying_Idle
+    # drzi kridla podel tela a z boku z nich zbyva uzky profil.
     Model3D("drak3d", "Drak", "dragon.glb", 14, motion="fly",
-            axes=(0, 2, 1), flip=(1, 1, -1), poses=("Flying_Idle",),
-            anim="Flying_Idle", time=0.125,
-            eye_bias={"centre_x": True, "down": 0.3}),
-    # Ptakojester prisel bez kostry, tu mu dopisuje tools/make_pteranodon.py
+            poses=("Death",), anim="Death", time=0.37),
+    # Ptakojester prisel bez kostry, tu mu dopisuje tools/make_pteranodon.py.
+    # Kresli se shora a natoceny tak, aby rozpeti kridel — jeho nejvetsi rozmer
+    # — leželo po sirce listu; z boku by z nej byl jen tenky profil. Proto oko
+    # nelezi pred telem, ale na ose soumernosti listu (centre_x): bbox hlavy je
+    # kvuli hrebeni nesoumerny a forward=0.5 by oko poslal mimo osu.
     Model3D("pteranodon3d", "Pteranodon", "pteranodon.glb", 15, motion="fly",
             axes=(0, 2, 1), flip=(1, -1, -1), poses=("Flying",),
             eye_bias={"centre_x": True, "down": 0.55}),

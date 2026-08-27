@@ -145,7 +145,13 @@ jede s modelem do libovolné pózy a úhlu.
   Snímky pro posouzení bez televize: `python tools/shot3d.py --creature trex3d`.
 
 - `dinostanice/creatures3d.py` — katalog osmi tvorů; `axes`/`flip` u každého
-  volí projekci (chodec bokorys, letec shora s rozpětím křídel po šířce listu). Indexy značek 8-13
+  volí projekci (chodec bokorys, letec shora s rozpětím křídel po šířce listu).
+  Výjimkou je **drak**: shora z něj byla Rorschachova skvrna — rozpětí křídel je
+  větší než tělo, takže po fitu na list zbyla z hlavy boule na hraně a oko
+  skončilo jako tečka uprostřed těla. Kreslí se proto bokorysem jako chodci
+  (v póze `Death` t=0,37, kde drží křídlo rozepjaté v rovině listu). Na letce
+  to jde jen tam, kde tvor má kromě křídel i tělo a hlavu; pteranodon je samé
+  křídlo a z boku by z něj byl tenký profil. Indexy značek 8-13
   navazují na osm tvorů staré větve, aby už vytištěné listy platily dál. Proto
   taky `markers.py` přešel na `DICT_4X4_100`: je to nadmnožina `DICT_4X4_50`
   (prvních 50 kódů je shodných), takže se rozšířil prostor, ale nic se nepřepsalo.

@@ -187,8 +187,8 @@
   "clipFor": {
    "move": "Flying"
   },
-  "pose": "CharacterArmature|Flying_Idle",
-  "size": 2.49
+  "pose": "CharacterArmature|Death",
+  "size": 2.41
  },
  {
   "key": "pteranodon3d",
