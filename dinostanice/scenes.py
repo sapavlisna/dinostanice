@@ -29,6 +29,9 @@ SCENES = [
     Scene("cretaceous_night", "Noční laguna",
           "Táž krajina za soumraku — měsíc, hvězdy a dinosauři v šeru.",
           "cretaceous"),
+    Scene("aquarium", "Akvárium",
+          "Podvodní scéna: prosvítající hladina, korálové dno a ryby v hloubkách.",
+          "aquarium"),
 ]
 
 BY_KEY = {s.key: s for s in SCENES}

@@ -142,11 +142,14 @@ function setWalkRate(a) {
   a.autoSpeed = a.natural * a.autoRate * bodyFrac(a);
 }
 
-/* Kolik chodcu uz stoji/jde na dane vodorovne lince (draha i trasa po ni). */
+/* Kolik tvoru tehoz pohybu uz je na dane vodorovne lince (draha i trasa po
+   ni). Pohyb se bere od tvora, kteremu se draha hleda — jinak by se plavci
+   pocitali mezi chodce a vsichni by skoncili na jedne hloubce. */
 function laneCount(y, skip) {
+  const motion = skip ? skip.motion : 'walk';
   let n = 0;
   for (const b of actors) {
-    if (b !== skip && b.motion === 'walk' && !b.leaving
+    if (b !== skip && b.motion === motion && !b.leaving
         && Math.abs(b.yFrac - y) < LANE_TOL) n++;
   }
   return n;
@@ -174,6 +177,10 @@ function dropOnBand(a, band) {
     a.yFrac = band.y0 + Math.random() * (band.y1 - band.y0);
     a.drift = driftFor(band, a.motion);
   }
+  // klidova hloubka plavce: kolem ni se vlni a driftuje (swimDepth), za jidlem
+  // se od ni docasne vzdali a pak se k ni vrati
+  a.restY = a.yFrac;
+  a.homeY = a.yFrac;
   setWalkRate(a);
 }
 
@@ -298,6 +305,14 @@ function pickRoute(a) {
   return { path, seg, s, dir };
 }
 
+/* Odstup obcasnych otocek pro dany pohyb. Chodec ma default (TURN_EVERY),
+   ostatni jen kdyz to definice sceny rekne (`turnEvery`) — letec by se otockou
+   jen sam sobe pletl do cesty. */
+function turnEvery(motion) {
+  const cfg = motionCfg(motion);
+  return cfg.turnEvery || (motion === 'walk' ? TURN_EVERY : null);
+}
+
 function addActor(what, opts) {
   // dedup podle id: race pri startu (connect bezi soubezne s restoreCast) nebo
   // rekonciliace po reconnectu nesmi privest tehoz tvora dvakrat
@@ -315,19 +330,29 @@ function addActor(what, opts) {
   // rychlost i tempo cyklu maji jednu spolecnou nahodu, aby rychlejsi tvor
   // zaroven casteji maval kridly nebo vesloval
   const pace = 0.75 + Math.random() * 0.5;
+  // Rychlost a tempo podle velikosti druhu (`speedSize`/`beatSize`): rychlost
+  // roste s telem pomaleji nez telo samo, takze velka ryba se sune a mala
+  // svihá, a tempo animace jde naopak dolu — velky tvor mrska ocasem volneji.
+  const sc = speciesScale(motion, what.key);
+  const te = turnEvery(motion);
   const actor = {
     ...what, motion, yFrac: band.y0, dir, band, pace,
     // Tvory, kteri uz ve sceně "byli" (obnovene ulovky, doplnek z katalogu),
     // rozsazuje zlaty rez, ne nahoda: nahodnych sest cisel se casto sesype do
     // jednoho rohu a pul obrazovky zustane prazdna.
     xFrac: silent ? (spawnSeq++ * 0.6180339887 + 0.1) % 1 : -0.15,
-    speed: (cfg.baseSpeed || 0.03) * pace,
+    speed: (cfg.baseSpeed || 0.03) * pace * Math.pow(sc, cfg.speedSize || 0),
     bob: Math.random() * Math.PI * 2,
+    // vlneni a drift plavce (swimDepth): kazdy s vlastni fazi i frekvenci, at
+    // celé akvárium nekmita jako jeden kus
+    swayPh: Math.random() * Math.PI * 2,
+    swayRate: span(cfg.swayRate || [0.05, 0.12]) * Math.PI * 2,
+    waveRate: span(cfg.waveRate || [1, 1.6]) * Math.PI * 2,
     restUntil: 0,
     pause: '',
     fun: null,
     funAt: 0,
-    turnAt: sceneTime + span(TURN_EVERY),
+    turnAt: te ? sceneTime + span(te) : Infinity,
     shown: '',
     fade: cfg.rest ? cfg.rest.fade : 0.7,
     mix: 0,
@@ -342,7 +367,10 @@ function addActor(what, opts) {
   };
   actor.autoRate = 1;
   actor.autoSpeed = actor.speed;
-  if (actor.m3.strideBodies) {
+  // Fazova vazba na krok patri jen pohybu, ktery ma cilove tempo chuze
+  // (`strideRate` z katalogu nebo z definice pohybu). Plavec kontakt se zemi
+  // nema, i kdyby mu mereni kroku nejakou hodnotu vratilo.
+  if (actor.m3.strideBodies && (actor.strideRate || cfg.strideRate)) {
     // Chodec: tempo cyklu se vybere kolem prirozeneho tempa druhu a rychlost po
     // scene se z nej dopocita, ne naopak — chodidla tak zustanou na zemi.
     // Cilove tempo (tel/s) je vlastnost druhu (katalog), default dava scena;
@@ -352,7 +380,9 @@ function addActor(what, opts) {
     actor.strideWant = lo + Math.random() * (hi - lo);
     actor.rateJitter = 0.94 + 0.12 * Math.random();
   } else {
-    actor.autoRate = pace;         // letec: rychleji maka kridly, rychleji leti
+    // letec: rychleji maka kridly, rychleji leti; u plavce jde tempo jeste dolu
+    // s velikosti druhu (beatSize) — velryba nemrska ocasem jako klaun
+    actor.autoRate = pace * Math.pow(sc, cfg.beatSize || 0);
   }
   dropOnBand(actor, band);
   actor.route = pickRoute(actor);
@@ -425,12 +455,30 @@ function beginExit(a, quiet) {
   a.dir = a.xFrac >= 0.5 ? 1 : -1;
 }
 
+/* Relativni velikost druhu (`scale` v motions.<typ>): `sizePx` modelu je
+   odmocnina z plochy siluety, takze na obrazovce vychazeji vsichni stejne
+   velci. U dinosauru to nevadi (vsichni jsou velci), v akvariu ano — bez teto
+   mapy by byl zralok stejne velky jako klaun. Klice katalogu nesou casto
+   pripon "3d" (trex3d), mapa je psana holymi jmeny druhu. */
+function speciesScale(motion, key) {
+  const cfg = motionCfg(motion);
+  const map = cfg.scale;
+  const s = map && key && (map[key] || map[key.replace(/3d$/, '')]);
+  return s || cfg.scaleDefault || 1;
+}
+
+/* Velikost tvora ve sceně jako podil sirky obrazovky (odmocnina z plochy
+   siluety) — meritko pasu × relativni velikost druhu. */
+function sizeFrac(a) {
+  const cfg = motionCfg(a.motion);
+  return (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
+       * speciesScale(a.motion, a.key);
+}
+
 /* Podil sirky obrazovky, ktery zabere telo tvora — z nej se pocita rychlost po
    scene, aby vzdaleny tvor slapal stejne a jen se posouval pomaleji. */
 function bodyFrac(a) {
-  const cfg = motionCfg(a.motion);
-  return (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
-       * depthScale(a.yFrac) * a.m3.length / a.m3.sizePx;
+  return sizeFrac(a) * depthScale(a.yFrac) * a.m3.length / a.m3.sizePx;
 }
 
 /* Tempo cyklu a rychlost po scene. Obojí se dá přeladit v ladicím panelu
@@ -572,7 +620,8 @@ function entertain(a, dt) {
 }
 
 function rest(a, dt) {
-  const R = motionCfg(a.motion).rest;
+  const cfg = motionCfg(a.motion);
+  const R = cfg.rest;
   // uvolneni zastavky (kolizni fronta si restUntil prodluzuje kazdy snimek);
   // rozehrana zabava drzi mix na jednicce jeste po uvolneni, viz entertain
   if (R && a.pause && sceneTime > a.restUntil) {
@@ -584,14 +633,20 @@ function rest(a, dt) {
   // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
   // se tvor rozejde, cuknul by do stojaci pozy.
   if (!a.mix) a.shown = a.pause;
-  a.face = toward(a.face, a.dir, dt / ((R && R.spin) || 0.5));
-  const target = a.pause || a.fun || a.face !== a.dir ? 1 : 0;
+  a.face = toward(a.face, a.dir, dt / (cfg.spin || (R && R.spin) || 0.5));
+  // Chodec se otaci na miste (drzi `mix` na jednicce, dokud se neprehoupne),
+  // plavec v pohybu (`turnMoving`) — ten se otacenim nesmi zastavit, jinak by
+  // ryba viset ve vode. Posun v otocce resi `face` v update().
+  const spinning = a.face !== a.dir && !cfg.turnMoving;
+  const target = (a.pause || a.fun || spinning) ? 1 : 0;
   a.mix = toward(a.mix, target, dt / a.fade);
   Scene3D.speed(a.m3, a.rate * (1 - a.mix));
   // uvnitr zastavene vahy (mix) se stani a zabavna poza prolinaji pres k
   const k = a.fun ? a.fun.k : 0;
   const w = { [a.shown || 'stand']: a.mix * (1 - k) };
   if (a.fun) w[a.fun.pose] = a.mix * k;
+  // kdo zabere za jidlem, prepne do rychleho klipu, kdyz ho katalog ma
+  if (a.feed && a.m3.breaks.fast) w.fast = 1 - a.mix;
   Scene3D.blendMix(a.m3, w);
 }
 
@@ -620,9 +675,11 @@ function bodyLenFrac(a) {
   return bodyFrac(a);
 }
 
-/* Ma tvor na sve drahe nekoho tak blizko, ze by se s nim prekryval? */
+/* Ma tvor na sve drahe nekoho tehoz pohybu tak blizko, ze by se s nim
+   prekryval? (Jen pri usazovani noveho tvora — plavci se za behu klidne
+   miji.) */
 function crowded(a) {
-  return actors.some(b => b !== a && b.motion === 'walk' && !b.leaving
+  return actors.some(b => b !== a && b.motion === a.motion && !b.leaving
     && Math.abs(b.yFrac - a.yFrac) < LANE_TOL
     && Math.abs(b.xFrac - a.xFrac)
        < (bodyLenFrac(a) + bodyLenFrac(b)) / 2 * 1.2);
@@ -678,6 +735,52 @@ function traffic() {
   }
 }
 
+/* Míjení plavců (`dodge` v definici pohybu). Plavci nezastavují ani se neřadí
+   do fronty jako chodci — když se dva potkají v téže hloubce, uhnou si: menší
+   nahoru, větší dolů, a po minutí se vrátí ke své dráze. Uhnutí jen posune cíl
+   hloubky, o zbytek se stará swimDepth, takže je plynulé a nikdo nestojí. */
+const DODGE_X = 1.8;       // násobek délky těla, od kterého se plavci uhýbají
+
+function swimTraffic() {
+  const fish = actors.filter(a => motionCfg(a.motion).dodge && !a.leaving);
+  for (const a of fish) a.dodge = 0;
+  for (let i = 0; i < fish.length; i++) {
+    for (let j = i + 1; j < fish.length; j++) {
+      const a = fish[i], b = fish[j];
+      if (Math.abs(a.yFrac - b.yFrac) > LANE_TOL * 2) continue;
+      const len = (bodyLenFrac(a) + bodyLenFrac(b)) / 2;
+      if (Math.abs(a.xFrac - b.xFrac) > len * DODGE_X) continue;
+      const up = bodyLenFrac(a) <= bodyLenFrac(b) ? a : b;
+      (up === a ? b : a).dodge = 1;
+      up.dodge = -1;
+    }
+  }
+}
+
+/* Hloubka plavce. Ryba nemá jet po pravítku, ale zastávky ani odrazy od kraje
+   pásu do vody nepatří, tak se hloubka skládá ze tří kusů:
+
+   - `homeY` je hloubka, ke které ryba táhne. Normálně je to střed přidělené
+     dráhy (`restY`), za jídlem se plynule přesune k němu a po nakrmení se
+     stejně plynule vrátí — `chase` je, kolik výšky obrazovky za sekundu.
+   - `sway` je pomalý drift mezi hloubkami kolem `homeY`, `wave` mírné vlnění
+     (dech plavce). Obojí se počítá ze scénického času, ne integrací, takže se
+     nemá kde nasekat a ryba nikdy neuteče z pásu.
+   - amplituda se škáluje hloubkou scény (`depthScale`), aby se vzdálená ryba
+     vlnila v perspektivě stejně jako blízká. */
+function swimDepth(a, dt, cfg) {
+  const dodge = (a.dodge || 0) * (cfg.dodge || 0);
+  // u jidla se uhnuti krati, at ryba k vlockam dosahne, ale nestoji v tele druhe
+  const want = a.feed && !a.feed.gone ? a.feed.y + dodge * 0.6 : a.restY + dodge;
+  const goal = Math.max(a.band.y0, Math.min(a.band.y1, want));
+  a.homeY = toward(a.homeY, goal, dt * (cfg.chase || 0.12));
+  const k = depthScale(a.homeY);
+  let y = a.homeY;
+  if (cfg.sway) y += Math.sin(sceneTime * a.swayRate + a.swayPh) * cfg.sway * k;
+  if (cfg.wave) y += Math.sin(sceneTime * a.waveRate + a.bob) * cfg.wave * k;
+  a.yFrac = Math.max(a.band.y0, Math.min(a.band.y1, y));
+}
+
 function update(dt) {
   // odchazejici tvorove: fade (prepnuti sceny / zachranna brzda) zmizi po
   // doztraceni, odehrany odchod az za okrajem obrazovky
@@ -697,31 +800,42 @@ function update(dt) {
   }
   updateFoods();
   traffic();
+  swimTraffic();
   for (const a of actors) {
+    const cfg = motionCfg(a.motion);
     // krmeni: chodec bez trasy v okruhu k jidlu zamiri; u jidla postoji
     // (stavajici rest maserie) a pak se vrati k driftu
     if (a.feed) {
-      if (a.feed.gone) {
+      const f = a.feed;
+      // klesajici jidlo (akvarium) se dohani i do hloubky, lezici staci v x
+      const got = Math.abs(a.xFrac - f.x) < FEED_REACH
+               && (!f.sink || Math.abs(a.yFrac - f.y) < FEED_REACH * 1.6);
+      if (f.gone) {
         a.feed = null;
-      } else if (Math.abs(a.xFrac - a.feed.x) < FEED_REACH) {
+      } else if (got) {
         const R = motionCfg(a.motion).rest;
         if (R && a.m3.action && !a.pause) {
           a.pause = 'stand';
           a.fade = R.fade;
           a.restUntil = sceneTime + span(R.stand);
         }
+        // plavec u jidla nezastavuje, jen si kousne; po par kousnutich je jidlo
+        // snezene a ostatni se vraci do svych hloubek
+        if (f.sink && --f.left <= 0) f.gone = true;
         a.feed = null;
       } else {
-        a.dir = a.feed.x > a.xFrac ? 1 : -1;
+        a.dir = f.x > a.xFrac ? 1 : -1;
       }
     }
-    // obcasna otocka na miste u chodce bez trasy (viz TURN_EVERY): jediny
-    // zdroj zmeny smeru mimo kolize, kdyz uz nahodne zastavky nejsou
-    if (a.motion === 'walk' && !a.route && !a.exiting && !a.pause && !a.fun
-        && !a.feed && sceneTime > a.turnAt) {
+    // obcasna otocka (viz turnEvery): u chodce bez trasy jediny zdroj zmeny
+    // smeru mimo kolize, u plavce to, proc neplave po pravitku od okraje
+    // k okraji. Kdo se prave otaci, novou otocku nezacina.
+    const every = turnEvery(a.motion);
+    if (every && !a.route && !a.exiting && !a.pause && !a.fun && !a.feed
+        && a.face === a.dir && sceneTime > a.turnAt) {
       a.dir = -a.dir;
       a.meetCd = sceneTime + MEET_CD_S;
-      a.turnAt = sceneTime + span(TURN_EVERY);
+      a.turnAt = sceneTime + span(every);
     }
     rest(a, dt);
     if (a.natural) {
@@ -733,9 +847,11 @@ function update(dt) {
     // stojna noha se v klipu nesune konstantne a prumer nechava chodidla
     // klouzat. `walked` cte timeScale, takze zastavka (mix) je v tom zdarma.
     const stepBodies = a.natural ? Scene3D.walked(a.m3, dt) : null;
+    // zaber za jidlem (`dash`): plavec za vlockami vyrazi, nesune se k nim
+    const dash = a.feed && cfg.dash ? cfg.dash : 1;
     const go = stepBodies !== null
       ? stepBodies * bodyFrac(a) * a.speedMul
-      : a.speed * (1 - a.mix) * dt;
+      : a.speed * (1 - a.mix) * dt * dash;
     if (a.route && a.route.path.points.length >= 2) {
       // Trasa je autorita: zadne obchazeni okraje ani swapBand — odchod a
       // navrat resi body za okrajem, ktere si autor nakreslil sam.
@@ -743,7 +859,10 @@ function update(dt) {
       routePos(a);
       continue;
     }
-    a.xFrac += a.dir * go;
+    // Plavec se otaci v pohybu: posouva se podle `face`, ne `dir`, takze do
+    // otocky zpomali, projde celem k divakovi a zabere na druhou stranu —
+    // misto aby klouzal pozadu, dokud se hlava nedotoci.
+    a.xFrac += (cfg.turnMoving ? a.face : a.dir) * go;
     // Za okrajem tvor obejde scenu dokola, misto aby se odrazil. Odraz vypadal
     // prirozene, ale vsichni se odrazeji od tehoz mista a casem se sesypou do
     // jednoho hloucku; takhle si rozestupy drzi napovad, protoze kazdy chodi
@@ -752,10 +871,11 @@ function update(dt) {
       if (a.xFrac > 1.25) { a.xFrac = -0.25; swapBand(a); }
       if (a.xFrac < -0.25) { a.xFrac = 1.25; swapBand(a); }
     }
-    const cfg = motionCfg(a.motion);
     if (cfg.bob) {
       a.yFrac += Math.sin(sceneTime * 0.35 + a.bob) * 0.012 * dt;
       a.yFrac = Math.max(a.band.y0, Math.min(a.band.y1, a.yFrac));
+    } else if (cfg.wave || cfg.sway) {
+      swimDepth(a, dt, cfg);
     } else if (a.drift) {
       // Sunuti po pasu brehu: na kraji se odrazi, protoze za nim uz je voda
       // nebo les. Svisle se posouva pomerem `drift` k vodorovne rychlosti.
@@ -774,26 +894,62 @@ function update(dt) {
    se doztraci a vsichni se vrati k driftu. Letci/plavci nereaguji. */
 const foods = [];
 
+/* Jak se ve scene krmi: `food` v definici sceny. Na brehu (default) jidlo
+   spadne na predni pas a lezi; v akvariu (`sink`) dopadne na hladinu a klesa
+   ke dnu, takze ryby za nim plavou do hloubky. */
+function foodCfg() {
+  return (sceneDef && sceneDef.food) || {};
+}
+
 function dropFood(x) {
-  const fit = bandsFor('walk');
+  const cfg = foodCfg();
+  const xx = Math.max(0.05, Math.min(0.95, x));
+  if (cfg.sink) {
+    foods.push({
+      x: xx, y: cfg.top != null ? cfg.top : 0.12, sink: true,
+      left: cfg.bites || 4, spin: Math.random() * Math.PI,
+      born: sceneTime, claimed: false, gone: false,
+    });
+    return;
+  }
+  const fit = bandsFor(cfg.motion || 'walk');
   const band = fit.find(b => b.lane !== 'far') || fit[0];
   foods.push({
-    x: Math.max(0.05, Math.min(0.95, x)),
+    x: xx,
     y: band.y0 + (0.3 + Math.random() * 0.4) * (band.y1 - band.y0),
     born: sceneTime, claimed: false, gone: false,
   });
 }
 
+/* Kdo si jidla vsimne: tvorove daneho pohybu bez trasy v okruhu FEED_RADIUS
+   (tvor na trase drzi rad sceny a jidlo ignoruje). */
+function claimFood(f, motion) {
+  f.claimed = true;
+  for (const a of actors) {
+    if (a.motion !== motion || a.route || a.exiting || a.leaving) continue;
+    if (Math.abs(a.xFrac - f.x) < FEED_RADIUS) a.feed = f;
+  }
+}
+
 function updateFoods() {
+  const cfg = foodCfg();
+  const motion = cfg.motion || 'walk';
   for (let i = foods.length - 1; i >= 0; i--) {
     const f = foods[i];
     const age = sceneTime - f.born;
-    if (!f.claimed && age >= FEED_FALL_S) {
-      f.claimed = true;      // laka az po dopadu, ne behem letu vzduchem
-      for (const a of actors) {
-        if (a.motion !== 'walk' || a.route || a.exiting || a.leaving) continue;
-        if (Math.abs(a.xFrac - f.x) < FEED_RADIUS) a.feed = f;
+    if (f.sink) {
+      // klesa ke dnu; je videt od zacatku, takze si ho ryby vsimnou hned
+      f.y = Math.min(cfg.floor != null ? cfg.floor : 0.65,
+                     (cfg.top != null ? cfg.top : 0.12) + age * (cfg.sinkRate || 0.05));
+      if (!f.claimed) claimFood(f, motion);
+      if (f.gone || age > (cfg.life || FEED_LIFE_S)) {
+        f.gone = true;
+        foods.splice(i, 1);
       }
+      continue;
+    }
+    if (!f.claimed && age >= FEED_FALL_S) {
+      claimFood(f, motion);   // laka az po dopadu, ne behem letu vzduchem
     }
     if (age > FEED_FALL_S + FEED_LIFE_S) {
       f.gone = true;
@@ -838,9 +994,38 @@ function drawFern(c, x, y, s, alpha) {
   c.restore();
 }
 
+/* Vlocky krmiva pro ryby: par supinek, ktere se pri klesani otaceji a mirne
+   rozestupuji. Ubyva jich, jak si ryby kousaji. Kresleno procedurálně. */
+function drawFlakes(c, f, s, alpha) {
+  const n = Math.max(1, f.left);
+  c.save();
+  c.globalAlpha = alpha;
+  for (let i = 0; i < n; i++) {
+    const a = f.spin + i * 2.4;
+    const x = f.x * W + Math.cos(a) * s * 1.4 + Math.sin(sceneTime * 1.3 + a) * s * 0.4;
+    const y = f.y * H + Math.sin(a) * s * 0.8;
+    c.save();
+    c.translate(x, y);
+    c.rotate(a + sceneTime * 0.9 * (i % 2 ? 1 : -1));
+    c.fillStyle = i % 3 === 0 ? '#eab861' : (i % 3 === 1 ? '#c8813a' : '#f2d79c');
+    c.beginPath();
+    c.ellipse(0, 0, s * 0.45, s * 0.17, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+  c.restore();
+}
+
 function drawFoods() {
+  const fcfg = foodCfg();
   for (const f of foods) {
     const age = sceneTime - f.born;
+    if (f.sink) {
+      const life = fcfg.life || FEED_LIFE_S;
+      const fade = Math.min(1, (life - age) / 2, age / 0.3);
+      drawFlakes(fxCtx, f, W * 0.042 * depthScale(f.y), Math.max(0, fade));
+      continue;
+    }
     const t = Math.min(1, age / FEED_FALL_S);
     const y = (f.y - 0.4 * (1 - t * t)) * H;       // pad shora se zrychlenim
     const fade = Math.min(1, (FEED_FALL_S + FEED_LIFE_S - age) / 2);
@@ -854,9 +1039,7 @@ function drawTags() {
   for (const a of actors) {
     if (!a.tagUntil || sceneTime >= a.tagUntil || !a.who || a.leaving) continue;
     const scale = depthScale(a.yFrac);
-    const cfg = motionCfg(a.motion);
-    const s = W * (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
-            * scale / a.m3.sizePx;
+    const s = W * sizeFrac(a) * scale / a.m3.sizePx;
     const top = a.yFrac * H - a.m3.height * s;
     const alpha = Math.max(0, Math.min(1, (a.tagUntil - sceneTime) / 0.5,
                                        (sceneTime - a.born) / 0.5));
@@ -946,8 +1129,7 @@ function draw(dt) {
     const x = a.xFrac * W, y = a.yFrac * H;
 
     // u 3D tvora je yFrac primo cara, na ktere stoji nohama
-    const s = W * (motionCfg(a.motion).sizeFraction
-                   || motionCfg('walk').sizeFraction || 0.234) * scale / a.m3.sizePx;
+    const s = W * sizeFrac(a) * scale / a.m3.sizePx;
     Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop,
                           depth: a.yFrac * 4000 - 2000 });
   }
@@ -994,9 +1176,9 @@ async function loadModel(item, opts) {
   // role klipu (pohyb, stani, skok) rika katalog — jmena se nehadaji ve scene
   const cf = spec.clipFor || {};
   const clip = spec.clips[cf.move] || spec.pose;
-  const breaks = cf.stand || cf.jump || cf.lie
+  const breaks = cf.stand || cf.jump || cf.lie || cf.fast
     ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump],
-        lie: spec.clips[cf.lie] }
+        lie: spec.clips[cf.lie], fast: spec.clips[cf.fast] }
     : undefined;
   const m3 = await Scene3D.spawn({
     id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks,
