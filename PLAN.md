@@ -341,3 +341,25 @@ krajinu než laguna s dinosaury.
   `DICT_4X4_250` zvedne strop na 62 bez zneplatnění vytištěných listů
   (prvních 100 kódů je bit-identických, minimální Hammingova vzdálenost
   zůstává 3/16). Rozhodne se, až se přiblížíme limitu.
+
+---
+
+## Pohled zešikma (2026-08-27)
+
+☑ Natočení tvorů k divákovi je teď parametr definice scény (`motions.<typ>.turn`,
+`bank`), ne konstanta ve 3D vrstvě — úhel patří ke vzhledu krajiny (commit
+`ff6d862`). Chodci v křídě 30°, ryby v akváriu 25° (dřív oba 19,5°); ryba
+dostává méně, protože se poznává podle siluety, kterou natočení krátí (meč
+mečouna, vějíř trnů perutýna). Kontaktní listy pro každý druh a pět úhlů:
+`out/turn_walk_sheet.png`, `out/turn_swim_sheet.png`.
+
+Strop je změřený (`out/turn_strop_walk_sheet.png`): do ~30° drží kresba spojité
+plochy, kolem 45–50° se čelo hrudi a předek lebky mění ve šmouhu (tam textura
+z listu není, jen barva protažená od obrysu), nad 60° je z dětské kresby mapa
+bez vzoru. Prokluz chodidel zůstal 1,1–2,1 %, protože `strideBodies` bere průmět
+kroku — větší natočení samo zmenší dráhu na cyklus.
+
+Nedělá se (čeká na zadání): manta zůstane při jakémkoli natočení plátek, její
+rozpětí leží podél pohledu — pomohl by jen náklon per druh (mapa jako `scale`).
+Druhá cesta k plastičnosti je světlo: protisvětlo od strany kamery by
+nízkopolygonovým modelům oddělilo hrany víc než dalších pět stupňů.
