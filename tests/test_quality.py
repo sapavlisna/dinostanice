@@ -1,19 +1,24 @@
 """dinostanice.quality.assess() must flag exactly the failure modes measured in test_robustness.py,
 with Czech advice a child (or their parent) can act on.
+
+This is the module the server leans on when a photo can't be processed: instead
+of "nepovedlo se" the child gets told what to do differently, so the advice
+being both correct and Czech is the point of these tests.
 """
 
 import helpers as H
 from dinostanice import quality, synth
-from dinostanice.capture import WARP_PPM
-from dinostanice.template import rasterise
 
-CREATURE_INDEX = 1  # trex
+KEY = "trex3d"
 OUT_SIZE = (1200, 900)
 
 
 def _good_photo(seed=0):
-    _, sheet = H.scribbled_sheet(CREATURE_INDEX, seed=seed)
-    return synth.photograph(sheet, seed=seed, out_size=OUT_SIZE)
+    return synth.photograph(H.sheet(KEY, seed=seed).img, seed=seed, out_size=OUT_SIZE)
+
+
+def _index():
+    return H.sheet(KEY).index
 
 
 def test_good_photo_is_ok_and_reports_full_markers():
@@ -35,8 +40,7 @@ def test_blurry_photo_is_blocked_with_czech_advice():
 
 
 def test_missing_markers_reported_with_count():
-    _, sheet = H.scribbled_sheet(CREATURE_INDEX, seed=0)
-    occluded = H.occlude_corners(sheet, ppm=6.0, corners=[0, 1, 2])
+    occluded = H.occlude_corners(H.sheet(KEY).img, ppm=6.0, corners=[0, 1, 2])
     photo = synth.photograph(occluded, seed=0, out_size=OUT_SIZE)
     report = quality.assess(photo)
     assert report.n_markers == 1
@@ -46,8 +50,7 @@ def test_missing_markers_reported_with_count():
 
 
 def test_no_markers_at_all_reported():
-    _, sheet = H.scribbled_sheet(CREATURE_INDEX, seed=0)
-    occluded = H.occlude_corners(sheet, ppm=6.0, corners=[0, 1, 2, 3])
+    occluded = H.occlude_corners(H.sheet(KEY).img, ppm=6.0, corners=[0, 1, 2, 3])
     photo = synth.photograph(occluded, seed=0, out_size=OUT_SIZE)
     report = quality.assess(photo)
     assert report.n_markers == 0
@@ -73,20 +76,18 @@ def test_photographed_way_too_far_finds_no_markers():
 
 
 def test_ink_coverage_reported_for_coloured_sheet():
-    report = quality.assess(_good_photo(), creature_index=CREATURE_INDEX)
+    report = quality.assess(_good_photo(), creature_index=_index())
     assert report.ink_coverage is not None
-    assert report.ink_coverage > 0.1
+    assert report.ink_coverage > quality.printed_coverage(KEY)
     assert "uncoloured" not in report.issues
 
 
 def test_ink_coverage_flags_blank_template():
-    from dinostanice import creatures as cr
-    creature = cr.CATALOGUE[CREATURE_INDEX]
-    blank = rasterise(creature, CREATURE_INDEX, ppm=WARP_PPM, with_markers=True, with_label=False)
+    blank = H.sheet(KEY, strokes=0).img
     photo = synth.photograph(blank, seed=0, out_size=OUT_SIZE)
-    report = quality.assess(photo, creature_index=CREATURE_INDEX)
+    report = quality.assess(photo, creature_index=_index())
     assert report.ink_coverage is not None
-    assert report.ink_coverage < quality.UNCOLOURED_MAX_COVERAGE
+    assert report.ink_coverage - quality.printed_coverage(KEY) < quality.UNCOLOURED_MIN_EXTRA
     assert "uncoloured" in report.issues
 
 

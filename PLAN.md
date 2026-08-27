@@ -182,8 +182,10 @@ Podle `out/audit/backend.md` (mrtvý kód) — pořadí:
 4. `quality.py`: ZAPOJIT do `process()` (české rady dětem mají hodnotu),
    sladit `MARKERS_MIN_OK` s `MIN_MARKERS` — ne smazat.
 5. Stará 2D rig větev (`rig.py`, `creatures.py`, `rigrender.js`, `anim.js`…):
-   zatím NECHAT zamrzlou (doma existují staré výtisky 0–7), jen zdokumentovat
-   v ARCHITECTURE jako „zamrzlé, odstranit až se vyhodí staré listy".
+   ☑ SMAZÁNA (2026-08-27, Pavlovo rozhodnutí) — i `inflate.py`/`model3d.py`
+   a generátory ze siluet. Indexy značek 0–7 jsou tím uvolněné pro budoucí
+   tvory, 3D tvorové zůstávají na 8–15 (listy jsou vytištěné). Testy snímání,
+   registrace, robustnosti a kvality přepsané nad 3D katalog, ne zrušené.
 
 Závislosti: žádné. Odhad: M.
 
@@ -238,8 +240,8 @@ izolovaným datům (TestClient + tmp_path), nikdy proti běžícímu serveru.
 - Session cleanup úlovky NEMAŽE — scéna „usne", data zůstanou (mazání dětských
   výtvorů automatem je destruktivní; explicitní reset existuje v bodu 5).
 - `quality.py` se zapojuje, ne maže.
-- Stará 2D rig větev a `inflate.py`/`model3d.py` se zatím nemažou (staré
-  výtisky doma, znalost pod testy) — jen se odpojí `/3d` stránka mrtvá daty.
+- ~~Stará 2D rig větev a `inflate.py`/`model3d.py` se zatím nemažou~~ —
+  překonáno: Pavel 2026-08-27 rozhodl celou větev smazat (je v git historii).
 - Obrys šablon se zvětší o ~2 mm ven → nové výtisky se rozejdou se starými;
   starým výtiskům pomůže větší bleed v to_texture (fallback zůstane).
 
@@ -247,8 +249,8 @@ izolovaným datům (TestClient + tmp_path), nikdy proti běžícímu serveru.
 
 ## Stav po fázi 3 (2026-08-27)
 
-**Hotovo (commitnuto po bodech):** 1–11 dle výše; testová sada 185 testů
-(36 serverových nových + oživený roundtrip), regresní brány
+**Hotovo (commitnuto po bodech):** 1–11 dle výše; testová sada 132 testů
+(po smazání staré větve; 36 serverových), regresní brány
 `tools/gait_report.py` (prokluz/tempo) a `tools/shot_scene.py` (JS chyby,
 snímky), `tools/shot3d.py` přesměrován na /dino3d.
 
@@ -261,15 +263,13 @@ snímky), `tools/shot3d.py` přesměrován na /dino3d.
   (tatáž závislost na usazení scene.js).
 - Bod 11: rotace úlovků „na výletě" nad kapacitu, útěk před trexem,
   suvenýr/kartička — nápady zapsané v out/audit/researcher.md, neděláno.
-- Frontend review B5 (2D rig prolínání zastávky), C6 (trimTail eps per
-  kanál), C8 (rychlost letců dle hloubky) — vědomě odloženo (kvalita
-  obrazu, ne stabilita; 2D rig větev je zamrzlá).
+- Frontend review C6 (trimTail eps per kanál), C8 (rychlost letců dle
+  hloubky) — vědomě odloženo (kvalita obrazu, ne stabilita). B5 (2D rig
+  prolínání zastávky) padlo se smazáním staré větve.
 - Backend review P1-9 retence data/catch (strop počtu úlovků) a P1-10
   autentizace/zúžení /catch statiky — vyžaduje Pavlovo rozhodnutí
   (domácí LAN vs. Tailscale expozice).
-- Stará 2D rig větev: zamrzlá, funkční pro staré výtisky (indexy 0–7);
-  odstranit, až se staré listy vyhodí (mapa závislostí
-  v out/audit/backend.md).
+- Stará 2D rig větev: SMAZÁNA (viz bod 10.5).
 
 ## Pavlovy opravy po zhlédnutí TV (2026-08-27)
 

@@ -1,10 +1,10 @@
 """Z 3D modelu udela predlohu k vybarveni.
 
-Obraceny postup proti `silhouette.py`: misto aby se z ploche siluety hadala
-hloubka, vychazi se z hotoveho 3D modelu. Ortogonalni bokorys da soucasne
+Klicovy krok cele stanice: ortogonalni bokorys hotoveho modelu da soucasne
 obrys, vnitrni linky (hranice materialu a hloubkove skoky) a — hlavne —
 prevodni vztah mezi milimetry na listu a souradnicemi modelu. Diky nemu
-vybarvena kresba sedne zpatky na model jako textura.
+vybarvena kresba sedne zpatky na model jako textura: kde na papire bod lezi,
+tam ma na modelu svoje UV. Zadna hloubka se z kresby nehada.
 """
 from __future__ import annotations
 
@@ -17,9 +17,10 @@ import numpy as np
 
 from .gltf import Model
 from . import orthoview as ov
-from .shapes import SHEET_W_MM, SHEET_H_MM
-from .template import LINE_MM
+from .markers import CORNER_ORIGINS, MARKER_MM, marker_bits, marker_ids
+from .shapes import SHEET_W_MM, SHEET_H_MM, LINE_MM
 
+DETAIL_MM = 0.6           # vnitrni linky jsou tencí než obrys, dítě je jen obtahuje
 DRAW_MARGIN_X_MM = 32.0   # znacky v rozich zabiraji 9 + 16 mm
 DRAW_MARGIN_Y_MM = 30.0
 # Kresba ma byt pro dite prehledna: silny obrys a par velkych ploch. Drobne
@@ -59,7 +60,7 @@ class Placement:
         ], axis=1)
 
     def uv(self, verts: np.ndarray) -> np.ndarray:
-        """Pozice na listu jako UV (0..1), stejna konvence jako model3d.py."""
+        """Pozice na listu jako UV (0..1): x doprava, y nahoru od spodni hrany."""
         mm = self.to_mm(verts)
         return np.stack([mm[:, 0] / SHEET_W_MM, 1.0 - mm[:, 1] / SHEET_H_MM], axis=1)
 
@@ -196,7 +197,7 @@ def fill_ratio(model: Model, anim: str, time: float,
                flip: tuple[int, int, int] = (1, -1, 1), width: int = 240) -> float:
     """Jakou cast kreslici plochy tvor po vystredeni zabere.
 
-    Merit se musi az po fitu na list, ne v pixelech: natazeny sauropod ma velkou
+    Merit se musi az po fitu na list, ne v pixelech: natazeny apatosaurus ma velkou
     siluetu, ale na papire z nej zbyde tenky pruh.
     """
     verts, _ = model.posed(anim, time)
@@ -394,3 +395,38 @@ def to_texture(sheet: np.ndarray, shape: SheetShape, ppm: float) -> np.ndarray:
     grown = cv2.dilate(body, np.ones((int(2 * ppm) | 1, int(2 * ppm) | 1), np.uint8))
     fill = cv2.inpaint(tex, ((grown > 0) & (body == 0)).astype(np.uint8), 6, cv2.INPAINT_TELEA)
     return np.where((grown > 0)[..., None], fill, tex)
+
+
+def rasterise(shape: SheetShape, marker_index: int | None = None,
+              ppm: float = 6.0) -> np.ndarray:
+    """Vytištěná předloha jako bitmapa: obrys, vnitřní linky, oko a značky.
+
+    Tiskne se z SVG (tools/model_sheet.py), tohle je tentýž list pro náhledy
+    a pro syntetické fotky v testech — aby se dala celá cesta „papír → tvor"
+    projít bez tiskárny.
+    """
+    img = np.full((int(round(SHEET_H_MM * ppm)), int(round(SHEET_W_MM * ppm)), 3),
+                  255, np.uint8)
+    for polys, width in ((shape.regions, DETAIL_MM), (shape.outline, LINE_MM)):
+        for poly in polys:
+            cv2.polylines(img, [np.round(poly * ppm).astype(np.int32)], True,
+                          (17, 17, 17), max(1, int(round(width * ppm))), cv2.LINE_AA)
+    if shape.eye:
+        x, y, r = shape.eye
+        cv2.circle(img, (int(x * ppm), int(y * ppm)), int(r * ppm), (17, 17, 17),
+                   max(1, int(round(LINE_MM * ppm))), cv2.LINE_AA)
+    if marker_index is not None:
+        for corner, mid in enumerate(marker_ids(marker_index)):
+            ox, oy = CORNER_ORIGINS[corner]
+            bits = marker_bits(mid)
+            cell = MARKER_MM / bits.shape[0]
+            for r in range(bits.shape[0]):
+                for c in range(bits.shape[1]):
+                    if bits[r, c]:
+                        cv2.rectangle(img,
+                                      (int(round((ox + c * cell) * ppm)),
+                                       int(round((oy + r * cell) * ppm))),
+                                      (int(round((ox + (c + 1) * cell) * ppm)) - 1,
+                                       int(round((oy + (r + 1) * cell) * ppm)) - 1),
+                                      (0, 0, 0), -1)
+    return img

@@ -18,12 +18,16 @@ heuristics -- the synthetic sweeps did not find failures driven by those alone
 shadows), so they only ever produce a soft warning, never a hard block.
 """
 
+from functools import lru_cache
+
 import cv2
 import numpy as np
 
-from .capture import (MIN_MARKERS, CaptureError, detect_sheet, extract_texture,
-                      ink_coverage as _ink_coverage)
+from . import capture3d
+from .capture import MIN_MARKERS, CaptureError, detect_sheet
+from .creatures3d import BY_MARKER
 from .markers import DICT
+from .modelsheet import rasterise
 
 _detector = cv2.aruco.ArucoDetector(DICT, cv2.aruco.DetectorParameters())
 
@@ -40,12 +44,15 @@ CONTRAST_WARN = 15.0      # heuristic: no synthetic failure was ever driven by c
 
 SKEW_WARN = 0.35          # heuristic viewing-angle proxy from raw marker quads (diagonal-length asymmetry)
 
-# mirrors server.py's own TRIM_MM: extract_texture()'s crop hugs the printed
-# outline itself, and that dark line reads as "ink" (measured ~0.04-0.06
-# coverage on an untouched template); eroding the mask past it before
-# measuring is what lets an actually-blank sheet read near zero (~0.005).
-INK_TRIM_MM = 0.6
-UNCOLOURED_MAX_COVERAGE = 0.03
+# capture3d.ink_coverage counts the printed drawing itself -- outline, internal
+# lines and the eye all read as "ink" -- and how much that is depends on the
+# creature (measured 0.055 for triceratops3d up to 0.10 for apatosaurus3d on an
+# untouched sheet). So "did the child colour anything in" is asked as coverage
+# ABOVE that sheet's own printed baseline. Measured on synthetic sheets: a blank
+# one lands ~0.006 BELOW its baseline (photographing softens the lines), a few
+# crayon strokes +0.015..0.02, a normally coloured one +0.05..0.08, fully
+# filled +0.9.
+UNCOLOURED_MIN_EXTRA = 0.02
 
 BLOCKING = frozenset(["blurry", "no_markers", "few_markers", "too_far", "capture_failed"])
 
@@ -131,6 +138,17 @@ def _skew_estimate(markers):
     return float(np.mean(skews)) if skews else None
 
 
+@lru_cache(maxsize=None)
+def printed_coverage(key):
+    """Kolik z kresby zabira sama vytistena predloha (obrys, linky, oko).
+
+    Baseline pro "je to vubec vybarvene": mereno na rasterizovane predloze,
+    ne na fotce, takze je to vlastnost sablony a nekolisa se svetlem.
+    """
+    shape = capture3d.load_shape(key)
+    return capture3d.ink_coverage(rasterise(shape, ppm=capture3d.TEXTURE_PPM), shape)
+
+
 def assess(bgr, creature_index=None):
     """Evaluate one uploaded photo. Never raises -- always returns a QualityReport."""
     sharpness = _normalised_sharpness(bgr)
@@ -166,11 +184,11 @@ def assess(bgr, creature_index=None):
     if "no_markers" not in issues:
         try:
             idx, warped, _n = detect_sheet(bgr)
-            from .creatures import CATALOGUE
-            if 0 <= idx < len(CATALOGUE) and (creature_index is None or idx == creature_index):
-                rgba, _bbox = extract_texture(warped, CATALOGUE[idx], trim_mm=INK_TRIM_MM)
-                coverage = _ink_coverage(rgba)
-                if coverage < UNCOLOURED_MAX_COVERAGE:
+            spec = BY_MARKER.get(idx)
+            if spec is not None and (creature_index is None or idx == creature_index):
+                shape = capture3d.load_shape(spec.key)
+                coverage = capture3d.ink_coverage(warped, shape)
+                if coverage - printed_coverage(spec.key) < UNCOLOURED_MIN_EXTRA:
                     issues.append("uncoloured")
         except CaptureError:
             issues.append("capture_failed")

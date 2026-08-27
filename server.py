@@ -1,6 +1,7 @@
 """DinoStanice server: photo in, animated creature out.
 
-Runs the capture -> rig pipeline for an uploaded photo and tells every connected
+Runs the capture pipeline for an uploaded photo -- find the sheet, turn the
+colours into a texture for the creature's 3D model -- and tells every connected
 scene about the new arrival over a WebSocket.
 """
 
@@ -25,20 +26,17 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dinostanice import capture, capture3d, modelsheet, quality, rig, scenes, store
+from dinostanice import capture, capture3d, quality, scenes, store
 from dinostanice.capture import CaptureError
-from dinostanice.creatures import CATALOGUE
 from dinostanice.creatures3d import BY_KEY as BY_KEY3D
+from dinostanice.creatures3d import BY_MARKER as BY_MARKER3D
 from dinostanice.creatures3d import CATALOGUE as CATALOGUE3D
 from dinostanice.scenes import DEFAULT_SCENE
-
-BY_MARKER3D = {m.marker_index: m for m in CATALOGUE3D}
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(ROOT, "web")
 MODELS3D_DIR = os.path.join(ROOT, "data", "models3d")
 TEMPLATES_DIR = os.path.join(ROOT, "data", "templates")
-SHAPES3D_DIR = os.path.join(ROOT, "data", "shapes3d")
 STATE_PATH = os.path.join(ROOT, "data", "state.json")
 
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -48,7 +46,6 @@ MAX_ASPECT = 4.0         # bezny telefon foti 4:3 az 16:9; extremni pomer neni l
 MAX_CONCURRENT = 2       # exponat obsluhuje jedno dite po druhem, fronta je spravne
 MAX_SIDE = 4000          # detection gains nothing above this, but the warp costs a lot
 MIN_SIDE = 400
-TRIM_MM = 0.6            # pull the cut inside the printed outline so the black line is gone
 
 # --- Sessions (bod 6) ---------------------------------------------------
 # Session = jedna televize se svym QR, svymi ulovky a svym broadcastem.
@@ -323,8 +320,8 @@ def clean_name(name):
 
 
 def _process_model_sheet(spec, warped, markers, data, name, session):
-    """List tvora postaveneho z 3D modelu: staci prenest barvy, rig uz existuje."""
-    shape = modelsheet.load(os.path.join(SHAPES3D_DIR, f"{spec.key}.json"))
+    """Vyfoceny list: staci prenest barvy na kuzi, kostru uz model ma."""
+    shape = capture3d.load_shape(spec.key)
     coverage = capture3d.ink_coverage(warped, shape)
 
     catch_id, out_dir = store.new_catch(spec.key)
@@ -333,8 +330,7 @@ def _process_model_sheet(spec, warped, markers, data, name, session):
         photo = store.save_photo(catch_id, data)
         return store.write_meta(catch_id, creature=spec.key, label=spec.label,
                                 motion=spec.motion, name=name, coverage=coverage,
-                                markers=markers, photo=photo, kind="model",
-                                session=session)
+                                markers=markers, photo=photo, session=session)
     except Exception:
         store.delete_catch(catch_id)
         raise
@@ -365,28 +361,8 @@ def process(data, name, session=DEFAULT_SESSION):
     except CaptureError as e:
         raise CaptureError(_capture_advice(bgr, e)) from e
 
-    spec = BY_MARKER3D.get(creature_index)
-    if spec is not None:
-        meta = _process_model_sheet(spec, warped, markers, data, name, session)
-        meta["took_ms"] = int((time.perf_counter() - started) * 1000)
-        return meta
-
-    creature = CATALOGUE[creature_index]
-    sheet = capture.sheet_texture(warped, creature, trim_mm=TRIM_MM)
-    coverage = capture.ink_coverage(sheet)
-
-    catch_id, out_dir = store.new_catch(creature.key)
-    try:
-        rig.build_rig(sheet, creature, out_dir, name or creature.label)
-        photo = store.save_photo(catch_id, data)
-        meta = store.write_meta(catch_id, creature=creature.key, label=creature.label,
-                                motion=creature.motion, name=name, coverage=coverage,
-                                markers=markers, photo=photo, kind="rig",
-                                session=session)
-    except Exception:
-        store.delete_catch(catch_id)
-        raise
-
+    spec = BY_MARKER3D[creature_index]
+    meta = _process_model_sheet(spec, warped, markers, data, name, session)
     meta["took_ms"] = int((time.perf_counter() - started) * 1000)
     return meta
 
@@ -437,8 +413,9 @@ def rezim_page():
 def api_templates():
     """Předlohy vygenerované z 3D modelů.
 
-    Jde se výhradně přes katalog, ne přes obsah adresáře: kdyby se stará větev
-    někdy přegenerovala, do přehledu se stejně nedostane.
+    Jde se výhradně přes katalog, ne přes obsah adresáře: tvor bez záznamu
+    v katalogu nemá index značky, takže by ho vyfocený list neidentifikoval
+    a nabízet takovou předlohu k tisku by byla past.
     """
     out = []
     for spec in CATALOGUE3D:
@@ -466,13 +443,9 @@ def api_dino3d(scene: str = ""):
 
 
 def _catch_scene(meta):
-    """Do ktere sady tvoru (Scene.catalogue) ulovek patri. Stara 2D vetev
-    (kind=rig, tvorove 0-7) je cela z kridy."""
-    if meta.get("kind") == "model":
-        spec = BY_KEY3D.get(meta.get("creature"))
-        if spec is not None:
-            return spec.scene
-    return DEFAULT_SCENE
+    """Do ktere sady tvoru (Scene.catalogue) ulovek patri."""
+    spec = BY_KEY3D.get(meta.get("creature"))
+    return spec.scene if spec is not None else DEFAULT_SCENE
 
 
 @app.get("/api/scenes")
@@ -553,8 +526,8 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
             {"ok": False, "error": f"zpracování fotky selhalo ({type(e).__name__})"},
             status_code=500)
 
-    log.info("úlovek %s: %s kind=%s session=%s markers=%s coverage=%.3f took_ms=%s",
-             meta["id"], meta["creature"], meta.get("kind"), sid,
+    log.info("úlovek %s: %s session=%s markers=%s coverage=%.3f took_ms=%s",
+             meta["id"], meta["creature"], sid,
              meta.get("markers"), meta.get("coverage", 0.0), meta.get("took_ms"))
     sess = await touch_session(sid)     # uspesny upload = aktivita (a budicek)
 
@@ -573,8 +546,7 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
 
     await hub.broadcast(sid, {"type": "add", "url": meta["url"], "id": meta["id"],
                               "label": meta["label"], "name": meta["name"],
-                              "creature": meta["creature"],
-                              "kind": meta.get("kind", "rig")})
+                              "creature": meta["creature"]})
     return {"ok": True, **meta}
 
 

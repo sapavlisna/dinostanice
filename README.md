@@ -73,8 +73,8 @@ Klávesa `D` ve scéně vytáhne panel, kde se dá u každého druhu za běhu m�
   naopak rozladí; je to šroubek pro případ, že měřený krok sedí špatně.
 
 Prázdné pole znamená automat (v šedém textu je vidět, co si scéna spočítala
-sama). Automat míří na přirozené tempo druhu z katalogu (paleo odhady: sauropod
-se plouží, velociraptor si vykračuje) a tvora posouvá po fázové křivce klipu,
+sama). Automat míří na přirozené tempo druhu z katalogu (paleo odhady:
+apatosaurus se plouží, velociraptor si vykračuje) a tvora posouvá po fázové křivce klipu,
 takže prokluz chodidel drží kolem 1 % ujeté dráhy. Vpravo svítí, co z toho
 vyšlo: rychlost v px/s, jak dlouho trvá přejezd obrazovky, délka cyklu
 a naměřená délka kroku v délkách těla. Nastavení drží `localStorage`, takže
@@ -119,8 +119,9 @@ Otevři `/sablony` — jsou tam všechny předlohy s náhledem a tlačítkem
 k tisku. Vyrobit znovu: `python tools/model_sheet.py`.
 
 Tiskni **na 100 %**, žádné „přizpůsobit stránce" — na měřítku záleží, rozměry
-v milimetrech drží celou pipeline pohromadě. Na každém listu je nahoře kontrolní
-úsečka 100 mm, kterou si po tisku můžeš přeměřit pravítkem.
+v milimetrech drží celou pipeline pohromadě. Zmenšený list se pozná: rohové
+značky přestanou sedět k sobě a server fotku odmítne s hláškou, že list není
+rovně a celý.
 
 ## Jak fotit (měřeno, ne odhadnuto)
 
@@ -140,20 +141,16 @@ fotky se schovávají v `data/rejected/` — jsou to nejcennější testovací d
 
 ## Jak to funguje
 
-Obrys šablony se z fotky nehádá — je předem známý. `dinostanice/shapes.py`
-generuje z jediné definice tvora (páteřní křivka + profil tloušťky + končetiny)
-současně **tisknutelný obrys**, **masku pro ořez kresby** i **animační kostru**.
-Proto textura vždy přesně sedne na to, co ji rozhýbe.
-
-Tělo se při stavbě rigu **narovná podél páteře** do rovného pásu: osa x je
-vzdálenost podél páteře, osa y kolmý offset. Renderer pak ohýbá rovný pás podél
-libovolné animované křivky obyčejnými 2D transformacemi. Končetiny jsou tuhé
-díly rotující kolem kloubů.
+Obrys šablony se z fotky nehádá — **předloha vzniká promítnutím hotového 3D
+modelu na list**. Tím je registrace zadarmo: kde na papíře leží bod, tam má na
+modelu svoje UV, takže vybarvená fotka sedne na kůži jednou transformací
+a drží ve všech pózách a úhlech. Hloubka se nedopočítává, protože model ji má
+od autora — stejně jako kostru a chůzi.
 
 ```
-šablona (SVG, tisk) → dítě vybarví → foto mobilem
-  → POST /api/upload → detect_sheet()  (ArUco → homografie → srovnaný list)
-  → build_rig()      (narovnané tělo + rozřezané končetiny)
+model (GLB, CC0) → bokorys → šablona (SVG, tisk) → dítě vybarví → foto mobilem
+  → POST /api/upload → detect_sheet()   (ArUco → homografie → srovnaný list)
+  → capture3d.save_catch()              (barvy z papíru jako textura na kůži)
   → data/catch/<id>/ → WebSocket → scéna přidá tvora
 ```
 
@@ -161,60 +158,21 @@ Podrobnosti a kontrakty mezi částmi jsou v [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Co je v katalogu
 
-Osm šablon. Brachiosaurus, Tyrannosaurus, Stegosaurus a Triceratops chodí po
-břehu, Plesiosaurus plave v laguně, Pteranodon a letadlo létají, plachetnice se
-houpe na hladině.
+Osm šablon: Tyrannosaurus, Velociraptor, Triceratops, Stegosaurus,
+Parasaurolophus a Apatosaurus chodí po břehu, drak a ptakoještěr létají nad
+lagunou.
 
-Dinosauři vycházejí z **CC0 siluet z [PhyloPic](https://www.phylopic.org/)**
-(autoři v [CREDITS.md](CREDITS.md)). Z bitmapy siluety se automaticky odvodí
-páteř, tloušťka i končetiny s klouby — `dinostanice/silhouette.py` skeletonizuje
-tvar, vezme nejdelší cestu jako páteř a větve mimo ni jako nohy. Výsledek se
-předpočítá do `data/shapes/*.json`, protože skeletonizace je na každý import
-příliš pomalá.
+Modely jsou hotové rigované GLB (`data/models_src/*.glb`, CC0 od Quaternia;
+autoři a licence v [CREDITS.md](CREDITS.md)). Přidat dalšího tvora znamená
+sehnat model, zapsat záznam do `CATALOGUE` v `dinostanice/creatures3d.py`
+(s **novým** indexem značky — přečíslování znehodnotí už vytištěné listy)
+a spustit generátory níž.
 
-Přidat dalšího dinosaura znamená stáhnout siluetu a spustit dvě věci:
+Póza předlohy se vybírá sama — projde se cyklus chůze a vezme se okamžik, kdy
+tvar nejlíp vyplní list (rozkročené nohy jsou čitelnější a pro texturu
+vydatnější). Oko se dokresluje, modely žádné nemají.
 
-```powershell
-python tools/fetch_silhouettes.py --free-only   # stáhne kandidáty + licence
-python tools/build_catalogue.py                 # odvodí z nich geometrii
-```
-
-Pak už jen zapsat klíč do `CATALOGUE` v `dinostanice/creatures.py`. **Pozor:**
-ID značek se přidělují podle pořadí v `CATALOGUE`, takže přeházení seznamu
-znehodnotí všechny už vytištěné listy.
-
-Plachetnice a letadlo se kreslí v `tools/make_vehicles.py` — skládají se
-z primitiv do bitmapy a pak trasují, protože ručně kladené body polygonu vedle
-traceované siluety vypadají hrubě.
-
-## 3D modely nafouknuté z kresby (konzervovaná metoda)
-
-Tuhle větev nahradila větev z hotových 3D modelů (níž); prohlížeč `/3d`
-i vypečené modely jsou smazané. Metoda samotná zůstává v kódu a pod testy
-(`dinostanice/inflate.py`, `model3d.py`, `tests/test_model3d.py`) a dá se
-kdykoli vypéct znovu: `python tools/make_model3d.py`.
-
-Hloubka se v kresbě nenachází, takže se dopočítá „jako u plyšáka": co je dál
-od obrysu, to víc vystoupí z papíru. Z boku je model přesně ta kresba, otočením
-se barvy přetáhnou přes hřbet. Celé zvíře je **jedna spojitá kůže**; nohy se do
-hloubky rozestrkávají váhovým polem, které u kyčle plyne k nule, takže se kůže
-přes rameno zkosí místo aby se rozpadla. Tytéž váhy ohýbají nohu v kyčli při
-chůzi.
-
-Zvířatům to sluší; **plachetnici ne** — z trupu a plachet vyjde sedací vak,
-protože nafukování počítá s měkkým oblým tělem.
-
-## Předloha z 3D modelu
-
-Obrácený postup — místo aby se z ploché siluety dopočítávala hloubka, vychází se
-z hotových rigovaných modelů (`data/models_src/*.glb`, CC0 od Quaternia)
-a předloha z nich vypadne jako bokorys. Zvíře pak má skutečný objem a chůzi od
-autora modelu, ne dopočítanou.
-
-Osm tvorů: Tyrannosaurus, Velociraptor, Triceratops, Stegosaurus,
-Parasaurolophus, Apatosaurus a dva létající — drak a ptakoještěr. Póza předlohy se vybírá sama — projde se cyklus
-chůze a vezme se okamžik, kdy tvar nejlíp vyplní list (rozkročené nohy jsou
-čitelnější a pro texturu vydatnější). Oko se dokresluje, modely žádné nemají.
+## Generátory předloh a modelů
 
 ```powershell
 python tools/model_sheet.py            # předlohy: data/templates/*.svg
@@ -251,38 +209,41 @@ python tools/shot_scene.py --demo      # navíc doplní celý katalog
 
 ## Vývoj bez tiskárny
 
-`dinostanice/synth.py` umí vyrobit syntetickou vybarvenou šablonu i simulovanou
-fotku mobilem (perspektiva, osvětlení, rozostření, šum, JPEG). Celá pipeline se
-tak dá vyvíjet a regresně testovat, aniž by kdokoli něco vytiskl:
+`dinostanice/modelsheet.rasterise()` nakreslí tentýž list, který jde do tiskárny,
+`dinostanice/synth.py` ho vybarví pastelkami a vyfotí simulovaným mobilem
+(perspektiva, osvětlení, rozostření, šum, JPEG). Celá pipeline se tak dá vyvíjet
+a regresně testovat, aniž by kdokoli něco vytiskl:
 
 ```powershell
-python -m pytest -q          # 185 testů
+python -m pytest -q          # 132 testů
 ```
 
 Součástí je `tests/test_server.py` (36 testů) — end-to-end přes FastAPI
 TestClient: upload syntetické fotky, sessions, uspávání, mazání přes koš,
-limity. `out/robustness_report.md` shrnuje, kde přesně se snímání láme a proč.
+limity — a `tests/test_robustness.py` (63 testů), který jednotlivě prosvěcuje
+každou osu degradace fotky a drží naměřené hranice snímání pod kontrolou.
+`out/robustness_report.md` shrnuje, kde přesně se snímání láme a proč.
 
 ## Struktura
 
 | cesta | co to je |
 |---|---|
-| `dinostanice/` | pipeline: tvary, šablony, snímání, rig, kvalita, úložiště |
-| `dinostanice/silhouette.py` | odvození páteře a končetin z bitmapy siluety |
+| `dinostanice/` | pipeline: předloha z modelu, snímání, textura, kvalita, úložiště |
+| `dinostanice/modelsheet.py` | z bokorysu modelu předloha k vybarvení + převod mm ↔ model |
+| `dinostanice/creatures3d.py` | katalog tvorů: model, projekce, značka, vlastnosti pro scénu |
 | `dinostanice/scenes.py` | registr scén (krajin) pro server |
-| `dinostanice/inflate.py`, `model3d.py` | nafouknutí kresby do 3D (konzervovaná metoda) |
-| `data/models3d/` | modely pro prohlížeč: GLB s UV, textury, katalog |
-| `data/silhouettes/` | zdrojové siluety + `credits.json` s licencemi |
-| `data/shapes/` | předpočítaná geometrie tvorů |
-| `web/` | scéna na TV, renderer, animace, stránky pro mobil, tisk, režim |
+| `data/models_src/` | stažené zdrojové modely (GLB) |
+| `data/models3d/` | modely pro scénu a prohlížeč: GLB s UV, textury, katalog |
+| `data/shapes3d/` | geometrie předloh (obrys, linky, oko, `Placement`) |
+| `data/templates/` | vygenerované šablony (SVG k tisku), server je vydává na `/templates` |
+| `web/` | scéna na TV, stránky pro mobil, tisk, režim |
 | `web/scene3d.js` | 3D tvorové ve scéně: ortokamera v pixelech, měřený krok |
 | `web/scenes/` | definice scén (pásy, chování, trasy, světla) — scéna jako data |
 | `web/backdrops/` | malované krajiny s variantami (den/noc) |
-| `tools/print_sheets.py` | tisková sada PDF |
+| `tools/model_sheet.py` | předlohy z modelů (SVG, náhled, geometrie) |
 | `tools/gait_report.py` | regresní brána chůze: prokluz a tempo per druh |
 | `tests/` | regresní sada nad syntetickými daty |
 | `tests/test_server.py` | end-to-end testy serveru přes TestClient |
-| `data/templates/` | vygenerované šablony (SVG + PDF k tisku), server je vydává na `/templates` |
 | `data/catch/` | úlovky — co děti nafotily |
 | `data/trash/` | koš smazaných úlovků (30 dní) |
 | `data/rejected/` | posledních 50 odmítnutých fotek (testovací data) |

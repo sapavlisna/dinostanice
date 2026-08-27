@@ -4,8 +4,9 @@ Vsechny modely jsou CC0 od Quaternia (viz CREDITS.md). Pozice predlohy i oko
 se dopocitavaji, ladi se jen vyjimky. Klipy se hledaji podle holeho jmena
 (`Model.clip`), protoze prefix armatury se model od modelu lisi.
 
-Indexy znacek navazuji na osm tvoru stare vetve (0-7), aby se uz vytistene
-listy nezneplatnily.
+Indexy znacek zacinaji na osmi: prvnich osm patrilo prvni, zrusene vetvi
+projektu. Zustavaji volne pro dalsi tvory a tyhle se neprecisluji — listy
+jsou vytistene a index je na nich natvrdo v rohovych znackach.
 """
 from dataclasses import dataclass, field
 
@@ -47,7 +48,7 @@ class Model3D:
     flip: tuple = (1, -1, 1)
     eye_bias: dict = field(default_factory=dict)
     # Kandidati na pozu predlohy. Zustava u chuze zamerne: pusteni vsech animaci
-    # do vyberu sice list vyplni lip, ale Attack tvora prekroutí — sauropodovi
+    # do vyberu sice list vyplni lip, ale Attack tvora prekroutí — apatosaurovi
     # premaluje ocas pres telo a stegosaurovi schova plotenky.
     poses: tuple = ("Walk",)
     anim: str | None = None      # natvrdo zvolena animace, jinak se vybira
@@ -96,3 +97,4 @@ CATALOGUE = [
 ]
 
 BY_KEY = {m.key: m for m in CATALOGUE}
+BY_MARKER = {m.marker_index: m for m in CATALOGUE}

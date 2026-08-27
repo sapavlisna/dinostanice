@@ -7,9 +7,6 @@ and produces stand-in textures for animation work.
 import cv2
 import numpy as np
 
-from .template import rasterise
-from .raster import creature_mask
-from .shapes import SHEET_W_MM, SHEET_H_MM
 
 CRAYONS = [
     (60, 60, 210), (40, 140, 240), (60, 170, 90), (200, 120, 40),
@@ -17,11 +14,13 @@ CRAYONS = [
 ]
 
 
-def scribble(creature, creature_index, ppm=6.0, seed=0, sloppiness=1.0, strokes=26):
-    """A template with crayon scribbles roughly inside the silhouette."""
+def scribble(sheet, mask, ppm=6.0, seed=0, sloppiness=1.0, strokes=26):
+    """Crayon scribbles roughly inside a drawing area, on top of a printed sheet.
+
+    `sheet` is the rasterised template (BGR), `mask` its drawing area at the same
+    resolution -- for a 3D creature modelsheet.rasterise() + capture3d.sheet_mask().
+    """
     rng = np.random.default_rng(seed)
-    sheet = rasterise(creature, creature_index, ppm=ppm)
-    mask = creature_mask(creature, ppm=ppm)
     ys, xs = np.nonzero(mask)
     if len(xs) == 0:
         return sheet

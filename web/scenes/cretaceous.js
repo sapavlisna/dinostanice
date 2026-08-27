@@ -18,8 +18,8 @@
      ambientMin na kolik tvorů scénu doplnit z katalogu
 
    motions.<typ>:
-     lengthFraction  podíl šířky obrazovky pro 2D rig v nejbližším plánu
-     sizeFraction    totéž pro 3D tvory (odmocnina z plochy siluety)
+     sizeFraction    velikost tvora v nejbližším plánu jako podíl šířky
+                     obrazovky (odmocnina z plochy siluety)
      baseSpeed       rychlost v podílu šířky/s pro tvory bez měřeného kroku
      strideRate      default cílového tempa chodce (těl/s); per druh ho
                      přebíjí `strideRate` z katalogu (vlastnost druhu)
@@ -73,15 +73,15 @@ export default {
   ],
   motions: {
     walk: {
-      lengthFraction: 0.17, sizeFraction: 0.234, baseSpeed: 0.030,
+      sizeFraction: 0.234, baseSpeed: 0.030,
       strideRate: [0.12, 0.22],
       farChance: 0.35,
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
-    fly: { lengthFraction: 0.24, sizeFraction: 0.334, baseSpeed: 0.055, bob: true },
-    swim: { lengthFraction: 0.19, baseSpeed: 0.030 },
-    sail: { lengthFraction: 0.15, baseSpeed: 0.018 },
+    fly: { sizeFraction: 0.334, baseSpeed: 0.055, bob: true },
+    swim: { baseSpeed: 0.030 },
+    sail: { baseSpeed: 0.018 },
   },
   paths: [
     // ukázka: rovná procházka po prostřední dráze předního břehu (y 0.88)

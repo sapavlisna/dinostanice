@@ -2,9 +2,8 @@
    listens for new arrivals. Drawing the landscape is backdrop's job, posing a
    3D creature is scene3d's; this file only decides who is where.
 
-   Tvor postaveny z hotoveho 3D modelu se kresli do WebGL vrstvy nad krajinou,
-   stary ohybany 2D rig primo do platna s krajinou. Scena s obema pracuje
-   stejne — lisi se az posledni krok, vykresleni. */
+   Tvorove se kresli do WebGL vrstvy nad krajinou (scene3d), krajina a efekty
+   do 2D platna pod ni. */
 
 import * as Scene3D from './scene3d.js';
 import * as Tune from './tune.js';
@@ -183,13 +182,6 @@ function depthScale(yFrac) {
   return 0.35 + 0.65 * Math.max(0, Math.min(1, (yFrac - 0.35) / 0.55));
 }
 
-function bodyLengthMm(rig) {
-  const s = rig.sizeMm;
-  if (typeof s === 'number') return s;
-  if (s && typeof s.w === 'number') return Math.max(s.w, s.h || 0);
-  return 240;
-}
-
 function span([lo, hi]) {
   return lo + Math.random() * (hi - lo);
 }
@@ -277,7 +269,7 @@ function followRoute(a, go) {
     }
     if (pt.do === 'stop' && !a.pause) {
       const R = motionCfg(a.motion).rest;
-      if (R && (!a.m3 || a.m3.action)) {
+      if (R && a.m3.action) {
         a.pause = 'stand';
         a.fade = R.fade;
         a.restUntil = sceneTime + span(pt.dwell || R.stand);
@@ -310,7 +302,7 @@ function addActor(what, opts) {
   // dedup podle id: race pri startu (connect bezi soubezne s restoreCast) nebo
   // rekonciliace po reconnectu nesmi privest tehoz tvora dvakrat
   if (what.id && actors.some(a => a.id === what.id)) {
-    if (what.m3) Scene3D.remove(what.m3);    // uz nacteny klon nesmi leaknout
+    Scene3D.remove(what.m3);    // uz nacteny klon nesmi leaknout
     return null;
   }
   const motion = what.motion || 'walk';
@@ -329,7 +321,6 @@ function addActor(what, opts) {
     // rozsazuje zlaty rez, ne nahoda: nahodnych sest cisel se casto sesype do
     // jednoho rohu a pul obrazovky zustane prazdna.
     xFrac: silent ? (spawnSeq++ * 0.6180339887 + 0.1) % 1 : -0.15,
-    phase: Math.random(),
     speed: (cfg.baseSpeed || 0.03) * pace,
     bob: Math.random() * Math.PI * 2,
     restUntil: 0,
@@ -351,7 +342,7 @@ function addActor(what, opts) {
   };
   actor.autoRate = 1;
   actor.autoSpeed = actor.speed;
-  if (actor.m3 && actor.m3.strideBodies) {
+  if (actor.m3.strideBodies) {
     // Chodec: tempo cyklu se vybere kolem prirozeneho tempa druhu a rychlost po
     // scene se z nej dopocita, ne naopak — chodidla tak zustanou na zemi.
     // Cilove tempo (tel/s) je vlastnost druhu (katalog), default dava scena;
@@ -360,7 +351,7 @@ function addActor(what, opts) {
     const [lo, hi] = actor.strideRate || cfg.strideRate || [0.12, 0.22];
     actor.strideWant = lo + Math.random() * (hi - lo);
     actor.rateJitter = 0.94 + 0.12 * Math.random();
-  } else if (actor.m3) {
+  } else {
     actor.autoRate = pace;         // letec: rychleji maka kridly, rychleji leti
   }
   dropOnBand(actor, band);
@@ -455,7 +446,7 @@ function applyGait(a) {
 function dropActor(i) {
   const [gone] = actors.splice(i, 1);
   if (!gone) return;
-  if (gone.m3) Scene3D.remove(gone.m3);
+  Scene3D.remove(gone.m3);
   // `−` v liste az pri skutecnem zmizeni; hromadny reset ma jeden souhrnny
   // zaznam misto N jednotlivych (quietOut)
   if (!gone.quietOut) Roster.event('out', gone.label, gone.who);
@@ -479,7 +470,7 @@ async function topUp() {
     while (liveCount() < ((sceneDef && sceneDef.ambientMin) || 0)) {
       const spec = nextAmbient();
       try {
-        await loadModel({ kind: 'model', creature: spec.key, texture: spec.texture,
+        await loadModel({ creature: spec.key, texture: spec.texture,
                           id: `katalog-${spec.key}-${ambientSeq++}` },
                         { silent: true, ambient: true });
       } catch (e) {
@@ -541,7 +532,7 @@ const FUN_FADE = 0.3;       // prolnuti stani <-> zabavne pozy
 
 function waiting(a) {
   return a.pause === 'stand' && a.mix >= 0.99 && !a.exiting && !a.leaving
-      && a.m3 && (a.blocked || !!a.route);
+      && (a.blocked || !!a.route);
 }
 
 function entertain(a, dt) {
@@ -596,14 +587,12 @@ function rest(a, dt) {
   a.face = toward(a.face, a.dir, dt / ((R && R.spin) || 0.5));
   const target = a.pause || a.fun || a.face !== a.dir ? 1 : 0;
   a.mix = toward(a.mix, target, dt / a.fade);
-  if (a.m3) {
-    Scene3D.speed(a.m3, a.rate * (1 - a.mix));
-    // uvnitr zastavene vahy (mix) se stani a zabavna poza prolinaji pres k
-    const k = a.fun ? a.fun.k : 0;
-    const w = { [a.shown || 'stand']: a.mix * (1 - k) };
-    if (a.fun) w[a.fun.pose] = a.mix * k;
-    Scene3D.blendMix(a.m3, w);
-  }
+  Scene3D.speed(a.m3, a.rate * (1 - a.mix));
+  // uvnitr zastavene vahy (mix) se stani a zabavna poza prolinaji pres k
+  const k = a.fun ? a.fun.k : 0;
+  const w = { [a.shown || 'stand']: a.mix * (1 - k) };
+  if (a.fun) w[a.fun.pose] = a.mix * k;
+  Scene3D.blendMix(a.m3, w);
 }
 
 /* Kolize na draze (bod 3). Diskretni drahy delaji ze srazek 1D ulohu: resi
@@ -628,8 +617,7 @@ const MEET_CD_S = 4;        // po otocce ze setkani chvili neotacet znovu —
 const TURN_EVERY = [20, 45];
 
 function bodyLenFrac(a) {
-  return a.m3 ? bodyFrac(a)
-       : (motionCfg(a.motion).lengthFraction || 0.17) * depthScale(a.yFrac);
+  return bodyFrac(a);
 }
 
 /* Ma tvor na sve drahe nekoho tak blizko, ze by se s nim prekryval? */
@@ -644,7 +632,7 @@ function crowded(a) {
    snimek prodluzuje. Kratke restUntil po uvolneni samo dobehne a tvor jde. */
 function holdStill(a) {
   const R = motionCfg(a.motion).rest;
-  if (!R || (a.m3 && !a.m3.action)) return;
+  if (!R || !a.m3.action) return;
   if (!a.pause) {
     a.pause = 'stand';
     a.fade = R.fade;
@@ -717,7 +705,7 @@ function update(dt) {
         a.feed = null;
       } else if (Math.abs(a.xFrac - a.feed.x) < FEED_REACH) {
         const R = motionCfg(a.motion).rest;
-        if (R && (!a.m3 || a.m3.action) && !a.pause) {
+        if (R && a.m3.action && !a.pause) {
           a.pause = 'stand';
           a.fade = R.fade;
           a.restUntil = sceneTime + span(R.stand);
@@ -867,14 +855,9 @@ function drawTags() {
     if (!a.tagUntil || sceneTime >= a.tagUntil || !a.who || a.leaving) continue;
     const scale = depthScale(a.yFrac);
     const cfg = motionCfg(a.motion);
-    let top;
-    if (a.m3) {
-      const s = W * (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
-              * scale / a.m3.sizePx;
-      top = a.yFrac * H - a.m3.height * s;
-    } else {
-      top = a.yFrac * H - W * (cfg.lengthFraction || 0.17) * scale * 0.75;
-    }
+    const s = W * (cfg.sizeFraction || motionCfg('walk').sizeFraction || 0.234)
+            * scale / a.m3.sizePx;
+    const top = a.yFrac * H - a.m3.height * s;
     const alpha = Math.max(0, Math.min(1, (a.tagUntil - sceneTime) / 0.5,
                                        (sceneTime - a.born) / 0.5));
     const fs = Math.max(12, Math.round(17 * scale));
@@ -953,36 +936,20 @@ function drawBackdrop(dt) {
 function draw(dt) {
   drawBackdrop(dt);
 
-  const order = actors.slice().sort((a, b) => a.yFrac - b.yFrac);
-  for (const a of order) {
+  // hloubku resi WebGL vrstva pres `depth`, tady uz poradi nerozhoduje
+  for (const a of actors) {
     const scale = depthScale(a.yFrac);
-    const targetPx = W * (motionCfg(a.motion).lengthFraction || 0.17) * scale;
     const age = sceneTime - a.born;
     let pop = age < 0.9 ? 0.72 + 0.28 * Math.min(1, age / 0.9) : 1;
     // odchod pri prepnuti sceny: zmenseni do ztracena, obraceny "pop"
     if (a.leaving) pop *= Math.max(0, 1 - (sceneTime - a.leaving) / LEAVE_S);
     const x = a.xFrac * W, y = a.yFrac * H;
 
-    if (a.m3) {
-      // u 3D tvora je yFrac primo cara, na ktere stoji nohama
-      const s = W * (motionCfg(a.motion).sizeFraction
-                     || motionCfg('walk').sizeFraction || 0.234) * scale / a.m3.sizePx;
-      Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop,
-                            depth: a.yFrac * 4000 - 2000 });
-      continue;
-    }
-
-    const pxPerMm = targetPx / bodyLengthMm(a.rig);
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, age / 0.4);
-    try {
-      a.rig.draw(ctx, { x, y, scale: pxPerMm * pop, flip: a.face < 0,
-                        t: sceneTime, phase: a.phase, speed: a.pace * a.rate,
-                        rest: a.mix > 0.5 });
-    } catch (e) {
-      note('render: ' + e.message);
-    }
-    ctx.restore();
+    // u 3D tvora je yFrac primo cara, na ktere stoji nohama
+    const s = W * (motionCfg(a.motion).sizeFraction
+                   || motionCfg('walk').sizeFraction || 0.234) * scale / a.m3.sizePx;
+    Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop,
+                          depth: a.yFrac * 4000 - 2000 });
   }
 
   Scene3D.render(dt);
@@ -1020,13 +987,6 @@ function toast(text) {
   toast._t = setTimeout(() => toastEl.classList.remove('show'), 4200);
 }
 
-async function loadRig(item, opts) {
-  if (!window.Rig) throw new Error('rigrender.js není načtený');
-  const rig = await Rig.load(item.url || '/catch/' + item.id + '/');
-  return addActor({ rig, id: item.id, key: rig.creature || 'rig',
-                    motion: rig.motion, label: rig.label }, opts);
-}
-
 async function loadModel(item, opts) {
   const spec = byKey.get(item.creature);
   if (!spec) throw new Error('neznámý model: ' + item.creature);
@@ -1047,7 +1007,7 @@ async function loadModel(item, opts) {
 }
 
 function arrive(item, opts) {
-  return item.kind === 'model' ? loadModel(item, opts) : loadRig(item, opts);
+  return loadModel(item, opts);
 }
 
 async function catalogue() {
@@ -1197,7 +1157,7 @@ function connect() {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'add') {
-      qrArrived();      // zmenseni patri kazdemu prirustku, bez ohledu na kind
+      qrArrived();      // zmenseni patri kazdemu prirustku
       idleHide();       // upload = touch na serveru, odpocet uz nebezi
       try {
         const a = await arrive(msg, { who: msg.name });
@@ -1250,12 +1210,12 @@ Tune.init({
       if (!r) rows.set(a.key, r = { key: a.key, label: a.label, count: 0,
                                     autoRate: 0, rate: 0, px: 0, cycle: 0,
                                     autoSpeed: 1,
-                                    stride: a.m3 ? a.m3.strideBodies : 0 });
+                                    stride: a.m3.strideBodies });
       r.count++;
       r.autoRate += a.autoRate;
       r.rate += a.rate;
       r.px += a.speed * W;
-      r.cycle += a.m3 && a.m3.duration ? a.m3.duration / a.rate : 0;
+      r.cycle += a.m3.duration ? a.m3.duration / a.rate : 0;
     }
     // vic jedincu tehoz druhu se lisi hloubkou i nahodou, tak prumer
     return [...rows.values()].map(r => ({
@@ -1389,13 +1349,13 @@ window.DinoScene = {
     turning: a.face !== a.dir,
     fun: a.fun ? a.fun.pose + ':' + a.fun.phase : null,
     route: a.route ? a.route.path.name || '' : null,
-    kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
+    ambient: a.ambient,
     exiting: !!a.exiting, feeding: !!a.feed,
     x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
     // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti
     speedPx: +(a.speed * W).toFixed(1),
     bodiesPerS: a.natural ? +(a.natural * a.rate * a.speedMul).toFixed(4) : null,
-    cycle: a.m3 && a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
+    cycle: a.m3.duration ? +(a.m3.duration / a.rate).toFixed(3) : null,
   })),
   foods: () => foods.map(f => ({ x: f.x, y: +f.y.toFixed(3),
                                  age: +(sceneTime - f.born).toFixed(2) })),

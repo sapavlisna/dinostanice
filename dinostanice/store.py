@@ -1,8 +1,8 @@
 """Persistent catches under data/catch/<id>/.
 
-Each catch is a self-contained directory: rig.json plus its images (written by
-rig.build_rig), the original photo so a catch can be reprocessed after the
-pipeline changes, and meta.json with everything the listing needs.
+Each catch is a self-contained directory: model.json plus the texture (written
+by capture3d.save_catch), the original photo so a catch can be reprocessed
+after the pipeline changes, and meta.json with everything the listing needs.
 """
 
 import json
@@ -69,9 +69,8 @@ DEFAULT_SESSION = "tv"
 
 
 def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
-               markers=0, photo=None, kind="rig", session=DEFAULT_SESSION):
-    """`kind` rozlisuje, co v adresari lezi: ohybany 2D rig, nebo textura
-    k hotovemu 3D modelu. `session` rika, ktere televizi ulovek patri."""
+               markers=0, photo=None, session=DEFAULT_SESSION):
+    """`session` rika, ktere televizi ulovek patri."""
     meta = {
         "id": catch_id,
         "url": f"/catch/{catch_id}/",
@@ -83,7 +82,6 @@ def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
         "coverage": round(float(coverage), 4),
         "markers": int(markers),
         "photo": photo,
-        "kind": kind,
         "session": session,
     }
     with open(os.path.join(catch_dir(catch_id), "meta.json"), "w", encoding="utf-8") as f:
@@ -109,10 +107,8 @@ def list_catches(session=None):
     for entry in os.scandir(CATCH_ROOT):
         if not entry.is_dir() or not ID_RE.match(entry.name):
             continue
-        # rig.json ma ohybany 2D tvor, model.json ten z hotoveho 3D modelu;
-        # bez jednoho z nich je adresar rozepsany
-        if not any(os.path.exists(os.path.join(entry.path, f))
-                   for f in ("rig.json", "model.json")):
+        # bez model.json je adresar rozepsany
+        if not os.path.exists(os.path.join(entry.path, "model.json")):
             continue
         try:
             meta = read_meta(entry.name)

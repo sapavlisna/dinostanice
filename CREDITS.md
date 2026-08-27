@@ -1,31 +1,13 @@
-# Zdroje předloh
+# Zdroje modelů
 
-Siluety dinosaurů pocházejí z [PhyloPic](https://www.phylopic.org/) — otevřené
-databáze vědecky posuzovaných siluet organismů. Všechny použité jsou uvolněné
-pod **CC0 1.0** (veřejné vlastnictví), takže je lze použít bez podmínek.
-Autoři jsou uvedení z úcty k jejich práci, ne z licenční povinnosti.
+Předlohy k vybarvení se generují z hotových 3D modelů, takže jediný cizí
+materiál v projektu jsou právě ty modely.
 
-| šablona | taxon | autor | licence | zdroj |
-|---|---|---|---|---|
-| `sauropod` | Brachiosaurus | Mike Taylor | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/2431b273-7b21-482e-b971-70377686335d) |
-| `trex` | Tyrannosaurus | Manuel Brea Lueiro | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/6a38b924-85c4-46b6-a04a-0e53f2f4d77f) |
-| `stegosaurus` | Stegosaurus | Olivia Binfield | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/429d71d8-2940-449b-838b-a5b7f1733eba) |
-| `triceratops` | Triceratops | Richard Rich | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/57d2507a-be74-453b-8522-f6993b2fc401) |
-| `pteranodon` | Pteranodon | Dan Niel | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/0b4b95c2-615a-45df-adaa-a63fbd039eb2) |
-| `plesiosaur` | Plesiosaurus | Arthur S. Brum | CC0 1.0 | [PhyloPic](https://www.phylopic.org/images/59ce4fbe-6a78-42cd-b168-fb03cf8d176d) |
-
-Přesná UUID a odkazy jsou v `data/silhouettes/credits.json`, který generuje
-`tools/fetch_silhouettes.py` (ten také stahuje kandidáty k výběru a zaznamenává
-licenci každého z nich — nic se nepoužije, aniž by bylo jasné, odkud to je).
-
-## 3D modely
-
-Zkouška obráceného postupu (předloha se generuje z hotového 3D modelu, ne
-naopak) stojí na animovaném low-poly modelu:
-
-Všechny jsou z packu **Animated Dinosaurs** od [Quaternia](https://quaternius.com/),
-pod **CC0 1.0**, každý rigovaný se šesti animacemi (Idle, Walk, Run, Attack,
-Jump, Death). Staženo přes poly.pizza, protože tamní kopie je v GLB i s kostrou.
+Všechny kromě ptakoještěra jsou z packu **Animated Dinosaurs** od
+[Quaternia](https://quaternius.com/), pod **CC0 1.0**, každý rigovaný se šesti
+animacemi (Idle, Walk, Run, Attack, Jump, Death). Staženo přes poly.pizza,
+protože tamní kopie je v GLB i s kostrou. CC0 nevyžaduje uvedení autora —
+je tu z úcty k jeho práci, ne z licenční povinnosti.
 
 | soubor | tvor | zdroj |
 |---|---|---|
@@ -39,7 +21,7 @@ Jump, Death). Staženo přes poly.pizza, protože tamní kopie je v GLB i s kost
 
 Drak není z dinosauřího packu, ale ze stejné dílny — je to druhý létající tvor.
 
-### Ptakoještěr
+## Ptakoještěr
 
 | soubor | tvor | autor | licence | zdroj |
 |---|---|---|---|---|
@@ -53,10 +35,10 @@ a ke stažení jen po přihlášení). Kostru i mávání křídly mu proto dopi
 `tools/make_pteranodon.py`; `data/models_src/pteranodon.glb` je odvozenina,
 na kterou se vztahuje tatáž licence.
 
-`web/vendor/GLTFLoader.js` a `BufferGeometryUtils.js` jsou z three.js r169 (MIT),
-stažené lokálně, aby scéna běžela offline.
+## Knihovny
 
-Plachetnice a letadlo nejsou z PhyloPic (ten obsahuje jen organismy) — jsou to
-vlastní parametrické tvary definované v `dinostanice/creatures.py`.
+`web/vendor/GLTFLoader.js`, `BufferGeometryUtils.js`, `OrbitControls.js`,
+`SkeletonUtils.js` a `three.module.min.js` jsou z three.js r169 (MIT), stažené
+lokálně, aby scéna běžela offline.
 
 Krajina, animace a veškerý kód jsou vlastní tvorba.

@@ -8,17 +8,31 @@ list: kde na papire bod lezi, tam ma na modelu svoje UV.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from . import capture
+from . import modelsheet
 from .modelsheet import SheetShape, to_texture
 from .store import write_image
 from .shapes import SHEET_H_MM, SHEET_W_MM
 
 TEXTURE_PPM = 6.0        # jemnejsi nez WARP_PPM uz nema z ceho brat detail
+
+SHAPES3D_DIR = Path(__file__).resolve().parent.parent / "data" / "shapes3d"
+
+
+@lru_cache(maxsize=None)
+def load_shape(key: str) -> SheetShape:
+    """Predloha tvora z data/shapes3d/<key>.json.
+
+    Cachovane: cte se pri kazdem uploadu a je to zacommitovany, za behu
+    nemenny soubor (prepisuje ho jen tools/model_sheet.py).
+    """
+    return modelsheet.load(SHAPES3D_DIR / f"{key}.json")
 
 
 def sheet_mask(shape: SheetShape, ppm: float) -> np.ndarray:

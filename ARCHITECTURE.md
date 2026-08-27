@@ -6,47 +6,50 @@ na televizi, kde chodí / plave / letí mezi ostatními.
 
 ## Tok dat
 
-    šablona (SVG, tisk)  ->  dítě vybarví  ->  foto mobilem
+    trex.glb (CC0, rigovaný, 6 animací)
+      -> ortogonální bokorys -> obrys + vnitřní linky -> šablona (SVG, tisk)
+      -> dítě vybarví  ->  foto mobilem
       -> POST /api/upload -> capture.detect_sheet()  (ArUco -> homografie -> srovnaný list)
-      -> rig.build_rig()  (narovnané tělo + rozřezané končetiny)
-      -> data/catch/<id>/{rig.json, body.png, limb_*.png}
+      -> capture3d.save_catch()  (barvy z papíru jako textura na kůži modelu)
+      -> data/catch/<id>/{model.json, texture.png, meta.json}
       -> WebSocket broadcast -> scéna na TV přidá nového tvora
 
 ## Klíčová myšlenka
 
-Obrys šablony není hádaný z fotky — je předem známý. Z jedné definice tvora
-(obrys + páteřní křivka + profil tloušťky + končetiny) vzniká současně
-**tisknutelný obrys**, **maska pro ořez textury** i **animační rig**. Proto
-textura vždy přesně sedne na kostru, která ji rozhýbe.
+Předloha není nakreslená ani hádaná — **vzniká promítnutím hotového 3D modelu
+na list**. Tím je registrace zadarmo: kde na papíře leží bod, tam má na modelu
+svoje UV (`u = x/297`, `v = 1 - y/210`). Vybarvená fotka se tedy nasadí na
+model jednou planární transformací a drží ve všech pózách a úhlech.
 
-Zvířata pocházejí z traceovaných CC0 siluet, takže obrys je daný bitmapou a
-páteř s končetinami se z něj odvozují (`silhouette.py`). Tvar tedy může být
-libovolný, ne jen trubka — proto se narovnaný pás ořezává **skutečnou maskou
-trupu**, ne výpočtem z profilu: jinak by stegosaurovi zmizely ploténky
-a triceratopsovi límec, o kterých profil (vepsaný kruh) nic neví.
+Hloubka se z kresby nedopočítává, protože ji nikdo dopočítávat nemusí: model
+má skutečný objem i skutečnou chůzi od autora. Z boku je model přesně ta
+kresba, otočením se stejné barvy přetáhnou přes hřbet.
 
-Tělo se při stavbě rigu **narovná podél páteře** do rovného pásu (`body.png`):
-osa x = vzdálenost podél páteře, osa y = kolmý offset. Renderer pak ohýbá
-rovný pás podél libovolné animované křivky obyčejnými 2D transformacemi.
+Obrys šablony je proto **předem známý** — je uložený v `data/shapes3d/<key>.json`
+spolu s převodem milimetry ↔ souřadnice modelu (`Placement`). Nic z toho se
+z fotky nezjišťuje; z fotky se čte jenom to, kde list je (rohové značky) a jaké
+barvy na něm jsou.
 
 ## Hotové moduly (needitovat bez důvodu)
 
-- `dinostanice/shapes.py` — Creature/Limb, páteř, offset obrysu, klouby
-- `dinostanice/creatures.py` — katalog 8 tvorů, načítaný z `data/shapes/*.json`
-- `dinostanice/silhouette.py` — z bitmapy CC0 siluety odvodí obrys, páteř, profil
-  a končetiny s klouby (skeletonizace + nejdelší cesta + segmentace podle větví)
-- `dinostanice/raster.py` — maska a sjednocený obrys (fillPoly + findContours)
-- `dinostanice/markers.py` — ArUco DICT_4X4_50, 4 rohy na list, ID = 4*index+roh
-- `dinostanice/template.py` — šablona jako SVG (tisk) i raster (náhled/testy)
-- `dinostanice/capture.py` — detekce listu, homografie, srovnání osvětlení, ořez textury.
+- `dinostanice/shapes.py` — rozměry listu (A4 na šířku) a šířka tištěné linky
+- `dinostanice/markers.py` — ArUco DICT_4X4_100, 4 rohy na list, ID = 4*index+roh
+- `dinostanice/creatures3d.py` — katalog tvorů (viz níž)
+- `dinostanice/gltf.py` — vlastní GLB loader a linear blend skinning (numpy)
+- `dinostanice/orthoview.py` — z-buffer rasterizace do ortogonálního pohledu
+- `dinostanice/modelsheet.py` — z pohledu udělá předlohu: polygony v milimetrech,
+  `Placement` (mm ↔ model), oko; `rasterise()` nakreslí tištěný list jako bitmapu
+  (náhledy a syntetické fotky v testech), `to_texture()` udělá z vybarveného
+  listu texturu
+- `dinostanice/glbexport.py` — zapíše kopii GLB s doplněným `TEXCOORD_0` (pozice
+  vrcholů na listu) a případně s dopsanou kostrou
+- `dinostanice/capture.py` — detekce listu a homografie, srovnání osvětlení.
   `detect_sheet()` vyžaduje **aspoň dvě značky** (`MIN_MARKERS`) a kontroluje, jak
   homografie sedí: jedna značka ji určí přesně, ale extrapolace přes celý list byla
-  naměřena desítky milimetrů vedle — a tiše. `sheet_texture()` vrací kresbu v
-  souřadnicích celého listu (to potřebuje `rig.py`), `extract_texture()` ořezanou.
+  naměřena desítky milimetrů vedle — a tiše.
+- `dinostanice/capture3d.py` — ze srovnaného listu textura pro model, míra
+  vybarvení, zápis úlovku
 - `dinostanice/synth.py` — syntetické vybarvení + simulovaná fotka (vývoj bez tiskárny)
-- `dinostanice/rig.py` — narovnání těla, řezání končetin, zápis rig.json
-- `dinostanice/inflate.py` — nafouknutí ploché masky do zaobleného 3D tělesa
-- `dinostanice/model3d.py` — složení modelu z nafouknutých dílů (trup + končetiny)
 - `dinostanice/quality.py` — hodnocení kvality fotky s českými radami; server jím
   po neúspěšné detekci nahradí obecné „nepovedlo se" konkrétní radou, co udělat
   s fotkou jinak (`_capture_advice`)
@@ -55,122 +58,64 @@ rovný pás podél libovolné animované křivky obyčejnými 2D transformacemi.
 - `dinostanice/scenes.py` — registr scén (krajin): klíč, popisek a `catalogue`
   (kterou sadu tvorů scéna přijímá); server z něj servíruje `GET /api/scenes`
 
-## 3D modely
+## Jak se dělá předloha
 
-Kresba je z boku, hloubka v ní není — musí se vymyslet. `inflate.py` ji vymýšlí
-jako plyšák: pro každý bod se vezme vzdálenost `D` k obrysu a lokální poloměr
-`R` (odečtený z mediální osy tvaru), a `z = sqrt(D * (2R - D))` je přesně kruhový
-průřez trubky o poloměru `R`. Noha nakreslená 10 mm široká vyjde 10 mm hluboká,
-stegosaurova ploténka zůstane plochá, a nic se neladí per tvor. Pole `R` je
-Voronoi rozklad podle mediální osy, tedy nespojité — `_smooth_inside()` ho
-rozmaže maskovaným blurem, jinak je zvíře pokryté slabými hrboly a fasetami.
+Podrobněji k jednotlivým krokům (`python tools/model_sheet.py [klíč...]`):
 
-**UV jsou pozice na listu.** Model si drží souřadnice v milimetrech na A4, takže
-`u = x/297`, `v = 1 - y/210`. Z boku je model přesně ta kresba (IoU 0,98 proti
-šabloně, hlídá test), otočením se stejné barvy přetáhnou přes hřbet.
-
-### Jedna spojitá kůže, ne slepenec dílů
-
-Celé zvíře se nafukuje **jako jeden kus**. První pokus nafukoval trup a každou
-končetinu zvlášť a pak je rozestrčil do hloubky — jenže pak se trup musel
-roztáhnout zpátky do nohových jamek, aby díly nedržely od sebe, a to roztažení
-pověsilo pod břicho čtyři krátké pahýly. Zvíře vypadalo, že má osm nohou.
-
-Hloubku ale nohy potřebují: na bokorysu jsou bližší a vzdálenější noha nakreslené
-vedle sebe, takže naplacato je model lepenkový výřez. Každá noha proto dostane
-**váhové pole** — 1 uvnitř nohy, plynule k 0 u kyčle (`BLEND_MM`) — a v hloubce
-se posune podle té váhy (`LIMB_SPREAD`). Kůže se přes rameno plynule zkosí místo
-aby se rozpadla. Tytéž váhy pohánějí chůzi: vrchol se otáčí kolem kyčle o váhu
-krát úhel kroku, takže noha se v kyčli ohne bez jakékoli kostry.
-
-U tvora kresleného **zhora** (pteranodon) se nic nerozestrkává — levé a pravé
-křídlo už jsou od sebe v kresbě a osa hloubky míří nahoru.
-
-### Které části jsou končetiny
-
-Neurčuje to segmentace podle větví skeletonu (ta občas z nohy udělá 7mm pahýl),
-ale silueta: `limb_regions()` bere všechno, co přesahuje **trubku z profilu
-tloušťky**. Dvě nohy z páru drží pohromadě přes pás břicha mezi nimi, takže se
-ten shluk rozdělí podle nejbližší deklarované končetiny; a každý podíl se omezí
-na kus, který se dotýká vlastního polygonu té končetiny — díky tomu se
-stegosaurovy ploténky, které taky přesahují profil, ale nikdy se nehýbou,
-nepřihlásí jako nohy. Deklarovaná končetina už dodá jen stranu těla a kyčel.
-
-Tahle větev je **konzervovaná metoda**: prohlížeč `/3d` a vypečené modely jsou
-smazané (nahradila je větev z hotových modelů níž), ale `inflate.py`
-a `model3d.py` zůstávají pod testy (`tests/test_model3d.py`) a dají se kdykoli
-vypéct znovu: `python tools/make_model3d.py [klíč...]` → `data/models3d/<key>.json`.
-
-Kde metoda **nefunguje**: plachetnice. Nafukování předpokládá měkké oblé tělo,
-takže z trupu a plachet udělá sedací vak. Zvířata ano, vyrobené předměty ne.
-
-## Obrácený postup: předloha z 3D modelu (zkouška na T-Rexovi)
-
-Souběžná větev, která otáčí směr toku. Místo aby se hloubka dopočítávala
-z ploché siluety, vychází se z hotového **rigovaného 3D modelu** a předloha
-z něj vypadne jako vedlejší produkt:
-
-    trex.glb (CC0, 6 animací) -> póza (skinning) -> ortogonální bokorys
-      -> obrys + vnitřní linky -> předloha k tisku (SVG + ArUco)
-      -> dítě vybarví -> foto -> textura planárně na model (UV = pozice na listu)
-      -> model se animuje vlastní kostrou
-
-Co tím padá: nafukování `inflate.py`, odhad páteře ze skeletonu, dogenerování
-druhého páru nohou, ohýbání narovnaného pásu. Zvíře má skutečný objem a
-skutečnou chůzi od autora modelu.
-
-Klíčové je, že **UV jsou pozice na listu v pozici předlohy**. Předloha vzniká
-projekcí modelu na list, takže obrácená projekce sedne přesně; textura pak
-jede s modelem do libovolné pózy a úhlu.
-
-- `dinostanice/gltf.py` — vlastní GLB loader a linear blend skinning (numpy,
-  bez závislostí). `Model.posed(anim, t)` vrátí vrcholy a normály v pozici.
-- `dinostanice/orthoview.py` — z-buffer rasterizace do ortogonálního pohledu.
-  `View.sample()` interpoluje libovolný atribut vrcholů (kvůli UV),
-  `outline_edges()` rozloží kresbu na obrys, hloubkové skoky a hranice materiálů.
-- `dinostanice/modelsheet.py` — z pohledu udělá polygony v milimetrech na listu
-  a `Placement`, což je právě ten převod mm ↔ souřadnice modelu. Oblasti
+- `Model.posed(anim, t)` (`gltf.py`) vrátí vrcholy a normály v pozici.
+- `View.sample()` (`orthoview.py`) interpoluje libovolný atribut vrcholů (kvůli
+  UV), `outline_edges()` rozloží kresbu na obrys, hloubkové skoky a hranice
+  materiálů.
+- `modelsheet.build()` z toho udělá polygony v milimetrech na listu a
+  `Placement`, což je právě ten převod mm ↔ souřadnice modelu. Oblasti
   k vybarvení nejsou hranové pixely, ale souvislé plochy, které nerozděluje
   ani hranice materiálu, ani skok v hloubce.
-- `tools/model_sheet.py` — vyrobí `data/templates/trex3d.svg`, náhled a
-  `data/shapes3d/trex3d.json`.
+- `tools/model_sheet.py` — vyrobí `data/templates/<key>.svg`, náhled a
+  `data/shapes3d/<key>.json`.
 - `tools/model_paint_demo.py` — uzavře kruh bez tiskárny: syntetické vybarvení,
   textura, snímky z různých úhlů a fází animace.
-- `dinostanice/glbexport.py` — zapíše kopii GLB s doplněným `TEXCOORD_0`.
-  Model z internetu UV nemá; tady jsou to pozice vrcholů na listu.
-- `tools/model_export3d.py` → `data/models3d/trex3d.glb` + ukázková textura.
+- `tools/model_export3d.py` → `data/models3d/<key>.glb` + ukázková textura.
+  Model z internetu UV nemá; tady jsou to pozice vrcholů na listu
+  (`glbexport.write_with_uv`).
 - `web/dino3d.js`, stránka `/dino3d` — three.js `GLTFLoader` + `AnimationMixer`.
   Kostru i animace nese GLB, prohlížeč jen hodí na model vybarvenou fotku
   (`texture.flipY = false`, protože glTF má počátek UV vlevo nahoře).
   Snímky pro posouzení bez televize: `python tools/shot3d.py --creature trex3d`.
 
-- `dinostanice/creatures3d.py` — katalog osmi tvorů; `axes`/`flip` u každého
-  volí projekci (chodec bokorys, letec shora s rozpětím křídel po šířce listu).
-  Výjimkou je **drak**: shora z něj byla Rorschachova skvrna — rozpětí křídel je
-  větší než tělo, takže po fitu na list zbyla z hlavy boule na hraně a oko
-  skončilo jako tečka uprostřed těla. Kreslí se proto bokorysem jako chodci
-  (v póze `Death` t=0,37, kde drží křídlo rozepjaté v rovině listu). Na letce
-  to jde jen tam, kde tvor má kromě křídel i tělo a hlavu; pteranodon je samé
-  křídlo a z boku by z něj byl tenký profil. Indexy značek 8-13
-  navazují na osm tvorů staré větve, aby už vytištěné listy platily dál. Proto
-  taky `markers.py` přešel na `DICT_4X4_100`: je to nadmnožina `DICT_4X4_50`
-  (prvních 50 kódů je shodných), takže se rozšířil prostor, ale nic se nepřepsalo.
-
-  Vedle geometrie nese katalog i **vlastnosti druhu pro scénu**:
-  `scene` říká, do které sady tvorů (krajiny) model patří — marker index
-  zůstává globální, šablona identifikuje tvora, scéna jen říká, koho přijme.
-  `stride_rate` je cílové tempo chůze v délkách těla za sekundu (paleo odhad
-  per druh); `clip_for` mapuje role klipů (`move`/`stand`/`jump`) na jména
-  v GLB, protože se model od modelu liší. Všechno se propíše do
-  `data/models3d/catalogue3d.json` (`scene`, `strideRate`, `clipFor`, `clips`,
-  `pose`, `size`), odkud si to bere scéna přes `GET /api/dino3d?scene=`.
-
 Póza předlohy se hledá sama (`best_pose`): projde se cyklus chůze a vezme se
 okamžik s nejlepším vyplněním listu **po fitu**, ne v pixelech — natažený
-sauropod má velkou siluetu, ale na papíře z něj zbude tenký pruh. Pouštět do
+apatosaurus má velkou siluetu, ale na papíře z něj zbude tenký pruh. Pouštět do
 výběru i ostatní animace se neosvědčilo: `Attack` sice list vyplní nejlíp, ale
-tvora překroutí (sauropodovi přehodí ocas přes tělo, stegosaurovi schová
+tvora překroutí (apatosaurovi přehodí ocas přes tělo, stegosaurovi schová
 ploténky). Vyplnění není totéž co čitelnost.
+
+### Katalog tvorů (`dinostanice/creatures3d.py`)
+
+Osm tvorů; `axes`/`flip` u každého volí projekci — chodec bokorys, letec shora
+s rozpětím křídel po šířce listu.
+
+Výjimkou je **drak**: shora z něj byla Rorschachova skvrna — rozpětí křídel je
+větší než tělo, takže po fitu na list zbyla z hlavy boule na hraně a oko
+skončilo jako tečka uprostřed těla. Kreslí se proto bokorysem jako chodci
+(v póze `Death` t=0,37, kde drží křídlo rozepjaté v rovině listu). Na letce
+to jde jen tam, kde tvor má kromě křídel i tělo a hlavu; pteranodon je samé
+křídlo a z boku by z něj byl tenký profil.
+
+Indexy značek začínají na **8**: prvních osm patřilo první, zrušené větvi
+projektu (kresba → ohýbaný 2D pás). Zůstávají volné pro další tvory a tyhle se
+**nepřečíslovávají** — index je natvrdo v rohových značkách na už vytištěných
+listech. Proto taky `markers.py` přešel na `DICT_4X4_100`: je to nadmnožina
+`DICT_4X4_50` (prvních 50 kódů je shodných), takže se rozšířil prostor, ale nic
+se nepřepsalo.
+
+Vedle geometrie nese katalog i **vlastnosti druhu pro scénu**:
+`scene` říká, do které sady tvorů (krajiny) model patří — marker index
+zůstává globální, šablona identifikuje tvora, scéna jen říká, koho přijme.
+`stride_rate` je cílové tempo chůze v délkách těla za sekundu (paleo odhad
+per druh); `clip_for` mapuje role klipů (`move`/`stand`/`jump`) na jména
+v GLB, protože se model od modelu liší. Všechno se propíše do
+`data/models3d/catalogue3d.json` (`scene`, `strideRate`, `clipFor`, `clips`,
+`pose`, `size`), odkud si to bere scéna přes `GET /api/dino3d?scene=`.
 
 ### Ptakoještěr: kostra dopsaná ke geometrii
 
@@ -199,25 +144,20 @@ jakýkoli souměrný model bez rigu:
 
 ### Z fotky zpátky na model
 
-`capture.py` je společné oběma větvím — ArUco, homografie, srovnání listu.
-`known_indices()` mu říká, které indexy značek existují; starší tvorové mají
-0-7, ti z modelů 8 a výš. Podle indexu se pipeline rozvětví (`server.process`):
-
-- starý tvor → `rig.build_rig()`, jak to bylo vždycky,
-- tvor z modelu → `capture3d.save_catch()`: žádný rig se nestaví, model kostru
-  má. Ze srovnaného listu se udělá textura (`build_texture`) a uloží
-  `texture.png` + `model.json`.
+`capture.detect_sheet()` najde list, srovná ho do roviny a z ID značek řekne,
+který tvor to je; `known_indices()` mu vymezuje, které indexy vůbec existují
+(katalog `creatures3d.py`, dnes 8-15). Žádný rig se nestaví — model kostru má.
+`capture3d.save_catch()` ze srovnaného listu udělá texturu (`build_texture`)
+a uloží `texture.png` + `model.json`.
 
 Textura projde týmž `to_texture()` jako ukázkové: osvětlení se narovná jen
 uvnitř kresby, tištěné linky se zaretušují okolní barvou a barva se rozlije
 kousek za obrys. Registrace je zadarmo — předloha vznikla promítnutím modelu na
 list, takže UV modelu **jsou** souřadnice na papíře.
 
-`meta.json` nese `kind`: `rig` nebo `model` (a `session` — které televizi
-úlovek patří). Scéna na televizi umí obojí — `rig` kreslí jako 2D pásy do
-plátna s krajinou, `model` posílá do WebGL vrstvy nad ní (viz níže). Zblízka
-a s ovládáním se na tvora dá koukat v `/dino3d`, kde je ve skupině **Úlovky**
-vedle katalogu.
+`meta.json` nese druh, jméno z fotky, míru vybarvení, počet nalezených značek
+a `session` (které televizi úlovek patří). Zblízka a s ovládáním se na tvora dá
+koukat v `/dino3d`, kde je ve skupině **Úlovky** vedle katalogu.
 
 Klipy se hledají podle holého jména (`Model.clip`), ne skládáním z prefixu:
 FBX export jim dává jméno armatury, které se model od modelu liší
@@ -235,46 +175,6 @@ Kde to drhne: černý obrys z papíru se při otočení protahuje přes hřbet, 
 se z textury musí vymazat (`to_texture()` ho zaretušuje okolní barvou).
 Apatosaurus je na list příliš protáhlý (poměr 4:1 proti kreslicí ploše 1,6:1),
 takže z něj zbývá tenký pruh — jiná póza to nespraví, jen ho zamotá.
-
-## Formát rig.json
-
-```json
-{ "name": "...", "creature": "sauropod", "label": "Brachiosaurus",
-  "motion": "walk|swim|fly|sail", "view": "side|top", "ppm": 5.0,
-  "body": {
-    "image": "body.png",
-    "length_mm": 269.6,        // délka páteře včetně přesahu za zaoblené konce
-    "half_mm": 28.0,           // poloviční výška pásu; obrázek je samples x round(2*half_mm*ppm)
-    "samples": 1327,           // šířka pásu v px == počet vzorků podél páteře
-    "radius_mm": [ ... ],      // poloměr v každém vzorku (samples hodnot)
-    "spine_mm": [[x,y], ...]   // páteř na listu (samples bodů) — PLNOHODNOTNÁ geometrie
-  },
-  "limbs": [ { "name": "front", "anchor": 0.55, "side": 0, "phase": 0.0, "segments": [
-      { "image": "limb_front_0.png",
-        "origin_mm": [x,y],    // levý horní roh výřezu v mm na listu
-        "pivot_mm":  [x,y],    // kloub, kolem kterého segment rotuje
-        "tip_mm":    [x,y],    // konec segmentu = pivot dalšího segmentu
-        "length_mm": 33.0 } ] } ] }
-```
-
-Tuhé tělo (loď) má místo `length_mm/half_mm/...` klíč `"rigid": true`
-plus `origin_mm` a `size_mm` — kreslí se jako jeden obrázek.
-
-Souřadnice v mm odpovídají listu A4 na šířku (297 x 210). Pixel <-> mm přes `ppm`.
-
-Na co si dát pozor:
-
-- `spine_mm` **není jen referenční** — klidová póza se z ní musí složit tak, že
-  vyjde přesně původní křivka. Kdo si tvora narovná do tětivy hlava–ocas, ztratí
-  sklon ocasu i krku. Proto je uložená na 3 desetinná místa: vzorky leží 1/ppm mm
-  od sebe a hrubší zaokrouhlení zašumí numerickou tečnu mezi sousedy.
-- Páteř **přesahuje za oba konce** o poloměr zaoblení, s profilem
-  `sqrt(r² - d²)`. Bez toho by čenich a hrot ocasu — což jsou oblouky čepiček,
-  ne trubka — v `body.png` vůbec nebyly a renderer je nemá jak dokreslit.
-- `anchor` je vyplněný i u končetin s explicitním `outline` (dopočítá se z pivotu).
-- `side`: 0 = blízká strana, 1 = vzdálená (kreslí se za tělem).
-- Šablona má u čtyřnožce jen dvě nohy; druhý pár si renderer dogeneruje sám
-  s fázovým posunem a ztmavením.
 
 ## Kontrakty mezi částmi (dodržet!)
 
@@ -295,7 +195,7 @@ export default {
     ...                        // `motions` = kdo se v pásu smí pohybovat,
   ],                           // `lane` odlišuje víc pásů téhož pohybu
   motions: {                   // chování a měřítka per typ pohybu:
-    walk: { lengthFraction, sizeFraction, baseSpeed, strideRate,
+    walk: { sizeFraction, baseSpeed, strideRate,
             drift, driftRefHeight, farChance, rest: {...} },
     fly: { ..., bob: true }, swim: {...}, sail: {...},
   },
@@ -329,15 +229,6 @@ a `'night'` (měsíc, hvězdy, tlumená paleta). Vrací instanci:
 
 Pásma (dřívější `zones`) tu už **nejsou** — kde kdo smí chodit, je vlastnost
 scény, ne malby, a žije v `bands` v definici scény.
-
-### Renderer tvora (`web/rigrender.js`)
-```js
-window.Rig = {
-  load(baseUrl)                // -> Promise<RigInstance>, baseUrl = složka s rig.json
-};
-// RigInstance.draw(ctx, {x, y, scale, flip, t, phase})
-// RigInstance.motion, .label, .sizeMm
-```
 
 ### 3D vrstva scény (`web/scene3d.js`)
 ```js
@@ -397,8 +288,8 @@ Dvě věci, na kterých se to dá lehce rozbít:
 
 ### Scéna (`web/scene.js`)
 
-Jeden generický stroj nad aktivní definicí scény: používá Backdrop, Rig
-i Scene3D a rozhoduje jen o tom, kdo je kde. Výběr scény: `?scene=` v URL
+Jeden generický stroj nad aktivní definicí scény: používá Backdrop a Scene3D
+a rozhoduje jen o tom, kdo je kde. Výběr scény: `?scene=` v URL
 přebíjí, jinak platí hodnota session ze serveru (`GET /api/scene/active`);
 zprávou `scene` z WS se přepíná za běhu — tvorové odejdou zmenšením do
 ztracena, krajina se prolne do nové (`XFADE_S`), 3D vrstva dostane nová světla
@@ -411,7 +302,7 @@ API volání i do WS.
 
 Připojí se na `ws://<host>/ws?s=<sid>` a přijímá:
 
-- `add {id, url, creature, kind, label, name}` — nový úlovek. Vstupuje **vždy
+- `add {id, url, creature, label, name}` — nový úlovek. Vstupuje **vždy
   zleva** (teamLab vzor — mobil po uploadu říká „sleduj levý kraj") a nese
   ~6 s jmenovku se jménem z fotky. Tvorové obnovení po reloadu a doplňky
   z katalogu vstupují potichu a rozsazuje je zlatý řez, ne náhoda — náhodných
@@ -449,9 +340,7 @@ z katalogu ustoupí; po smazání úlovku se scéna zase doplní. Počet tvorů 
 zůstává stálý a úlovky katalog postupně vytlačí.
 
 Plátna leží ve třech vrstvách: krajina (2D) → tvorové z modelů (WebGL) →
-popředí (2D). Bez toho by dinosaurus stál nad kapradím, ne v něm. 2D rigy se
-kreslí do spodní vrstvy, takže jsou vždycky za 3D tvory — až starou větev
-vymažeme, přestane to platit.
+popředí (2D). Bez toho by dinosaurus stál nad kapradím, ne v něm.
 
 #### Rychlost chůze: měřená, fázově vázaná
 
@@ -480,8 +369,9 @@ a u apatosaura sedmkrát rychlejší. `Scene3D.spawn` navíc **odřízne mrtvý 
 klipu** (`trimTail`) — velociraptorova chůze má za odkráčeným cyklem půl cyklu
 nehybné pózy, takže se uprostřed chůze zastavoval a přesto se posouval dál.
 
-2D rigy si tempo kroku vezou na ujeté dráze samy (`rigrender._travelMm`);
-plavcům a letcům scéna posílá `speed`, aby rychlejší mával křídly častěji.
+Plavcům a letcům se krok neměří — nemají chodidla, po kterých by šlo poznat
+prokluz. Ti dostanou tempo z jedné náhody se svou rychlostí, takže rychlejší
+tvor zároveň častěji mává křídly.
 
 Automat se dá přebít z ladicího panelu (`web/tune.js`, klávesa `d`): u každého
 druhu ve scéně jde nastavit `rate` (tempo animace, rychlost jde s ním, ať
@@ -626,7 +516,7 @@ a upload projde, ale testy proti němu neběžely. Jediná systémová
 závislost je `libglib2.0-0`, bez ní se cv2 neimportuje. Node 24 k dispozici,
 ale frontend je čisté ES moduly bez build kroku a bez CDN (poběží offline).
 
-Testy: `python -m pytest -q` — 185 testů; `tests/test_server.py` (36 testů)
+Testy: `python -m pytest -q` — 132 testů; `tests/test_server.py` (36 testů)
 jede end-to-end přes FastAPI TestClient se syntetickými fotkami, žádný běžící
 server není potřeba. Chůzi ve scéně hlídá `tools/gait_report.py` (Playwright,
 potřebuje běžící server).

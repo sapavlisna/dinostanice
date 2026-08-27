@@ -15,16 +15,16 @@ from dinostanice.synth import photograph
 
 @pytest.fixture(scope="session")
 def captured():
-    """capture.detect_sheet() applied to each creature's default synthetic photo, cached by index."""
+    """capture.detect_sheet() applied to each creature's default synthetic photo, cached by key."""
     cache = {}
 
-    def get(creature_index, seed=0):
-        key = (creature_index, seed)
-        if key not in cache:
-            creature, sheet = H.scribbled_sheet(creature_index, seed=seed)
-            photo = photograph(sheet, seed=seed)
+    def get(key, seed=0):
+        ck = (key, seed)
+        if ck not in cache:
+            sheet = H.sheet(key, seed=seed)
+            photo = photograph(sheet.img, seed=seed)
             idx, warped, n = capture.detect_sheet(photo)
-            cache[key] = (creature, photo, idx, warped, n)
-        return cache[key]
+            cache[ck] = (sheet, photo, idx, warped, n)
+        return cache[ck]
 
     return get

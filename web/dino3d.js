@@ -138,7 +138,6 @@ Promise.all([
 ]).then(([catalogue, rigs]) => {
   // ulovky jsou tentyz model, jen s texturou z vyfocene kresby
   const caught = rigs
-    .filter((r) => r.kind === 'model')
     .map((r) => ({
       key: `${r.id}`,
       label: r.name ? `${r.name} — ${r.label}` : r.label,

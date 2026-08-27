@@ -1,7 +1,7 @@
 """End-to-end testy serveru pres FastAPI TestClient.
 
 Zadny bezici server ani Docker neni potreba; fotky jsou synteticke
-(dinostanice.synth.photograph nad rucne vybarvenym listem z 3D katalogu).
+(tests/helpers.py vybarvi predlohu z katalogu, synth.photograph ji vyfoti).
 Ulozene ulovky jdou do tmp_path — store se parametrizuje monkeypatchem
 CATCH_ROOT/REJECTED_ROOT, vsechny funkce store je ctou az za behu.
 """
@@ -16,13 +16,11 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+import helpers as H
 import server
-from dinostanice import modelsheet, store, synth
-from dinostanice.markers import CORNER_ORIGINS, MARKER_MM, marker_bits, marker_ids
-from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
+from dinostanice import store, synth
 
 PPM = 6.0
-TREX_INDEX = 8  # trex3d v creatures3d.CATALOGUE
 
 
 @pytest.fixture
@@ -53,36 +51,11 @@ def fast_idle_client(monkeypatch, tmp_path):
         yield c
 
 
-def _draw_markers(img, creature_index, ppm):
-    for corner, mid in enumerate(marker_ids(creature_index)):
-        ox, oy = CORNER_ORIGINS[corner]
-        bits = marker_bits(mid)
-        cell = MARKER_MM / bits.shape[0]
-        for r in range(bits.shape[0]):
-            for c in range(bits.shape[1]):
-                if bits[r, c]:
-                    x0 = int(round((ox + c * cell) * ppm))
-                    y0 = int(round((oy + r * cell) * ppm))
-                    x1 = int(round((ox + (c + 1) * cell) * ppm)) - 1
-                    y1 = int(round((oy + (r + 1) * cell) * ppm)) - 1
-                    cv2.rectangle(img, (x0, y0), (x1, y1), (0, 0, 0), -1)
-
-
 @lru_cache(maxsize=1)
 def model_photo_jpg():
     """Vybarveny trex3d list vyfoceny simulovanym telefonem, jako JPEG bytes."""
-    shape = modelsheet.load(server.os.path.join(server.SHAPES3D_DIR, "trex3d.json"))
-    W, H = int(SHEET_W_MM * PPM), int(SHEET_H_MM * PPM)
-    sheet = np.full((H, W, 3), 255, np.uint8)
-    body = np.zeros((H, W), np.uint8)
-    for poly in shape.outline:
-        cv2.fillPoly(body, [np.round(poly * PPM).astype(np.int32)], 1)
-    sheet[body > 0] = (70, 170, 90)
-    for poly in shape.outline:
-        cv2.polylines(sheet, [np.round(poly * PPM).astype(np.int32)], True,
-                      (20, 20, 20), 3, cv2.LINE_AA)
-    _draw_markers(sheet, TREX_INDEX, PPM)
-    photo = synth.photograph(sheet, seed=3)
+    sheet = H.sheet("trex3d", seed=3, ppm=PPM, strokes=40)
+    photo = synth.photograph(sheet.img, seed=3)
     ok, enc = cv2.imencode(".jpg", photo, [cv2.IMWRITE_JPEG_QUALITY, 88])
     assert ok
     return enc.tobytes()
@@ -126,7 +99,6 @@ def test_upload_model_catch(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["ok"] is True
-    assert body["kind"] == "model"
     assert body["creature"] == "trex3d"
     assert body["id"].startswith("trex3d-")
 
@@ -252,7 +224,6 @@ def test_ws_add_and_remove(client):
         msg = ws.receive_json()
         assert msg["type"] == "add"
         assert msg["id"] == catch_id
-        assert msg["kind"] == "model"
 
         assert client.delete(f"/api/rigs/{catch_id}").status_code == 200
         msg = ws.receive_json()

@@ -41,7 +41,7 @@ def main():
             page.evaluate("""async (keys) => {
                 for (const key of keys) {
                     await window.DinoScene.add({
-                        kind: 'model', id: 'demo-' + key, creature: key,
+                        id: 'demo-' + key, creature: key,
                         texture: `/models3d/${key}_texture.png`,
                     }, { silent: true });
                 }

@@ -78,7 +78,7 @@ def measure(url, seconds):
         page.evaluate("""async (keys) => {
             window.DinoScene.actors.length = 0;
             for (const key of keys) await window.DinoScene.add(
-              {kind:'model', id:'m-'+key, creature:key, texture:`/models3d/${key}_texture.png`},
+              {id:'m-'+key, creature:key, texture:`/models3d/${key}_texture.png`},
               {silent:true});
         }""", list(TARGETS))
         page.evaluate(SETUP)

@@ -106,7 +106,6 @@
     width: 52px; height: 52px; border-radius: 10px; object-fit: contain;
     background: #fff; flex: none;
   }
-  .roster-thumb.empty { background: #232b36; }
   .roster-info { flex: 1; min-width: 0; }
   .roster-name {
     font-weight: 600; font-size: 16px; overflow: hidden;
@@ -348,30 +347,24 @@ sendBtn.addEventListener("click", async () => {
 
 // --- Dinosauři ve stanici: seznam s mazáním (bod d) --------------------
 
-function rosterThumb(r) {
-  if (r.kind === "model") return "/catch/" + r.id + "/texture.png";
-  if (r.kind === "rig") return "/catch/" + r.id + "/body.png";
-  return null;
-}
-
 function rosterRow(r) {
   const row = document.createElement("div");
   row.className = "roster-row";
 
-  const src = rosterThumb(r);
-  const thumb = document.createElement(src ? "img" : "div");
-  thumb.className = "roster-thumb" + (src ? "" : " empty");
-  if (src) { thumb.src = src; thumb.alt = ""; }
+  const thumb = document.createElement("img");
+  thumb.className = "roster-thumb";
+  thumb.src = "/catch/" + r.id + "/texture.png";
+  thumb.alt = "";
 
   const info = document.createElement("div");
   info.className = "roster-info";
   const name = document.createElement("div");
   name.className = "roster-name";
   name.textContent = r.name || "–";
-  const kind = document.createElement("div");
-  kind.className = "roster-kind";
-  kind.textContent = r.label || r.creature || "";
-  info.append(name, kind);
+  const species = document.createElement("div");
+  species.className = "roster-kind";
+  species.textContent = r.label || r.creature || "";
+  info.append(name, species);
 
   const del = document.createElement("button");
   del.className = "roster-del";

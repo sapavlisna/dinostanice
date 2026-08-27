@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -17,11 +16,10 @@ from dinostanice import modelsheet as ms
 from dinostanice.creatures3d import BY_KEY, CATALOGUE, Model3D
 from dinostanice.gltf import Model
 from dinostanice.markers import CORNER_ORIGINS, MARKER_MM, marker_bits, marker_ids
-from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
+from dinostanice.modelsheet import DETAIL_MM
+from dinostanice.shapes import LINE_MM, SHEET_H_MM, SHEET_W_MM
 
 ROOT = Path(__file__).resolve().parent.parent
-LINE_MM = 0.9
-DETAIL_MM = 0.6
 
 
 def to_svg(shape: ms.SheetShape, marker_index: int) -> str:
@@ -54,21 +52,6 @@ def to_svg(shape: ms.SheetShape, marker_index: int) -> str:
     return "\n".join(out)
 
 
-def preview(shape: ms.SheetShape, ppm: float = 6.0) -> np.ndarray:
-    img = np.full((int(SHEET_H_MM * ppm), int(SHEET_W_MM * ppm), 3), 255, np.uint8)
-    for poly in shape.regions:
-        cv2.polylines(img, [np.round(poly * ppm).astype(np.int32)], True, (17, 17, 17),
-                      max(1, int(round(DETAIL_MM * ppm))), cv2.LINE_AA)
-    for poly in shape.outline:
-        cv2.polylines(img, [np.round(poly * ppm).astype(np.int32)], True, (17, 17, 17),
-                      max(1, int(round(LINE_MM * ppm))), cv2.LINE_AA)
-    if shape.eye:
-        x, y, r = shape.eye
-        cv2.circle(img, (int(x * ppm), int(y * ppm)), int(r * ppm), (17, 17, 17),
-                   max(1, int(round(LINE_MM * ppm))), cv2.LINE_AA)
-    return img
-
-
 def build_one(spec: Model3D, anim: str | None = None, time: float | None = None) -> ms.SheetShape:
     model = Model(ROOT / "data/models_src" / spec.glb)
     if anim:
@@ -86,7 +69,7 @@ def build_one(spec: Model3D, anim: str | None = None, time: float | None = None)
     ms.save(shape, ROOT / f"data/shapes3d/{spec.key}.json")
     (ROOT / f"data/templates/{spec.key}.svg").write_text(
         to_svg(shape, spec.marker_index), encoding="utf-8")
-    cv2.imwrite(str(ROOT / f"out/{spec.key}_sheet.png"), preview(shape))
+    cv2.imwrite(str(ROOT / f"out/{spec.key}_sheet.png"), ms.rasterise(shape))
     return shape
 
 

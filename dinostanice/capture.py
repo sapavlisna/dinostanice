@@ -1,4 +1,8 @@
-"""Turning a phone photo of a coloured-in sheet into a creature texture."""
+"""Finding the coloured-in sheet in a phone photo and flattening it.
+
+Which creature it is comes out of the corner markers, so one photo answers both
+questions at once. Turning the flattened sheet into a texture is capture3d's job.
+"""
 
 from collections import Counter
 
@@ -7,14 +11,7 @@ import numpy as np
 
 from .shapes import SHEET_W_MM, SHEET_H_MM
 from .markers import DICT, creature_index_of, marker_corner_points_mm
-from .raster import creature_mask
 from .creatures3d import CATALOGUE as CATALOGUE3D
-
-# Indexy 0-7 jsou historicky rezervovane pro starou 2D rig vetev
-# (creatures.CATALOGUE). Zamerne natvrdo, ne len(CATALOGUE): creatures.py cte
-# pri importu data/shapes/*.json a 3D pipeline nesmi spadnout, kdyby chybely.
-# Server si pro zpracovani starych vytisku importuje creatures sam.
-LEGACY_INDICES = range(8)
 
 WARP_PPM = 5.0
 WARP_W = int(round(SHEET_W_MM * WARP_PPM))
@@ -38,10 +35,11 @@ class CaptureError(Exception):
 def known_indices():
     """Indexy tvoru, ke kterym existuje vytistena sablona.
 
-    Obe vetve sdileji jeden prostor znacek: starsi tvorove maji indexy 0-7,
-    ti z 3D modelu 8 a vys.
+    Indexy 0-7 patrily prvni, zrusene vetvi projektu; zustavaji volne pro
+    dalsi tvory, protoze listy 3D tvoru jsou vytistene s indexy 8 a vys a
+    precislovani by je zneplatnilo.
     """
-    return set(LEGACY_INDICES) | {m.marker_index for m in CATALOGUE3D}
+    return {m.marker_index for m in CATALOGUE3D}
 
 
 def detect_sheet(bgr, min_markers=MIN_MARKERS):
@@ -119,51 +117,3 @@ def flatten_lighting(warped, mask):
     gain = np.clip(245.0 / np.maximum(field, 1.0), 0.6, 2.2)
     out = warped.astype(np.float32) * gain[:, :, None]
     return np.clip(out, 0, 255).astype(np.uint8)
-
-
-def sheet_texture(warped, creature, trim_mm=0.0):
-    """The drawing cut out along the silhouette, still in full sheet coordinates.
-
-    Rig building indexes the sheet in absolute millimetres, so it needs this
-    rather than the cropped version below.
-    """
-    mask = creature_mask(creature, ppm=WARP_PPM)
-    if trim_mm:
-        k = int(round(trim_mm * WARP_PPM)) * 2 + 1
-        mask = cv2.erode(mask, np.ones((k, k), np.uint8))
-    flat = flatten_lighting(warped, mask)
-    return np.dstack([flat, cv2.GaussianBlur(mask, (0, 0), 0.8)])
-
-
-def extract_texture(warped, creature, trim_mm=0.0):
-    """Cut the drawing out and crop it to its bounding box. Returns (rgba, bbox_mm)."""
-    mask = creature_mask(creature, ppm=WARP_PPM)
-    if trim_mm:
-        k = int(round(trim_mm * WARP_PPM)) * 2 + 1
-        mask = cv2.erode(mask, np.ones((k, k), np.uint8))
-
-    flat = flatten_lighting(warped, mask)
-    x, y, w, h = cv2.boundingRect(mask)
-    pad = int(round(2 * WARP_PPM))
-    x, y = max(0, x - pad), max(0, y - pad)
-    w, h = min(mask.shape[1] - x, w + 2 * pad), min(mask.shape[0] - y, h + 2 * pad)
-
-    crop = flat[y:y + h, x:x + w]
-    alpha = mask[y:y + h, x:x + w]
-    alpha = cv2.GaussianBlur(alpha, (0, 0), 0.8)
-
-    rgba = np.dstack([crop, alpha])
-    bbox_mm = (x / WARP_PPM, y / WARP_PPM, w / WARP_PPM, h / WARP_PPM)
-    return rgba, bbox_mm
-
-
-def ink_coverage(rgba):
-    """Fraction of the silhouette that actually got coloured in."""
-    bgr, a = rgba[:, :, :3], rgba[:, :, 3]
-    inside = a > 128
-    if inside.sum() == 0:
-        return 0.0
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    sat = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[:, :, 1]
-    coloured = ((gray < 215) | (sat > 45)) & inside
-    return float(coloured.sum()) / float(inside.sum())
