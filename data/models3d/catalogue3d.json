@@ -17,7 +17,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|TRex_Walk",
   "size": 31.22,
@@ -44,7 +45,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|Velociraptor_Walk",
   "size": 13.59,
@@ -71,7 +73,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|Triceratops_Walk",
   "size": 19.77,
@@ -98,7 +101,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|Stegosaurus_Walk",
   "size": 21.8,
@@ -125,7 +129,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|Parasaurolophus_Walk",
   "size": 12.88,
@@ -152,7 +157,8 @@
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
-   "jump": "Jump"
+   "jump": "Jump",
+   "lie": "Death"
   },
   "pose": "Armature|Apatosaurus_Walk",
   "size": 47.92,

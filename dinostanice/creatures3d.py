@@ -11,8 +11,12 @@ from dataclasses import dataclass, field
 
 # Ktery klip z `clips` hraje kterou roli ve scene. Default per motion; model,
 # ktery ma klipy pojmenovane jinak, si roli prepise pres `clip_for`.
+# `lie` = lehnuti pri cekani (Death prehrany jednou a podrzeny, vstavani
+# pozpatku). Death maji vsichni chodci katalogu — apatosaurus ho nese pod
+# cizim jmenem "Armature|Stegosaurus_Death", ale kanaly miri na jeho vlastni
+# kostru a model si opravdu lehne (overeno pres gltf.Model.posed).
 CLIP_FOR_DEFAULT = {
-    "walk": {"move": "Walk", "stand": "Idle", "jump": "Jump"},
+    "walk": {"move": "Walk", "stand": "Idle", "jump": "Jump", "lie": "Death"},
     "fly": {"move": "Flying"},
     "swim": {"move": "Swim"},
     "sail": {"move": "Sail"},

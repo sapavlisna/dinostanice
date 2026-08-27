@@ -332,11 +332,11 @@ function addActor(what, opts) {
     phase: Math.random(),
     speed: (cfg.baseSpeed || 0.03) * pace,
     bob: Math.random() * Math.PI * 2,
-    // prvni zastavka az za chvili, at scena po nacteni nezacne stat;
-    // pohyb bez `rest` v definici sceny nezastavuje nikdy
-    restAt: cfg.rest ? sceneTime + span(cfg.rest.walk) : Infinity,
     restUntil: 0,
     pause: '',
+    fun: null,
+    funAt: 0,
+    turnAt: sceneTime + span(TURN_EVERY),
     shown: '',
     fade: cfg.rest ? cfg.rest.fade : 0.7,
     mix: 0,
@@ -373,7 +373,6 @@ function addActor(what, opts) {
     if (on) { actor.band = on; setWalkRate(actor); }
     actor.face = actor.dir;
     actor.drift = 0;
-    actor.restAt = Infinity;   // zastávky určují waypointy, ne náhoda
   }
   // Tichy spawn nesmi tvora porodit do prekryvu na teze drahe/trase — kolizni
   // stop (bod 3) by prekryte tvory zmrazil na miste. Par pokusu najit volno:
@@ -431,7 +430,6 @@ function beginExit(a, quiet) {
   a.pause = '';
   a.blocked = false;
   a.restUntil = 0;
-  a.restAt = Infinity;
   a.drift = 0;
   a.dir = a.xFrac >= 0.5 ? 1 : -1;
 }
@@ -519,45 +517,92 @@ function toward(value, goal, step) {
 
 /* Zastavky a otocky.
 
+   Tvor jde, dokud nema duvod stat: kolizni fronta (holdStill), dwell na
+   trase, krmeni. Nahodne zastavky "jen tak" zmizely — chodec bez trasy si
+   misto nich obcas strihne otocku na miste (viz TURN_EVERY v update).
+
    `mix` je podil zastavene pozy: rychlost po scene i tempo animace se jim krati
    stejne, takze pri zpomalovani chodidla drzi na zemi zrovna tak jako za chuze.
    Zastavit se muze jen ten, kdo ma do ceho prolnout — letec ne, ten by spadl.
 
-   Otoceni se veze na zastavce: tvor se zastavi, na miste se prehoupne celem k
-   divakovi na druhou stranu a pak jde zpatky. Dokud se otaci, drzi se `mix` na
-   jednicce, aby se otacel na miste a ne v pohybu. */
-function rest(a, dt) {
-  // Zastavovat se umi jen pohyb, ktery ma v definici sceny `rest` (a 3D tvor
-  // k tomu pozu, do ktere jde prolnout) — letec by spadl.
-  const R = motionCfg(a.motion).rest;
-  const can = R && (!a.m3 || a.m3.action);
-  if (can && !a.pause && sceneTime > a.restAt) {
-    const jump = a.m3 && a.m3.breakDur.jump && Math.random() < R.jump;
-    a.pause = jump ? 'jump' : 'stand';
-    a.fade = jump ? R.jumpFade : R.fade;
-    a.restUntil = sceneTime + (jump ? a.m3.breakDur.jump : span(R.stand));
-    if (jump) Scene3D.restart(a.m3, 'jump');
-  }
-  if (R && a.pause && sceneTime > a.restUntil) {
-    // na trase o otočkách i dalších zastávkách rozhodují waypointy, ne náhoda;
-    // po kolizním stání (blocked) tvor pokračuje dál, neotáčí se
-    if (!a.route && !a.blocked && a.pause === 'stand' && Math.random() < R.turn) {
-      a.dir = -a.dir;
+   Otoceni: tvor se prehoupne celem k divakovi na druhou stranu; dokud se
+   otaci (face != dir), drzi se `mix` na jednicce, aby se tocil na miste. */
+
+/* Cekani = zabava. Kdo stoji, protoze CEKA — v kolizni fronte za pomalejsim
+   (blocked) nebo na stop bodu trasy — nestoji celou dobu v Idle: kazdych par
+   sekund si bud skoci (jump), nebo, kdyz ma model Death klip (role `lie`),
+   si LEHNE: Death se prehraje jednou a podrzi (LoopOnce + clamp), chvili
+   lezi, pak VSTANE — tyz klip pozpatku. Rozehrana sekvence vzdy dobehne,
+   i kdyz cekani mezitim skonci: mix drzi na jednicce, takze tvor nevykroci
+   z lehu (zadne cuknuti). Krmeni se netyka — tvor u jidla "ji", nenudi se. */
+let FUN_EVERY = [3, 7];     // odstup zabavnich vlozek behem cekani (s)
+let LIE_HOLD = [2, 5];      // jak dlouho zustane lezet (s)
+const FUN_FADE = 0.3;       // prolnuti stani <-> zabavne pozy
+
+function waiting(a) {
+  return a.pause === 'stand' && a.mix >= 0.99 && !a.exiting && !a.leaving
+      && a.m3 && (a.blocked || !!a.route);
+}
+
+function entertain(a, dt) {
+  const f = a.fun;
+  if (!f) {
+    if (!waiting(a)) { a.funAt = 0; return; }
+    if (!a.funAt) { a.funAt = sceneTime + span(FUN_EVERY); return; }
+    if (sceneTime < a.funAt) return;
+    const canLie = a.m3.breakDur.lie, canJump = a.m3.breakDur.jump;
+    if (!canLie && !canJump) return;
+    // pul na pul skok/lehnuti; tvor bez Death klipu jen skace
+    if (canLie && (!canJump || Math.random() < 0.5)) {
+      Scene3D.playClamped(a.m3, 'lie');
+      a.fun = { pose: 'lie', phase: 'down', k: 0, until: sceneTime + canLie };
+    } else {
+      Scene3D.restart(a.m3, 'jump');
+      a.fun = { pose: 'jump', phase: 'jump', k: 0, until: sceneTime + canJump };
     }
+    return;
+  }
+  f.k = toward(f.k, f.phase === 'out' ? 0 : 1, dt / FUN_FADE);
+  if (f.phase === 'out') {
+    if (f.k <= 0) { a.fun = null; a.funAt = sceneTime + span(FUN_EVERY); }
+    return;
+  }
+  if (sceneTime < f.until) return;
+  if (f.phase === 'down') {
+    f.phase = 'hold';
+    f.until = sceneTime + span(LIE_HOLD);
+  } else if (f.phase === 'hold') {
+    Scene3D.playClamped(a.m3, 'lie', true);   // vstavani: Death pozpatku
+    f.phase = 'up';
+    f.until = sceneTime + a.m3.breakDur.lie;
+  } else {
+    f.phase = 'out';                          // dobehly 'up' nebo 'jump'
+  }
+}
+
+function rest(a, dt) {
+  const R = motionCfg(a.motion).rest;
+  // uvolneni zastavky (kolizni fronta si restUntil prodluzuje kazdy snimek);
+  // rozehrana zabava drzi mix na jednicce jeste po uvolneni, viz entertain
+  if (R && a.pause && sceneTime > a.restUntil) {
     a.blocked = false;
     a.pause = '';
-    a.restAt = a.route ? Infinity : sceneTime + span(R.walk);
   }
+  entertain(a, dt);
 
   // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
-  // skok skonci, skacici tvor by cuknul do stojaci pozy.
+  // se tvor rozejde, cuknul by do stojaci pozy.
   if (!a.mix) a.shown = a.pause;
   a.face = toward(a.face, a.dir, dt / ((R && R.spin) || 0.5));
-  const target = a.pause || a.face !== a.dir ? 1 : 0;
+  const target = a.pause || a.fun || a.face !== a.dir ? 1 : 0;
   a.mix = toward(a.mix, target, dt / a.fade);
   if (a.m3) {
     Scene3D.speed(a.m3, a.rate * (1 - a.mix));
-    Scene3D.blend(a.m3, a.shown || 'stand', a.mix);
+    // uvnitr zastavene vahy (mix) se stani a zabavna poza prolinaji pres k
+    const k = a.fun ? a.fun.k : 0;
+    const w = { [a.shown || 'stand']: a.mix * (1 - k) };
+    if (a.fun) w[a.fun.pose] = a.mix * k;
+    Scene3D.blendMix(a.m3, w);
   }
 }
 
@@ -576,7 +621,11 @@ const MEET_AT = 1.35;       // protijdouci: vzdalenost, kdy se mensi otoci
 const MEET_CD_S = 4;        // po otocce ze setkani chvili neotacet znovu —
                             // jinak tvor sevreny mezi dvema protijdoucimi
                             // flipuje smer kazdy snimek a fronta zamrzne
-const BLOCK_JUMP = 0.15;    // sance, ze si cekajici misto stani skoci
+// Bez nahodnych zastavek by chodec bez trasy nikdy nezmenil smer (otocku
+// driv vezla zastavka) a drahy by zdegenerovaly na pruvod jednim smerem.
+// Obcasna otocka na miste — pres stavajici face/mix mechaniku, kratka a bez
+// postavani — vraci scene pestrost; tvor s trasou se toci podle trasy.
+const TURN_EVERY = [20, 45];
 
 function bodyLenFrac(a) {
   return a.m3 ? bodyFrac(a)
@@ -597,15 +646,13 @@ function holdStill(a) {
   const R = motionCfg(a.motion).rest;
   if (!R || (a.m3 && !a.m3.action)) return;
   if (!a.pause) {
-    const jump = a.m3 && a.m3.breakDur.jump && Math.random() < BLOCK_JUMP;
-    a.pause = jump ? 'jump' : 'stand';
-    a.fade = jump ? R.jumpFade : R.fade;
-    a.restUntil = sceneTime + (jump ? a.m3.breakDur.jump : 0.8);
-    if (jump) Scene3D.restart(a.m3, 'jump');
+    a.pause = 'stand';
+    a.fade = R.fade;
+    a.restUntil = sceneTime + 0.8;
   } else if (a.pause === 'stand') {
     a.restUntil = Math.max(a.restUntil, sceneTime + 0.8);
   }
-  a.blocked = true;
+  a.blocked = true;   // delsi cekani obstara zabava (entertain), ne skok tady
 }
 
 function traffic() {
@@ -629,7 +676,8 @@ function traffic() {
         // podel trasy (route.dir), odchazejici se nechava dojit ven.
         // Tvor v rozpracovane otocce (face != dir) nebo v cooldownu se
         // nevybira — viz MEET_CD_S.
-        const pick = [a, b].filter(x => !x.exiting && x.face === x.dir
+        // tvor v rozehrane zabave (lezi/skace) se neotaci — pirueta vleze
+        const pick = [a, b].filter(x => !x.exiting && !x.fun && x.face === x.dir
                                      && sceneTime > (x.meetCd || 0))
           .sort((x, y) => (x.route ? 1 : 0) - (y.route ? 1 : 0)
                        || bodyLenFrac(x) - bodyLenFrac(y))[0];
@@ -673,12 +721,19 @@ function update(dt) {
           a.pause = 'stand';
           a.fade = R.fade;
           a.restUntil = sceneTime + span(R.stand);
-          a.restAt = sceneTime + span(R.walk);
         }
         a.feed = null;
       } else {
         a.dir = a.feed.x > a.xFrac ? 1 : -1;
       }
+    }
+    // obcasna otocka na miste u chodce bez trasy (viz TURN_EVERY): jediny
+    // zdroj zmeny smeru mimo kolize, kdyz uz nahodne zastavky nejsou
+    if (a.motion === 'walk' && !a.route && !a.exiting && !a.pause && !a.fun
+        && !a.feed && sceneTime > a.turnAt) {
+      a.dir = -a.dir;
+      a.meetCd = sceneTime + MEET_CD_S;
+      a.turnAt = sceneTime + span(TURN_EVERY);
     }
     rest(a, dt);
     if (a.natural) {
@@ -979,8 +1034,9 @@ async function loadModel(item, opts) {
   // role klipu (pohyb, stani, skok) rika katalog — jmena se nehadaji ve scene
   const cf = spec.clipFor || {};
   const clip = spec.clips[cf.move] || spec.pose;
-  const breaks = cf.stand || cf.jump
-    ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump] }
+  const breaks = cf.stand || cf.jump || cf.lie
+    ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump],
+        lie: spec.clips[cf.lie] }
     : undefined;
   const m3 = await Scene3D.spawn({
     id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks,
@@ -1328,6 +1384,10 @@ window.DinoScene = {
     laneY: a.laneY != null ? +a.laneY.toFixed(3) : null,
     rateScale: a.band.rateScale || 1,
     blocked: !!a.blocked,
+    pause: a.pause || null,
+    mix: +a.mix.toFixed(2),
+    turning: a.face !== a.dir,
+    fun: a.fun ? a.fun.pose + ':' + a.fun.phase : null,
     route: a.route ? a.route.path.name || '' : null,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
     exiting: !!a.exiting, feeding: !!a.feed,
@@ -1340,6 +1400,9 @@ window.DinoScene = {
   foods: () => foods.map(f => ({ x: f.x, y: +f.y.toFixed(3),
                                  age: +(sceneTime - f.born).toFixed(2) })),
   feed: dropFood,                  // rucni krmeni (Playwright/ladeni)
+  // ladeni zabavy pri cekani (Playwright): kratsi intervaly bez editace zdroju
+  funTune: (every, hold) => { if (every) FUN_EVERY = every;
+                              if (hold) LIE_HOLD = hold; },
   ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
   session: () => SID,
   scene: () => sceneDef && sceneDef.key,   // aktivni krajina (bod 8)

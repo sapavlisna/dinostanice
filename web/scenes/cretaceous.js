@@ -27,7 +27,12 @@
      driftRefHeight  výška pásu, pro kterou platí plný drift
      farChance       šance, že nový tvor padne na vedlejší (far) lane
      bob             sinusové houpání (letci)
-     rest            zastávky/otočky; bez něj tvor nikdy nezastaví
+     rest            umožňuje zastavit (kolizní fronta, dwell na trase,
+                     krmení) a otočit se na místě; bez něj tvor nezastaví
+                     nikdy. Náhodné zastávky "jen tak" neexistují — tvor
+                     jde, dokud nemá důvod stát. `stand` = délka postání
+                     u jídla (a default dwellu na trase), `fade` prolnutí
+                     do stání, `spin` rychlost otočky.
 
    paths (volitelné) — trasy chodců (bod 9). Část chodců (ne všichni) dostane
    při příchodu trasu a jde po ní místo volného bloumání po pásu:
@@ -71,8 +76,7 @@ export default {
       lengthFraction: 0.17, sizeFraction: 0.234, baseSpeed: 0.030,
       strideRate: [0.12, 0.22],
       farChance: 0.35,
-      rest: { walk: [11, 34], stand: [3, 9], fade: 0.7, jumpFade: 0.25,
-              jump: 0.35, turn: 0.45, spin: 0.5 },
+      rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
     fly: { lengthFraction: 0.24, sizeFraction: 0.334, baseSpeed: 0.055, bob: true },

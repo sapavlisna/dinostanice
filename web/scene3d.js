@@ -406,22 +406,37 @@ export function walked(handle, dt) {
   return handle.strideBodies * (whole + f(t1 - whole * dur) - f(t0));
 }
 
-/* Kolik z tvora je zastavena poza `name`: 0 jde, 1 stoji (nebo skace). Mezi tim
-   se obe pozy michaji, takze se tvor do zastaveni plynule uklidni. */
-export function blend(handle, name, weight) {
+/* Vahy zastavenych poz najednou ({jmeno: vaha}); chuze dostane zbytek do
+   jednicky. Vic poz nez jedna se hodi pri prolinani stani do lehnuti — jedna
+   klesa, druha roste, chuze zustava na nule. */
+export function blendMix(handle, weights) {
   if (!handle.action) return;
   let on = 0;
   for (const [key, action] of Object.entries(handle.breaks)) {
-    const w = key === name ? weight : 0;
+    const w = weights[key] || 0;
     action.setEffectiveWeight(w);
-    on = Math.max(on, w);
+    on += w;
   }
-  handle.action.setEffectiveWeight(1 - on);
+  handle.action.setEffectiveWeight(Math.max(0, 1 - Math.min(1, on)));
 }
 
 /* Skok se ma prehrat od zacatku, ne odkud prave bezi. */
 export function restart(handle, name) {
   if (handle.breaks[name]) handle.breaks[name].time = 0;
+}
+
+/* Jednorazove prehrani zastavky s podrzenim krajni pozy: lehnuti (Death) se
+   prehraje jednou a tvor zustane lezet (LoopOnce + clampWhenFinished);
+   s `reverse` bezi tyz klip pozpatku od konce (timeScale -1) — vstavani. */
+export function playClamped(handle, name, reverse = false) {
+  const action = handle.breaks[name];
+  if (!action) return;
+  action.reset();                    // odparkuje paused/finished z minula
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.timeScale = reverse ? -1 : 1;
+  if (reverse) action.time = action.getClip().duration;
+  action.play();
 }
 
 export function remove(handle) {
