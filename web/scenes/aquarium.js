@@ -73,4 +73,5 @@ export default {
     top: 0.11, floor: 0.655, sinkRate: 0.045, life: 18, bites: 5,
   },
   ambientMin: 8,
+  invite: { title: 'Vypusť si rybu', sub: 'Naskenuj kód a vyfoť vybarvenou rybu' },
 };

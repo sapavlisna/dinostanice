@@ -1301,6 +1301,7 @@ async function switchScene(key) {
     sceneDef = def;
     backdrop = bd;
     Scene3D.setLighting(def.lighting);
+    qrInvite();
     await catalogue();
     toast('Krajina: ' + def.label);
     // novou sestavu privest az kdyz stara odejde (update ji doztraci)
@@ -1422,6 +1423,14 @@ let qrShrinkTimer = 0, qrIdleTimer = 0, qrRemindTimer = 0;
 
 function qrSetMini(mini) {
   hintEl.classList.toggle('mini', mini);
+}
+
+/* Vyzva na QR panelu patri scene: v akvariu se nevypousti dinosaurus. */
+function qrInvite() {
+  const t = (sceneDef && sceneDef.invite) || {};
+  const b = hintEl.querySelector('b'), s = hintEl.querySelector('span');
+  if (b && t.title) b.textContent = t.title;
+  if (s && t.sub) s.textContent = t.sub;
 }
 
 function qrScheduleIdleRemind() {
@@ -1588,6 +1597,7 @@ async function boot() {
   }
   try {
     sceneDef = await loadSceneDef(key || DEFAULT_SCENE);
+    qrInvite();
   } catch (e) {
     try {
       sceneDef = await loadSceneDef(DEFAULT_SCENE);

@@ -97,4 +97,5 @@ export default {
     },
   ],
   ambientMin: 6,
+  invite: { title: 'Přidej svého dinosaura', sub: 'Naskenuj kód a vyfoť vybarvený obrázek' },
 };
