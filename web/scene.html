@@ -17,7 +17,7 @@
   #stagefx { z-index: 2; pointer-events: none; }
   #hint, #toast, #err, #roster { z-index: 3; }
   #hint {
-    position: fixed; right: 24px; top: 24px; display: flex; align-items: center;
+    position: fixed; right: 24px; bottom: 62px; display: flex; align-items: center;
     gap: 16px; padding: 14px 18px; border-radius: 14px; color: #f2f6f8;
     background: rgba(8, 22, 30, .62); backdrop-filter: blur(6px);
     font: 500 17px/1.35 "Segoe UI", system-ui, sans-serif;
@@ -30,19 +30,21 @@
   }
   #hint b { display: block; font-size: 20px; margin-bottom: 4px; }
   #hint span { display: block; opacity: .78; font-size: 15px; }
-  /* rozcestnik (bod 6): na TV se nekleka, tak jen tlumeny text k opsani do
-     mobilu, ne odkaz — QR zustava jedina klikatelna cesta (na mobilu) */
-  #hint .links { margin: 8px 0 0; font-size: 12px; line-height: 1.6; opacity: .55; }
-  /* mini stav: jen QR v rohu — hlavni stav prvnich 90 s po startu, nebo hned
-     po prvnim add; pripominka se na chvili vrati k plnemu stavu. Cesta na
-     šablony zůstává i tady jako mikrořádek (bod 7), ať ji mini stav neuřízne */
-  #hint.mini { gap: 10px; padding: 7px 14px 7px 7px; border-radius: 12px; }
+  /* rozcestnik: skutecne odkazy — scena obcas bezi i v okne s mysi a na TV
+     aspon rikaji, kam jit */
+  #hint .links { margin: 8px 0 0; font-size: 13px; line-height: 1.7; }
+  #hint .links a { color: #ffd98f; text-decoration: none; }
+  #hint .links a:hover { text-decoration: underline; }
+  /* mini stav: maly QR vpravo dole s odkazem na sablony pod nim — hlavni stav
+     prvnich 90 s po startu, nebo hned po prvnim add; pripominka se na chvili
+     vrati k plnemu stavu */
+  #hint.mini { flex-direction: column; gap: 5px; padding: 7px; border-radius: 12px; }
   #hint.mini img { width: 56px; height: 56px; }
   #hint.mini > div { display: none; }
   #hint .mini-link { display: none; }
   #hint.mini .mini-link {
-    display: block; font-size: 11px; letter-spacing: .01em;
-    color: rgba(242, 246, 248, .55); white-space: nowrap;
+    display: block; font-size: 11px; letter-spacing: .01em; text-align: center;
+    color: rgba(255, 217, 143, .8); text-decoration: none; white-space: nowrap;
   }
   #toast {
     position: fixed; left: 50%; top: 36px; transform: translateX(-50%) translateY(calc(-100% - 80px));
@@ -145,9 +147,9 @@
   <div>
     <b>Přidej svého dinosaura</b>
     <span>Naskenuj kód a vyfoť vybarvený obrázek</span>
-    <p class="links">🖨 /sablony — tisk šablon<br>⚙ /rezim — přepnout krajinu, reset</p>
+    <p class="links"><a href="/sablony">🖨 Šablony k tisku</a><br><a href="/rezim">⚙ Režim stanice</a></p>
   </div>
-  <span class="mini-link">/sablony</span>
+  <a class="mini-link" href="/sablony">/sablony</a>
 </div>
 <div id="toast"></div>
 <div id="err"></div>
