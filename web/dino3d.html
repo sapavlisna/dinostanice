@@ -30,7 +30,28 @@
   }
   #status.bad { color: #f08a7a; }
   .hint { margin-left: auto; color: #6c7f92; }
+
+  /* Rezim chuze (bod 8): proklik ze sablon ukaze jen otaceni mysi, zadne
+     ladici ovladani. Trida se nastavuje synchronne v <head>, at nenabehne
+     na okamzik plne UI (FOUC). */
+  #allOptions { display: none; }
+  html.walk-mode #creature,
+  html.walk-mode #anim,
+  html.walk-mode #play,
+  html.walk-mode #spin,
+  html.walk-mode #tex { display: none; }
+  html.walk-mode #allOptions { display: inline-block; }
 </style>
+<script>
+(function () {
+  var hash = location.hash.slice(1);
+  var q = hash.indexOf('?');
+  var hashQuery = q >= 0 ? hash.slice(q + 1) : '';
+  var mode = new URLSearchParams(location.search).get('mode')
+          || new URLSearchParams(hashQuery).get('mode');
+  if (mode === 'walk') document.documentElement.classList.add('walk-mode');
+})();
+</script>
 </head>
 <body>
 
@@ -41,6 +62,7 @@
   <button id="play">Pauza</button>
   <button id="spin">Zastavit otáčení</button>
   <button id="tex">Bez textury</button>
+  <button id="allOptions">Všechny možnosti</button>
   <span id="status"></span>
 </header>
 

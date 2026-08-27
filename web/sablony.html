@@ -2,52 +2,71 @@
 <html lang="cs">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dinosauří stanice — šablony a modely</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12161c">
+<title>Šablony a modely</title>
 <style>
-  * { box-sizing: border-box; }
+  :root {
+    --bg: #12161c;
+    --card: #1b212a;
+    --line: #2c3542;
+    --text: #e8eef6;
+    --muted: #9aa7b8;
+    --accent: #ffb347;
+    --ok: #6ddf9c;
+    --bad: #ff8f7a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
   body {
-    margin: 0; padding: 24px 28px 48px;
-    background: #10151b; color: #dfe7ef;
-    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 18px calc(28px + env(safe-area-inset-bottom));
+    max-width: 960px; margin: 0 auto;
   }
-  h1 { margin: 0 0 4px; font-size: 22px; }
-  h2 { margin: 34px 0 12px; font-size: 16px; font-weight: 600; color: #93a4b6; }
-  p.lead { margin: 0 0 8px; color: #93a4b6; }
-  a { color: #7fc4ff; }
+  h1 { font-size: 25px; margin: 4px 0 2px; }
+  .lead { color: var(--muted); margin: 0 0 6px; font-size: 15px; }
+  .top-links { margin: 0 0 20px; font-size: 14px; }
+  .top-links a { color: var(--muted); text-decoration: none; }
+  .top-links a:hover { color: var(--text); }
+
   .grid {
-    display: grid; gap: 16px;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   }
+
   .card {
-    background: #18202a; border: 1px solid #26313d; border-radius: 12px;
-    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px;
+    overflow: hidden; display: flex; flex-direction: column;
   }
-  .card img {
-    width: 100%; aspect-ratio: 297 / 210; object-fit: contain;
-    background: #fff; border-radius: 8px;
+
+  .thumb {
+    display: block; background: #fff; aspect-ratio: 297 / 210;
   }
-  .name { font-weight: 600; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .thumb:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+  .body { padding: 12px 14px 14px; }
+  .name { font-weight: 700; font-size: 17px; }
+  .motion { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
   .btn {
-    font: inherit; color: #e8eff6; background: #223040; text-decoration: none;
-    border: 1px solid #33465b; border-radius: 7px; padding: 5px 11px;
+    flex: 1; font: inherit; font-size: 14px; font-weight: 600;
+    color: var(--muted); background: transparent; text-decoration: none;
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 8px; text-align: center; cursor: pointer;
   }
-  .btn:hover { background: #2b3d51; }
-  .btn.ghost { opacity: .65; }
-  .note { color: #6c7f92; font-size: 13px; }
+  .btn:hover, .btn:focus-visible { color: var(--text); background: #232b36; }
+
+  .footer-links { margin-top: 30px; text-align: center; }
+  .footer-links a { color: #7fc4ff; text-decoration: none; font-size: 14px; }
 </style>
 </head>
 <body>
 
 <h1>Šablony a modely</h1>
-<p class="lead">
-  Předloha vznikla promítnutím 3D modelu na list, takže vybarvení sedne zpátky
-  na tvora. Tiskni na 100 %, žádné „přizpůsobit stránce“ — na měřítku stojí
-  celá pipeline.
-  <br><a href="/pridat">Nahrát vybarvený obrázek</a> ·
-  <a href="/dino3d">3D modely</a> · <a href="/">Zpět na scénu</a>
-</p>
+<p class="lead">Klepni na obrázek — otevře se list na tisk. Tiskni na 100 %, ne „přizpůsobit stránce“.</p>
+<p class="top-links"><a href="/">Zpět na scénu</a> &middot; <a href="/dino3d">Všechny 3D modely</a></p>
 
 <div id="list"></div>
 
@@ -59,23 +78,48 @@ const el = (tag, cls, text) => {
   return n;
 };
 
+// Decentni info "kde zije" misto dlouheho popisu (bod 8).
+const MOTION = {
+  walk: ['🚶', 'chodí po souši'],
+  fly: ['🕊️', 'létá'],
+  swim: ['🐟', 'plave'],
+  sail: ['⛵', 'pluje'],
+};
+function motionLine(motion) {
+  const [icon, text] = MOTION[motion] || ['🦕', 'žije v krajině'];
+  return `${icon} ${text}`;
+}
+
 function card(entry) {
   const c = el('div', 'card');
+
+  // klik na obrazek = totez co tlacitko Tisk (bod 8)
+  const thumb = el('a', 'thumb');
+  thumb.href = entry.template;
+  thumb.target = '_blank';
+  thumb.rel = 'noopener';
+  thumb.setAttribute('aria-label', `Vytisknout šablonu: ${entry.label}`);
   const img = el('img');
   img.src = entry.template;
   img.alt = entry.label;
   img.loading = 'lazy';
-  c.append(img, el('div', 'name', entry.label));
+  thumb.append(img);
 
-  const row = el('div', 'row');
-  const print = el('a', 'btn', 'Vytisknout');
+  const body = el('div', 'body');
+  body.append(el('div', 'name', entry.label));
+  body.append(el('div', 'motion', motionLine(entry.motion)));
+
+  const actions = el('div', 'actions');
+  const print = el('a', 'btn', '🖨 Tisk');
   print.href = entry.template;
   print.target = '_blank';
-  row.append(print);
-  const model = el('a', 'btn', '3D model');
-  model.href = `/dino3d#${entry.key}`;
-  row.append(model);
-  c.append(row);
+  print.rel = 'noopener';
+  const model = el('a', 'btn', '👀 Prohlédnout');
+  model.href = `/dino3d#${entry.key}?mode=walk`;
+  actions.append(print, model);
+  body.append(actions);
+
+  c.append(thumb, body);
   return c;
 }
 
@@ -85,7 +129,9 @@ list.forEach((e) => grid.append(card(e)));
 document.getElementById('list').append(grid);
 </script>
 
-<p class="note" style="margin-top:40px"><a href="/rezim">Režim stanice</a> — nastavení pro obsluhu (krajina, reset)</p>
+<div class="footer-links">
+  <a href="/pridat">Přidat</a> &middot; <a href="/rezim">Režim stanice</a>
+</div>
 
 </body>
 </html>

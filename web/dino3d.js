@@ -112,7 +112,9 @@ function show(entry) {
       opt.textContent = clip.name.split('_').pop();   // "Armature|TRex_Walk" -> "Walk"
       return opt;
     }));
-    const preferred = gltf.animations.findIndex((c) => c.name.endsWith(PREFERRED));
+    // rezim chuze chce rovnou spravny pohyb: chodci Walk, letci Flying
+    const preferredName = entry.motion === 'fly' ? 'Flying' : PREFERRED;
+    const preferred = gltf.animations.findIndex((c) => c.name.endsWith(preferredName));
     select.value = String(preferred >= 0 ? preferred : 0);
     const playClip = (i) => {
       st.action?.fadeOut(0.2);
@@ -167,8 +169,10 @@ Promise.all([
     history.replaceState(null, '', `#${entry.key}`);
     show(entry);
   });
-  // na konkretniho tvora se da odkazat z prehledu sablon
-  const wanted = list.findIndex((e) => e.key === decodeURIComponent(location.hash.slice(1)));
+  // na konkretniho tvora se da odkazat z prehledu sablon; hash muze nest i
+  // ?mode=walk za klicem (#trex3d?mode=walk), tak se odstihne pred hledanim
+  const hashKey = location.hash.slice(1).split('?')[0];
+  const wanted = list.findIndex((e) => e.key === decodeURIComponent(hashKey));
   const start = wanted >= 0 ? wanted : 0;
   pick.value = String(start);
   show(list[start]);
@@ -192,6 +196,9 @@ el('tex').addEventListener('click', () => {
     }
   });
   el('tex').textContent = st.textured ? 'Bez textury' : 'S texturou';
+});
+el('allOptions').addEventListener('click', () => {
+  document.documentElement.classList.remove('walk-mode');
 });
 
 function frame() {
