@@ -75,6 +75,16 @@
     background: rgba(255,255,255,.06); color: #cfe6f2; font: 12px inherit; cursor: pointer;
   }
   #tune button:hover { background: rgba(159, 214, 255, .16); }
+  #tune button:disabled { opacity: .45; cursor: default; }
+  /* sekce Trasy (editor waypointu, web/tune.js) */
+  #tune .tools { align-items: center; flex-wrap: wrap; }
+  #tune select {
+    max-width: 150px; padding: 4px 6px; border: 1px solid rgba(159, 214, 255, .25);
+    border-radius: 6px; background: rgba(6, 18, 26, .9); color: #eaf4f8; font: 12px inherit;
+  }
+  #tune label { color: #cfe6f2; font-size: 12px; white-space: nowrap; cursor: pointer; }
+  #tune .hint { margin-top: 8px; max-width: 330px; color: #7f98a5; font-size: 11px; }
+  #tune h2 + .tools { margin-top: 0; }
   #err { position: fixed; left: 16px; bottom: 54px; color: #ff9b9b; font: 13px monospace; opacity: .7; }
   /* lista s obsazenim a prichody/odchody (web/roster.js), klavesa i */
   #roster {

@@ -121,6 +121,115 @@ function span([lo, hi]) {
   return lo + Math.random() * (hi - lo);
 }
 
+/* Trasy (bod 9): tvor s trasou jde po lomené čáře z definice scény (případně
+   přepsané editorem v ladicím panelu, viz Tune.pathsFor). Souřadnice bodů
+   jsou podíly obrazovky; vzdálenost po čáře se měří izotropně (y škálované
+   poměrem stran), aby svislý kus úsečky nebyl "zadarmo". Trasa je autorita
+   nad pásy: autor ji kreslí po břehu, scéna ji tvrdě neclampuje. */
+const ROUTE_CHANCE = 0.5;   // jen část chodců, ať scéna není vláček po lince
+
+function aspect() {
+  return W ? H / W : 0.5625;
+}
+
+function segCount(path) {
+  return path.loop ? path.points.length : path.points.length - 1;
+}
+
+function segAt(path, seg) {
+  const pts = path.points;
+  return [pts[seg % pts.length], pts[(seg + 1) % pts.length]];
+}
+
+function segLen(path, seg) {
+  const [p0, p1] = segAt(path, seg);
+  return Math.hypot(p1.x - p0.x, (p1.y - p0.y) * aspect()) || 1e-6;
+}
+
+/* Nejbližší místo na trase k dané pozici — nový tvor se na trasu zavěsí tam,
+   kde zrovna je (příchozí od okraje na její ocas za okrajem, doplněk
+   z katalogu kdekoli po délce), takže se všichni nesesypou na start. */
+function snapRoute(path, x, y) {
+  const k = aspect();
+  let best = { seg: 0, s: 0, d: Infinity };
+  for (let i = 0; i < segCount(path); i++) {
+    const [p0, p1] = segAt(path, i);
+    const dx = p1.x - p0.x, dy = (p1.y - p0.y) * k;
+    const len2 = dx * dx + dy * dy || 1e-9;
+    const s = Math.max(0, Math.min(1, ((x - p0.x) * dx + (y - p0.y) * k * dy) / len2));
+    const d = Math.hypot(x - p0.x - s * dx, (y - p0.y) * k - s * dy);
+    if (d < best.d) best = { seg: i, s, d };
+  }
+  return best;
+}
+
+function routePos(a) {
+  const [p0, p1] = segAt(a.route.path, a.route.seg);
+  a.xFrac = p0.x + (p1.x - p0.x) * a.route.s;
+  a.yFrac = p0.y + (p1.y - p0.y) * a.route.s;
+  const dx = (p1.x - p0.x) * a.route.dir;
+  if (dx) a.dir = dx > 0 ? 1 : -1;   // svislý úsek směr pohledu nemění
+}
+
+/* Posun po trase o `go` (podíl šířky obrazovky, z fázově vázaného `walked`).
+   Na dosaženém waypointu se vykoná jeho `do`: stop zapne stávající rest
+   mašinerii s dwell intervalem, turn obrátí směr průchodu; konec trasy
+   znamená u loop pokračovat dokola, jinak ping-pong. */
+function followRoute(a, go) {
+  const r = a.route, pts = r.path.points;
+  const n = segCount(r.path);
+  if (n < 1) return;
+  if (r.seg >= n) { r.seg = n - 1; r.s = 1; }   // editor mohl body smazat
+  let left = go;
+  let guard = pts.length * 2 + 4;   // dva turn body vedle sebe nesmí zacyklit
+  while (left > 0 && guard-- > 0) {
+    const len = segLen(r.path, r.seg);
+    const room = (r.dir > 0 ? 1 - r.s : r.s) * len;
+    if (left < room) { r.s += r.dir * left / len; break; }
+    left -= room;
+    const at = r.dir > 0 ? (r.seg + 1) % pts.length : r.seg;   // dosažený bod
+    const pt = pts[at] || {};
+    if (pt.do === 'turn') {
+      // zůstává na témže segmentu, jen jím jde zpátky
+      r.s = r.dir > 0 ? 1 : 0;
+      r.dir = -r.dir;
+    } else if (r.dir > 0) {
+      if (r.seg + 1 < n) { r.seg += 1; r.s = 0; }
+      else if (r.path.loop) { r.seg = 0; r.s = 0; }
+      else { r.dir = -1; r.s = 1; }
+    } else {
+      if (r.seg > 0) { r.seg -= 1; r.s = 1; }
+      else if (r.path.loop) { r.seg = n - 1; r.s = 1; }
+      else { r.dir = 1; r.s = 0; }
+    }
+    if (pt.do === 'stop' && !a.pause) {
+      const R = motionCfg(a.motion).rest;
+      if (R && (!a.m3 || a.m3.action)) {
+        a.pause = 'stand';
+        a.fade = R.fade;
+        a.restUntil = sceneTime + span(pt.dwell || R.stand);
+        break;   // zbytek kroku propadne, tvor zastavuje
+      }
+    }
+  }
+}
+
+/* Přiřazení trasy při příchodu: jen chodci, jen když scéna trasu pro jeho
+   druh má, a i pak jen s šancí ROUTE_CHANCE — zbytek bloumá postaru po
+   pásech, ať má scéna obojí. */
+function pickRoute(a) {
+  if (a.motion !== 'walk' || !sceneDef || Math.random() >= ROUTE_CHANCE) return null;
+  const fit = Tune.pathsFor(sceneDef).filter(p =>
+    (!p.species || p.species === a.key) && p.points.length >= 2);
+  if (!fit.length) return null;
+  const path = fit[Math.floor(Math.random() * fit.length)];
+  const { seg, s } = snapRoute(path, a.xFrac, a.yFrac);
+  const [p0, p1] = segAt(path, seg);
+  // po trase se vydá směrem, kterým už byl otočený, pokud to segment dovolí
+  const dir = (p1.x - p0.x) * a.dir >= 0 ? 1 : -1;
+  return { path, seg, s, dir };
+}
+
 function addActor(what, opts) {
   // dedup podle id: race pri startu (connect bezi soubezne s restoreCast) nebo
   // rekonciliace po reconnectu nesmi privest tehoz tvora dvakrat
@@ -175,6 +284,13 @@ function addActor(what, opts) {
     actor.autoSpeed = actor.natural * actor.autoRate * bodyFrac(actor);
   } else if (actor.m3) {
     actor.autoRate = pace;         // letec: rychleji maka kridly, rychleji leti
+  }
+  actor.route = pickRoute(actor);
+  if (actor.route) {
+    routePos(actor);
+    actor.face = actor.dir;
+    actor.drift = 0;
+    actor.restAt = Infinity;   // zastávky určují waypointy, ne náhoda
   }
   applyGait(actor);
   actors.push(actor);
@@ -289,9 +405,10 @@ function rest(a, dt) {
     if (jump) Scene3D.restart(a.m3, 'jump');
   }
   if (R && a.pause && sceneTime > a.restUntil) {
-    if (a.pause === 'stand' && Math.random() < R.turn) a.dir = -a.dir;
+    // na trase o otočkách i dalších zastávkách rozhodují waypointy, ne náhoda
+    if (!a.route && a.pause === 'stand' && Math.random() < R.turn) a.dir = -a.dir;
     a.pause = '';
-    a.restAt = sceneTime + span(R.walk);
+    a.restAt = a.route ? Infinity : sceneTime + span(R.walk);
   }
 
   // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
@@ -325,6 +442,13 @@ function update(dt) {
     const go = stepBodies !== null
       ? stepBodies * bodyFrac(a) * a.speedMul
       : a.speed * (1 - a.mix) * dt;
+    if (a.route && a.route.path.points.length >= 2) {
+      // Trasa je autorita: zadne obchazeni okraje ani swapBand — odchod a
+      // navrat resi body za okrajem, ktere si autor nakreslil sam.
+      followRoute(a, go);
+      routePos(a);
+      continue;
+    }
     a.xFrac += a.dir * go;
     // Za okrajem tvor obejde scenu dokola, misto aby se odrazil. Odraz vypadal
     // prirozene, ale vsichni se odrazeji od tehoz mista a casem se sesypou do
@@ -435,6 +559,7 @@ function draw(dt) {
 
   fxCtx.clearRect(0, 0, W, H);
   if (backdrop && backdrop.drawFront) backdrop.drawFront(fxCtx, W, H, sceneTime);
+  Tune.drawOverlay(fxCtx, W, H);   // editor tras; mimo editaci nekresli nic
 }
 
 let frameErrors = 0;
@@ -686,6 +811,7 @@ function connect() {
    v pixelech za sekundu, at se da porovnat s tim, co je videt. */
 Tune.init({
   apply: () => actors.forEach(applyGait),
+  scene: () => sceneDef,           // editor tras edituje aktivni scenu
   read: () => {
     const rows = new Map();
     for (const a of actors) {
@@ -824,6 +950,7 @@ window.DinoScene = {
   where: () => actors.map(a => ({
     label: a.label, key: a.key, motion: a.motion,
     band: a.band.name, lane: a.band.lane || null,
+    route: a.route ? a.route.path.name || '' : null,
     kind: a.m3 ? 'model' : 'rig', ambient: a.ambient,
     x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
     // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti

@@ -21,7 +21,18 @@
      driftRefHeight  výška pásu, pro kterou platí plný drift
      farChance       šance, že nový tvor padne na vedlejší (far) lane
      bob             sinusové houpání (letci)
-     rest            zastávky/otočky; bez něj tvor nikdy nezastaví */
+     rest            zastávky/otočky; bez něj tvor nikdy nezastaví
+
+   paths (volitelné) — trasy chodců (bod 9). Část chodců (ne všichni) dostane
+   při příchodu trasu a jde po ní místo volného bloumání po pásu:
+     name     jméno trasy (ukazuje se v editoru, klávesa d)
+     loop     true = dokola, false = ping-pong (na konci se otočí)
+     species  klíč druhu, pro který trasa platí; null = kdokoli
+     points   lomená čára v podílech obrazovky (x šířky, y výšky); body smí
+              za okraj (±0.25). `do`: 'walk' projde, 'stop' postojí
+              (`dwell` = [min,max] s), 'turn' obrátí směr průchodu.
+   Trasy se dají kreslit editorem v ladicím panelu (d → sekce Trasy);
+   „kopírovat JSON" vysype pole k vložení sem. */
 
 export default {
   key: 'cretaceous',
@@ -56,5 +67,19 @@ export default {
     swim: { lengthFraction: 0.19, baseSpeed: 0.030 },
     sail: { lengthFraction: 0.15, baseSpeed: 0.018 },
   },
+  paths: [
+    // ukázka: procházka po předním břehu s jednou zastávkou; mírné vlnění
+    // v y drží prokluz chodidel pod prahem (vodorovná rychlost ~ ušlá dráha)
+    {
+      name: 'přední břeh', loop: false, species: null,
+      points: [
+        { x: -0.20, y: 0.875, do: 'walk' },
+        { x: 0.18, y: 0.845, do: 'walk' },
+        { x: 0.46, y: 0.900, do: 'stop', dwell: [3, 8] },
+        { x: 0.78, y: 0.860, do: 'walk' },
+        { x: 1.20, y: 0.885, do: 'walk' },
+      ],
+    },
+  ],
   ambientMin: 6,
 };
