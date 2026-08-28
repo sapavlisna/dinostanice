@@ -1,12 +1,17 @@
 # DinoStanice
 
 Domácí obdoba exponátu z Haus der Natur v Salzburgu: dítě vybarví předtištěnou
-šablonu, vyfotí ji mobilem — a jeho dinosaurus obživne v křídové krajině na
-televizi, kde chodí, plave nebo létá mezi ostatními.
+šablonu, vyfotí ji mobilem — a jeho tvor obživne na televizi: dinosaurus
+v křídové laguně, ryba v akváriu.
 
 ## Jak to spustit
 
-V Dockeru:
+Nejjednodušeji — dvojklik na **`DinoStanice.cmd`**. Doinstaluje si, co chybí,
+vybere volný port, spustí server a otevře scénu v prohlížeči. Když na portu
+8100 zjistí běžící kontejner téže stanice, nabídne otevřít ten místo startu
+druhé instance nad týmiž úlovky. Konec: `Ctrl+C` v okně.
+
+V Dockeru (běží pořád, přežije restart PC):
 
 ```powershell
 cd E:\ClaudeProjects\DinoStanice
@@ -20,11 +25,16 @@ Přepíše se proměnnou `DINO_PORT` (v `.env` nebo na příkazové řádce).
 Úlovky (`data/catch/`), koš smazaných (`data/trash/`) i nastavení scény
 (`data/state.json`) jsou bind mountnuté ven, takže přestavbu image přežijí.
 
-Nebo přímo, bez kontejneru:
+Nebo přímo z konzole, bez kontejneru:
 
 ```powershell
-.\start.ps1              # volitelně -Port 8080
+.\start.ps1                       # volitelně -Port 8123, -NoBrowser
 ```
+
+Rozdíl proti Dockeru: běží jen dokud je okno otevřené a změny ve `web/` jsou
+vidět po reloadu (v kontejneru je frontend zapečený v image, takže se musí
+přestavět). Úlovky, koš a nastavení scény jsou v obou případech tytéž soubory
+v `data/`.
 
 Skript vypíše dvě adresy: **scénu** (otevři na PC vyvedeném do televize, klávesa
 `F` přepne na celou obrazovku) a **stránku pro mobil**. V rohu scény svítí QR
@@ -33,8 +43,8 @@ a po delším klidu se jednou za čas připomene. Pod scénou je odkaz na
 `/sablony` — přehled všech předloh s náhledy, tiskem a prokliky na 3D modely.
 
 Klávesy ve scéně: `F` celá obrazovka, `H` ručně skryje/ukáže QR panel (a vypne
-jeho automatiku), `I` lištu dole, `D` otevře ladicí panel s tempem, rychlostí
-a editorem tras (viz níže).
+jeho automatiku), `I` lištu dole, `D` otevře ladicí panel s tempem a rychlostí
+(viz níže).
 
 Dole běží lišta: vlevo kolik je ve scéně kterého tvora, vpravo posledních pět
 příchodů a odchodů (`+`/`−`, typ a jméno z odeslané fotky; u tvorů z katalogu
@@ -55,9 +65,9 @@ Zastavení se plynule prolne do klidové pózy z katalogu, takže se nikdo nezas
 v půlce kroku. Kromě toho se každý sune šikmo po pásu břehu, aby nešli všichni
 po jedné lince.
 
-Část chodců navíc dostane **trasu** — lomenou čáru nakreslenou v definici
-scény (nebo v editoru tras, klávesa `D`), se zastávkami a otočkami tam, kde je
-autor chce. Zbytek bloumá po pásech postaru, ať má scéna obojí.
+Část chodců navíc dostane **trasu** — lomenou čáru zapsanou v definici scény,
+se zastávkami a otočkami tam, kde je autor chce. Zbytek bloumá po pásech
+postaru, ať má scéna obojí.
 
 Z mobilu se dá **krmit**: tlačítko na stránce pro přidání shodí do scény trs
 kapradí a chodci v okolí k němu zamíří, poží a jdou dál. Krmení má cooldown,
@@ -79,8 +89,7 @@ takže prokluz chodidel drží kolem 1 % ujeté dráhy. Vpravo svítí, co z toh
 vyšlo: rychlost v px/s, jak dlouho trvá přejezd obrazovky, délka cyklu
 a naměřená délka kroku v délkách těla. Nastavení drží `localStorage`, takže
 přežije reload, a tlačítko **kopírovat JSON** vysype hodnoty, které se dají
-zapéct natrvalo. V panelu je i **editor tras** — kreslení lomené čáry přímo
-do scény, waypointy se zastávkou/otočkou, export JSON do definice scény.
+zapéct natrvalo.
 
 Regresní kontrola chůze: `python tools/gait_report.py` osadí běžící scénu
 chodci, chvíli měří a spadne, když prokluz nebo tempo vyjedou z mezí.
@@ -101,7 +110,8 @@ krmení; nic se přitom nemaže. Domácí `tv` se neuspává nikdy.
 Stránka pro rodiče (odkaz „Zpět na scénu · Šablony · Přidat" má i zpáteční
 směr):
 
-- **Krajina** — přepnutí scény za běhu (Křídová laguna / Noční laguna).
+- **Krajina** — přepnutí scény za běhu (Křídová laguna / Noční laguna /
+  Akvárium).
   Krajiny se prolnou, tvorové staré krajiny odejdou a přijdou ti, kdo patří
   do nové. Úlovky cizí krajiny se nemažou — čekají na přepnutí zpátky;
   upload do cizí krajiny se uloží a mobil dostane vysvětlení.
@@ -158,19 +168,25 @@ Podrobnosti a kontrakty mezi částmi jsou v [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Co je v katalogu
 
-Osm šablon: Tyrannosaurus, Velociraptor, Triceratops, Stegosaurus,
-Parasaurolophus a Apatosaurus chodí po břehu, drak a ptakoještěr létají nad
-lagunou.
+Patnáct šablon ve dvou krajinách. **Křídová laguna** (značky 8–15):
+Tyrannosaurus, Velociraptor, Triceratops, Stegosaurus, Parasaurolophus
+a Apatosaurus chodí po břehu, drak a ptakoještěr létají nad lagunou.
+**Akvárium** (16–22): klaunská rybka, žralok, čtverzubec, mečoun, perutýn,
+manta a axolotl. Scéna přijme jen tvory své krajiny — kdo patří jinam, počká
+na přepnutí.
 
-Modely jsou hotové rigované GLB (`data/models_src/*.glb`, CC0 od Quaternia;
-autoři a licence v [CREDITS.md](CREDITS.md)). Přidat dalšího tvora znamená
+Modely jsou hotové rigované GLB (`data/models_src/*.glb`, většinou CC0 od
+Quaternia; ptakoještěr a axolotl přišli bez kostry a pod CC-BY, tak ji mají
+dopsanou — autoři a licence v [CREDITS.md](CREDITS.md)). Přidat dalšího tvora znamená
 sehnat model, zapsat záznam do `CATALOGUE` v `dinostanice/creatures3d.py`
 (s **novým** indexem značky — přečíslování znehodnotí už vytištěné listy)
 a spustit generátory níž.
 
 Póza předlohy se vybírá sama — projde se cyklus chůze a vezme se okamžik, kdy
 tvar nejlíp vyplní list (rozkročené nohy jsou čitelnější a pro texturu
-vydatnější). Oko se dokresluje, modely žádné nemají.
+vydatnější). Dva tvorové mají pózu natvrdo, protože jejich poznávací znak je
+čitelný jen v jedné: drak drží rozepjaté křídlo a axolotl rozevírá žaberní
+vějíř. Oko se dokresluje, modely žádné nemají.
 
 ## Generátory předloh a modelů
 
@@ -179,6 +195,7 @@ python tools/model_sheet.py            # předlohy: data/templates/*.svg
 python tools/model_export3d.py         # modely pro prohlížeč + ukázkové textury
 python tools/model_paint_demo.py       # kontrola bez tiskárny: snímky z úhlů
 python tools/make_pteranodon.py        # ptakoještěr: kostra a let z holé geometrie
+python tools/make_axolotl.py           # axolotl: kostra, plavání a póza předlohy
 ```
 
 Létající tvor se kreslí **shora** a natočený tak, aby rozpětí křídel leželo po
@@ -215,12 +232,13 @@ python tools/shot_scene.py --demo      # navíc doplní celý katalog
 a regresně testovat, aniž by kdokoli něco vytiskl:
 
 ```powershell
-python -m pytest -q          # 132 testů
+python -m pytest -q          # 179 testů
 ```
 
 Součástí je `tests/test_server.py` (36 testů) — end-to-end přes FastAPI
 TestClient: upload syntetické fotky, sessions, uspávání, mazání přes koš,
-limity — a `tests/test_robustness.py` (63 testů), který jednotlivě prosvěcuje
+limity —, `tests/test_catalogue.py` (33 testů), který drží katalog a role klipů
+v souladu s GLB, a `tests/test_robustness.py` (63 testů), který prosvěcuje
 každou osu degradace fotky a drží naměřené hranice snímání pod kontrolou.
 `out/robustness_report.md` shrnuje, kde přesně se snímání láme a proč.
 
@@ -229,7 +247,7 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | cesta | co to je |
 |---|---|
 | `dinostanice/` | pipeline: předloha z modelu, snímání, textura, kvalita, úložiště |
-| `dinostanice/modelsheet.py` | z bokorysu modelu předloha k vybarvení + převod mm ↔ model |
+| `dinostanice/modelsheet.py` | z projekce modelu předloha k vybarvení + převod mm ↔ model |
 | `dinostanice/creatures3d.py` | katalog tvorů: model, projekce, značka, vlastnosti pro scénu |
 | `dinostanice/scenes.py` | registr scén (krajin) pro server |
 | `data/models_src/` | stažené zdrojové modely (GLB) |
@@ -249,3 +267,4 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | `data/rejected/` | posledních 50 odmítnutých fotek (testovací data) |
 | `data/state.json` | trvalá nastavení: ukázkoví tvorové, krajina domácí TV |
 | `out/` | pracovní výstupy, náhledy, reporty |
+| `DinoStanice.cmd` | spuštění dvojklikem (bez Dockeru) |
