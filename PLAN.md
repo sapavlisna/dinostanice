@@ -402,10 +402,49 @@ stabilita ve scéně změřena vedle ostatních: 2,4 změny svislého směru za 
 proti 1,7–2,2 u ryb, tedy žádné třepání. Kontaktní list `out/axolotl_kontakt.png`.
 
 **Otevřené věci:**
-- Vějíř žaber se v obrysu předlohy neurovná do vějíře: stonky jsou nad sebou
+- ☑ Vějíř žaber se v obrysu předlohy neurovná do vějíře: stonky jsou nad sebou
   a v pohledu shora se kryjí s předními nohami, takže dítě uvidí spíš „mlok
-  s ozdobami" než žábry. Na modelu (a tedy na televizi) jsou žábry
-  nepřehlédnutelné, viz `out/axolotl_shots.png`.
+  s ozdobami" než žábry. Vyřešeno v kole níž — póza `Sheet`.
 - Axolotl je ve skutečnosti tvor dna, ale drží přidělené dráhy jako ryby.
   Spodní dráha per druh by šla dodělat (`bands[].lanes` + preference v katalogu),
   ale kvůli jednomu druhu se nový mechanismus scény nezaváděl.
+
+## Předloha axolotla: vlastní póza místo vlastní polohy modelu (2026-08-28)
+
+☑ Vyřešena otevřená věc z kola výš. Vějíř žaber ležel v pohledu shora přesně
+tam, kde přední noha, a v obrysu s ní splynul v jednu palčákovitou plochu:
+na listu byl mlok se čtyřma nohama a jedinou poznávací značku axolotla dítě
+nevidělo. Předloha se proto kreslí v póze, která je pro ni udělaná na míru —
+klip **`Sheet`** z `tools/make_axolotl.py`, stejný případ jako drak s `Death`.
+
+Jedenáct projekcí a póz vedle sebe: `out/axolotl_projekce_final.png`. Vyplnění
+listu se tady měří jako **plocha obrysového polygonu proti ploše A4**, takže
+čísla nejsou srovnatelná s kolem výš (to měřilo masku po fitu).
+
+- **Vybráno: shora + póza `Sheet`** — vyplnění 0,197, čtyři vnitřní linky.
+  Horní stonek se sklopí do roviny listu (−38° kolem osy těla), stonky se
+  rozloží do vějíře (kolmo od hlavy, rozestup 24°) a přední noha uhne o 32°
+  dozadu. Vějíř pak vyjde jako tři samostatné prsty před nohou a na listu jsou
+  čtyři nohy s prsty, placatá hlava, ocasní lem i žábry zvlášť.
+- **Bokorys prohrál i s vějířem rozevřeným vzhůru** (0,123 → 0,130 s prohnutým
+  tělem, 0,134 se stočeným). Žábry jsou z profilu čitelné jako dva až tři
+  parohy nad hlavou, ale tělo zůstává hladká klobása s jednou velkou plochou
+  (1–2 vnitřní linky) a ze čtyř nohou jsou dvě nezřetelné placky. Vyplnění není
+  totéž co čitelnost, jenže tady bokorys prohrává na obojí.
+- **Zametení vějíře dozadu** (jak se zkoušelo v klipu plavání) je nejhorší
+  varianta shora: 0,185 a žábry s nohou splynou do třásnité kaše.
+- **Vějíř dopředu podél hlavy** je čitelný stejně dobře (0,197), ale míří před
+  tvář jako parůžky — přesně naopak, než žábry rostou. Proto kolmo.
+- **Vlnění těla v póze** (S-křivka) list zkrátí a jednu stranu vějíře otočí do
+  zákrytu s nohou; souměrná póza je lepší (0,197 proti 0,195).
+
+Kostra kvůli tomu dostala **kloub na každý žaberní stonek** (šest místo dvou
+vějířů) a na **přední nohy**; zadní nohy zůstávají bez kloubu, s vějířem se
+neperou. Váha se u kořene přelévá zpátky do řetězu podle vzdálenosti od osy
+těla, takže výrůstek při otočení neodjede od lebky ani od lopatky. Klip plavání
+zůstal, jak byl — chvění dostane všech šest stonků stejně.
+
+Prošlo: `python -m pytest -q` 179 testů, kolo naostro přes TestClient (4
+značky, `axolotl-…`, textura i `model.json`), `auto_eye` sedí na temeni hlavy
+s odstupem (`out/axolotl_shots.png`), textura po syntetickém vybarvení drží
+i v plavání. Model ve scéně akvárium: `out/axolotl_akvarium_2.png`.

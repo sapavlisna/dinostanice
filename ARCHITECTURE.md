@@ -95,6 +95,11 @@ výběru i ostatní animace se neosvědčilo: `Attack` sice list vyplní nejlíp
 tvora překroutí (apatosaurovi přehodí ocas přes tělo, stegosaurovi schová
 ploténky). Vyplnění není totéž co čitelnost.
 
+Dva tvory mají pózu naopak natvrdo, protože je poznávací znak čitelný jen
+v jedné: drak drží křídlo rozepjaté v rovině listu v `Death` (t=0,37) a axolotl
+má na předlohu vlastní klip `Sheet`, ve kterém rozevře žaberní vějíř a uhne
+předníma nohama (viz jeho záznam v katalogu).
+
 ### Katalog tvorů (`dinostanice/creatures3d.py`)
 
 Patnáct tvorů: osm křídových dinosaurů (trex, velociraptor, triceratops,
@@ -115,12 +120,20 @@ není co vybarvovat (vyplnění listu 0,05 proti 0,21 shora). Rozpětí křídel
 po svislé ose listu, tělo i bičíkovitý ocas po vodorovné, a hloubkové znaménko
 `-1` obrací pohled na hřbet (materiál „Top"), ne na bílé břicho.
 
-**Axolotl** taky, a taky změřeně: z boku vyplní list 0,17 (pod žralokem, který
-je z ryb nejhorší na 0,21) a všech šest žaberních stonků splyne v jediný roh nad
-hlavou, shora je to 0,25 a v obrysu jsou čtyři nohy s prsty i stonky rozložené
-do stran (15,6 % obrysových pixelů). Zkoušelo se stonky v klipu natrvalo
-zamést — dopředu podél hlavy 17,4 %, dozadu na předních nohách 13,4 % — ale
-vlastní poloha z modelu vyhrává na obojí a nic si nevymýšlí.
+**Axolotl** taky — a navíc v póze, která je pro předlohu udělaná na míru
+(klip `Sheet` z `tools/make_axolotl.py`, stejný případ jako drak). Ve vlastní
+poloze modelu leží vějíř žaber přesně tam, kde přední noha, a v obrysu s ní
+splyne v jednu plochu: na listu je pak mlok se čtyřma nohama a jedinou
+poznávací značku axolotla dítě nevidí. Póza proto horní stonek sklopí do roviny
+listu, stonky rozloží do vějíře a přední nohu odklopí o 32° dozadu — vějíř
+vyjde jako tři samostatné prsty před nohou (vyplnění listu 0,197 proti 0,192,
+vnitřních linek 4 proti 6).
+
+Bokorys se u něj zkoušel znovu, i s vějířem rozevřeným vzhůru a stočeným
+tělem: žábry jsou z boku čitelné, ale vyplnění končí na 0,13, v kresbě zbude
+jedna velká plocha (1–2 vnitřní linky) a místo čtyř nohou dvě nezřetelné
+placky. Vyplnění není totéž co čitelnost — tady ale bokorys prohrává na obojí.
+Jedenáct zkoušených projekcí a póz vedle sebe je v `out/axolotl_projekce_final.png`.
 
 Rybí klíče jsou bez přípony `3d` — ta u dinosaurů odlišovala 3D větev od
 zrušené 2D, která už neexistuje.
@@ -179,11 +192,17 @@ segmentace a ta je zdarma: model není svařený, každá anatomická část je 
 skořápka, takže se vezmou kusy spojené hranou a zařadí podle geometrie (visí pod
 břicho = noha, trčí do strany za hlavou = žábry, obsahuje čenich = hlava,
 obsahuje konec ocasu = trup). Kostra je pak řetěz podél osy těla
-(Head–Body–Tail1–Tail2–Tail3) a dva žaberní vějíře; **nohy vlastní kloub
-nemají** — axolotl je při plavání nese s tělem, každý vrchol si bere váhu
-z řetězu podle své pozice na ose. Klip plavání pošle vlnu podél osy (rostoucí
-rozkmit a fázové zpoždění dozadu, hlava proti vlně) a k tomu žábrám 2,5× hustší
-chvění.
+(Head–Body–Tail1–Tail2–Tail3), šest žaberních stonků a přední nohy; **zadní
+nohy vlastní kloub nemají** — axolotl je při plavání nese s tělem, každý vrchol
+si bere váhu z řetězu podle své pozice na ose. Klip plavání pošle vlnu podél osy
+(rostoucí rozkmit a fázové zpoždění dozadu, hlava proti vlně) a k tomu žábrám
+2,5× hustší chvění.
+
+Stonky a přední nohy kloub každý zvlášť dostaly kvůli **póze pro předlohu**
+(klip `Sheet`): tu potřebuje vějíř rozestavit stonek po stonku a nohu odklopit
+z jeho cesty, což společný kloub na stranu neumí — ten vějířem jen otočí jako
+celkem. Váha se u kořene přelévá zpátky do řetězu podle vzdálenosti od osy těla,
+takže výrůstek při otočení neodjede od lebky ani od lopatky.
 
 Segmentace na části je i **jediný zdroj vnitřních linek předlohy**: zdroj má
 jediný materiál, takže by z listu byla jedna velká plocha. Části se proto

@@ -77,7 +77,8 @@ v Objaverse je totožné se Sketchfab UID, takže se licence i autor dají ově�
 na původní stránce modelu; ověřeno přes Sketchfab API (`license.slug = "by"`).
 
 Model přišel bez kostry (jediný mesh, 9 342 trojúhelníků, jeden materiál).
-Kostru, rozdělení na části a klip plavání mu dopisuje `tools/make_axolotl.py`;
+Kostru, rozdělení na části, klip plavání i pózu pro předlohu (klip `Sheet`)
+mu dopisuje `tools/make_axolotl.py`;
 `data/models_src/axolotl.glb` je odvozenina, na kterou se vztahuje tatáž
 licence.
 

@@ -338,13 +338,14 @@
   "glb": "/models3d/axolotl.glb",
   "texture": "/models3d/axolotl_texture.png",
   "clips": {
+   "Sheet": "Sheet",
    "Swim": "Swim"
   },
   "clipFor": {
    "move": "Swim",
    "fast": "Swim"
   },
-  "pose": "Swim",
-  "size": 1.99
+  "pose": "Sheet",
+  "size": 2.0
  }
 ]

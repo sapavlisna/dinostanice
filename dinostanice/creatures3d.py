@@ -151,11 +151,24 @@ CATALOGUE = [
             eye_bias={"forward": 0.30, "down": 0.18},
             poses=("Swim",), clip_for={"fast": "Swim"}),
     # Axolotl prisel bez kostry, tu mu dopisuje tools/make_axolotl.py (zdroj
-    # je axolotl_static.glb). Kresli se shora jako manta, a to merene: z boku
-    # vyplni list 0,17 — pod nejhorsi rybou (zralok 0,21) — a vsech sest
-    # zabernich stonku splyne do jedineho rohu nad hlavou, shora je to 0,25,
-    # ctyri nohy s prsty a stonky rozlozene do stran. Hloubkove znamenko -1
-    # obraci pohled na hrbet, ne na bricho.
+    # je axolotl_static.glb). Kresli se shora jako manta a v pozi, ktera je pro
+    # predlohu udelana na miru (klip "Sheet", stejny pripad jako drak).
+    #
+    # Shora ma tvor ctyri nohy s prsty i placatou hlavu, ale ve vlastni poloze
+    # modelu lezi vejir zaber presne tam, kde predni noha, a v obrysu s ni
+    # splyne — na listu je pak mlok se ctyrma nohama a jedinou poznavaci znacku
+    # axolotla dite nevidi. Poza proto sklopi horni stonek do roviny listu,
+    # rozlozi stonky do vejire a predni nohu odklopi dozadu: vejir vyjde jako
+    # tri samostatne prsty pred nohou (vyplneni listu 0,197 proti 0,191, vnitrni
+    # linky 4 proti 6).
+    #
+    # Bokorys se zkousel znovu, i s vejirem rozevrenym vzhuru a stocenym telem:
+    # zabry jsou z boku sice citelne, ale vyplneni konci na 0,13 (proti 0,197)
+    # a v kresbe zbyde jedna velka plocha (1-4 vnitrni linky) a misto ctyr nohou
+    # dve nezretelne placky. Vyplneni neni totez co citelnost, jenze tady
+    # bokorys prohrava na oboji.
+    #
+    # Hloubkove znamenko -1 obraci pohled na hrbet, ne na bricho.
     #
     # Oko: `down` posouva po sirce listu (svisla osa je tady sirka tvora),
     # `forward` po delce. Auto_eye si krouzek stejne dotlaci dovnitr obrysu,
@@ -168,7 +181,7 @@ CATALOGUE = [
     Model3D("axolotl", "Axolotl", "axolotl.glb", 22, motion="swim",
             scene="aquarium", axes=(2, 0, 1), flip=(1, -1, -1),
             eye_bias={"forward": 0.88, "down": 0.46},
-            poses=("Swim",), clip_for={"fast": "Swim"}),
+            poses=("Sheet",), anim="Sheet", time=0.0, clip_for={"fast": "Swim"}),
 ]
 
 BY_KEY = {m.key: m for m in CATALOGUE}

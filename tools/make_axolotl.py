@@ -4,8 +4,8 @@ Stejny pripad jako ptakojester (viz tools/make_pteranodon.py a CREDITS.md):
 rigovany axolotl pod otevrenou licenci neexistuje, staticky ano. Prace je ale
 kratsi — zdroj je jediny mesh, uz soumerny podle osy x a narovnany do os
 (x sirka, y vyska, z delka, hlava na +z), takze narovnavani ani zrcadleni
-poloviny netreba. Zbyva rozdelit tvora na casti, odvodit z nich kostru a
-dopsat plavani.
+poloviny netreba. Zbyva rozdelit tvora na casti, odvodit z nich kostru a dopsat
+klipy: plavani do sceny a staticky "Sheet" pro predlohu.
 
     python tools/make_axolotl.py
 """
@@ -33,13 +33,25 @@ YAW_DEG = {"Head": 3.5, "Tail1": 7.0, "Tail2": 13.0, "Tail3": 21.0}
 LAG = {"Head": 0.0, "Tail1": 0.14, "Tail2": 0.27, "Tail3": 0.40}
 GILL_DEG = 7.0           # rozkmit vejire zaber
 GILL_BEATS = 2.5         # kolikrat se zabry zachveji za jeden kmit ocasu
-# Zabry se jen chveji, natrvalo se nikam nepreklapeji. Zkouseno bylo oboji:
-# zamest stonky dopredu podel hlavy pridalo na predloze 15,6 -> 17,4 %
-# obrysovych pixelu zaber, ale z boku pak trci proti smeru plavani, a zamest
-# je dozadu je zase v pohledu shora nazene na predni nohy (13,4 %). Vlastni
-# poloha z modelu vyhrava na oboji.
+# Zabry se v klipu plavani jen chveji, natrvalo se nikam nepreklapeji: zamest
+# je dopredu ci dozadu vypada z boku, jako by je tvor tahl proti vode. Poloha
+# pro predlohu je jina vec a resi ji vlastni klip (SHEET_*).
 PERIOD = 2.4             # axolotl se sune line, ne jako ryba
 FRAMES = 30
+
+# Poza pro predlohu (klip "Sheet"). Pohled shora sam o sobe axolotla neprozradi:
+# vejir zaber lezi ve stejnem miste jako predni noha a v obrysu s ni splyne,
+# takze na listu je mlok se ctyrma nohama. V pozi se proto horni stonek sklopi
+# do roviny listu, stonky se rozlozi do vejire a predni noha uhne dozadu, aby
+# vejir nekryla; vejir pak vyjde jako tri samostatne prsty pred nohou. Zbytek
+# kostry zustava v zakladni poloze — soumerna kresba se lip vybarvuje a vlneni
+# tela jednu stranu vejire otoci do zakrytu s nohou (merene vyplneni listu:
+# vlneni 0,195, soumerna poza 0,197).
+SHEET_GILL_LIFT = (-38.0, 0.0, 0.0)   # horni stonek trci vzhuru, dalsi dva uz lezi
+SHEET_GILL_YAW = -12.0                # azimut prostredniho stonku (minus = k hlave)
+SHEET_GILL_SPREAD = 24.0              # rozestup stonku ve vejiri
+SHEET_FORELEG_YAW = 32.0              # predni noha dozadu, z cesty vejiri
+STALK_GAP = 0.05         # mezera mezi stonky; pulky jednoho stonku jsou blize
 
 PARTS = ("head", "trunk", "leg", "gill")
 # Material na cast tela: predloha z hranic materialu bere vnitrni linky, takze
@@ -106,13 +118,55 @@ def classify(verts: np.ndarray, parts: list[np.ndarray]) -> np.ndarray:
     return label
 
 
-def build_rig(verts: np.ndarray, part: np.ndarray, gill_side: np.ndarray):
-    """Kostra ze segmentace: retez podel osy tela a dva vejire zaber.
+def outgrowths(verts: np.ndarray, pieces: list, label: np.ndarray):
+    """Vyrustky, ktere potrebuji vlastni kloub kvuli poze predlohy.
 
-    Nohy vlastni kloub nemaji zamerne — axolotl je pri plavani nese s telem,
-    visi pod nim a nekopou. Kazdy vrchol proto bere vahu z retezu podle sve
-    pozice na ose (`_chain_weights`), takze noha jde s tim clankem trupu, ke
-    kteremu patri, a nic se nemusi rozpoznavat navic.
+    Stonek zaber je par skorapek (vnejsi a vnitrni strana) se stejnym korenem,
+    proto se skorapky radi podle vysky a deli tam, kde mezi nimi vznikne mezera:
+    rozestup mezi stonky je nasobne vetsi nez mezi pulkami jednoho. Nohy staci
+    predni — vejir se pere jen s nimi.
+    """
+    stalk = np.full(len(verts), -1, np.int64)
+    for sign in (1.0, -1.0):
+        gills = sorted((p for i, p in enumerate(pieces)
+                        if label[i] == "gill" and verts[p, 0].mean() * sign > 0),
+                       key=lambda p: -verts[p, 1].mean())
+        k, prev = 0, None
+        for p in gills:
+            y = float(verts[p, 1].mean())
+            if prev is not None and prev - y > STALK_GAP:
+                k += 1
+            stalk[p] = k
+            prev = y
+    fore = np.zeros(len(verts), bool)
+    for i, p in enumerate(pieces):
+        if label[i] == "leg" and verts[p, 2].mean() > 0:
+            fore[p] = True
+    return stalk, fore
+
+
+def _root(verts: np.ndarray, sel: np.ndarray, frac: float = 0.25) -> np.ndarray:
+    """Koren vyrustku: teziste jeho vrcholu nejblizsich ose tela.
+
+    Kloub ma lezet tam, kde vyrustek z tela vychazi. Teziste celeho kusu je az
+    v jeho stredu a vejir by se pak neotviral, ale otacel kolem sebe.
+    """
+    v = verts[sel]
+    r = np.abs(v[:, 0])
+    return v[r <= np.quantile(r, frac)].mean(0)
+
+
+def build_rig(verts: np.ndarray, part: np.ndarray, body_side: np.ndarray,
+              stalk: np.ndarray, fore: np.ndarray):
+    """Kostra ze segmentace: retez podel osy tela, sest zabernich stonku
+    a predni nohy.
+
+    Zadni nohy vlastni kloub nemaji zamerne — axolotl je pri plavani nese
+    s telem, visi pod nim a nekopou. Kazdy vrchol proto bere vahu z retezu podle
+    sve pozice na ose (`_chain_weights`), takze noha jde s tim clankem trupu, ke
+    kteremu patri. Predni noha a kazdy stonek zvlast kloub maji, protoze je
+    v pozi predlohy potreba rozestavit (spolecny kloub na stranu by vejir jen
+    otocil jako celek).
     """
     length = float(np.ptp(verts[:, 2]))
     knots = np.array([SPINE[n] for n in CHAIN]) * length
@@ -128,15 +182,18 @@ def build_rig(verts: np.ndarray, part: np.ndarray, gill_side: np.ndarray):
         skeleton.append((name, index[parent], (0.0, dy, dz)))
 
     gill = part == "gill"
+    head_origin = np.array([0.0, head_y, SPINE["Head"] * length])
     for side, sign in (("L", 1.0), ("R", -1.0)):
-        sel = gill & (gill_side == sign)
-        base = verts[sel].mean(0) if sel.any() else verts.mean(0)
-        # kloub lezi u koreni stonku, ne v jeho tezisti: vejir se ma sklapet
-        # od hlavy, ne rotovat kolem sveho stredu
-        base = np.array([sign * 0.25 * abs(base[0]), base[1], base[2]])
-        head_origin = np.array([0.0, head_y, SPINE["Head"] * length])
-        index[f"Gill{side}"] = len(skeleton)
-        skeleton.append((f"Gill{side}", index["Head"], tuple(base - head_origin)))
+        for k in range(int(stalk.max()) + 1):
+            sel = gill & (body_side == sign) & (stalk == k)
+            name = f"Gill{side}{k + 1}"
+            index[name] = len(skeleton)
+            skeleton.append((name, index["Head"],
+                             tuple(_root(verts, sel) - head_origin)))
+        sel = fore & (body_side == sign)
+        index[f"Foreleg{side}"] = len(skeleton)
+        skeleton.append((f"Foreleg{side}", index["Body"],
+                         tuple(_root(verts, sel))))
 
     joints = np.zeros((len(verts), 4), np.uint8)
     weights = np.zeros((len(verts), 4), np.float32)
@@ -146,18 +203,22 @@ def build_rig(verts: np.ndarray, part: np.ndarray, gill_side: np.ndarray):
     weights[:, 0] = 1.0 - blend
     weights[:, 1] = blend
 
-    # zabry visi cele na svem kloubu, jen u koreni se preleji do hlavy, aby
-    # vejir pri sklapeni neodjel od lebky
+    # zabry i predni nohy visi na svem kloubu tim vic, cim dal jsou od osy tela:
+    # u koreni se vaha preleje do retezu, aby vyrustek pri otoceni neodjel od
+    # lebky nebo od lopatky
+    parts = [(gill & (stalk == k), f"Gill{{}}{k + 1}") for k in range(int(stalk.max()) + 1)]
+    parts.append((fore, "Foreleg{}"))
     for side, sign in (("L", 1.0), ("R", -1.0)):
-        sel = gill & (gill_side == sign)
-        if not sel.any():
-            continue
-        reach = np.abs(verts[sel, 0]).max()
-        out = np.clip(np.abs(verts[sel, 0]) / max(reach, 1e-9), 0, 1)
-        joints[sel, 2] = index[f"Gill{side}"]
-        weights[sel, 2] = out
-        weights[sel, 0] *= 1.0 - out
-        weights[sel, 1] *= 1.0 - out
+        for mask, name in parts:
+            sel = mask & (body_side == sign)
+            if not sel.any():
+                continue
+            reach = np.abs(verts[sel, 0]).max()
+            out = np.clip(np.abs(verts[sel, 0]) / max(reach, 1e-9), 0, 1)
+            joints[sel, 2] = index[name.format(side)]
+            weights[sel, 2] = out
+            weights[sel, 0] *= 1.0 - out
+            weights[sel, 1] *= 1.0 - out
     return skeleton, joints, weights, index
 
 
@@ -199,9 +260,42 @@ def swim(index: dict) -> dict:
 
     for side, sign in (("L", 1.0), ("R", -1.0)):
         phase = 2 * np.pi * GILL_BEATS * times / PERIOD
-        channels[index[f"Gill{side}"]] = (
-            times, _axis_quat(sign * np.radians(GILL_DEG) * np.sin(phase), 2))
+        for name in (n for n in index if n.startswith(f"Gill{side}")):
+            channels[index[name]] = (
+                times, _axis_quat(sign * np.radians(GILL_DEG) * np.sin(phase), 2))
     return {"Swim": channels}
+
+
+def _quat(axis: int, deg: float) -> np.ndarray:
+    return _axis_quat(np.array([np.radians(deg)]), axis)[0]
+
+
+def _mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Slozeni rotaci: nejdriv b, pak a."""
+    x1, y1, z1, w1 = a
+    x2, y2, z2, w2 = b
+    return np.array([w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                     w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                     w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+                     w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2], np.float32)
+
+
+def sheet(index: dict) -> dict:
+    """Klip pro predlohu: jediny drzeny snimek, ne pohyb.
+
+    Zrcadleni pres rovinu soumernosti obraci znamenko rotaci kolem y a z, takze
+    prava strana dostane opacne uhly a kresba zustane soumerna.
+    """
+    times = np.array([0.0, 1.0])
+    channels = {}
+    for side, sign in (("L", 1.0), ("R", -1.0)):
+        for k, lift in enumerate(SHEET_GILL_LIFT):
+            yaw = SHEET_GILL_YAW + (1 - k) * SHEET_GILL_SPREAD
+            q = _mul(_quat(1, sign * yaw), _quat(2, sign * lift))
+            channels[index[f"Gill{side}{k + 1}"]] = (times, np.tile(q, (2, 1)))
+        q = _quat(1, sign * SHEET_FORELEG_YAW)
+        channels[index[f"Foreleg{side}"]] = (times, np.tile(q, (2, 1)))
+    return {"Sheet": channels}
 
 
 def main() -> None:
@@ -217,12 +311,14 @@ def main() -> None:
         part[p] = label[i]
         side[p] = 1.0 if verts[p, 0].mean() >= 0 else -1.0
 
-    skeleton, joints, weights, index = build_rig(verts, part, side)
+    stalk, fore = outgrowths(verts, pieces, label)
+    skeleton, joints, weights, index = build_rig(verts, part, side, stalk, fore)
 
     group = np.array([GROUP[part[t[0]]] for t in model.indices], np.int32)
     write_skinned(DST, verts=verts, normals=normals, tris=model.indices,
                   tri_group=group, colours=GROUP_COLOURS, joints=joints,
-                  weights=weights, skeleton=skeleton, clips=swim(index))
+                  weights=weights, skeleton=skeleton,
+                  clips={**swim(index), **sheet(index)})
 
     counts = {name: int((part == name).sum()) for name in PARTS}
     print(f"{DST} ({DST.stat().st_size // 1024} kB)")
