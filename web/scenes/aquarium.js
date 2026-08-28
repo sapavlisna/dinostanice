@@ -56,9 +56,15 @@ export default {
       // zkrátí meč a perutýnovi se vějíř trnů sbalí do svazku
       // (out/turn_swim_sheet.png), ve 25° obojí drží a bok už dá objem
       turn: 0.436,
+      // Axolotl je dlouhy jako ctverzubec (dospelec ~25 cm), ale mnohem
+      // stihlejsi — a `scale` skaluje odmocninu z plochy siluety, ne delku.
+      // Pri 0,68 by na obrazovce byl o treti delsi nez ctverzubec; 0,52 mu da
+      // stejnou delku (zmereno: 218 px proti 217 px na sirce 1920) a stihlost
+      // si nechá.
       scale: {
         clownfish: 0.58, butterflyfish: 0.55, angelfish: 0.60, guppy: 0.48,
         puffer: 0.68, lionfish: 0.66, anglerfish: 0.74, seahorse: 0.50,
+        axolotl: 0.52,
         turtle: 0.90, ray: 1.10, manta: 1.30, swordfish: 1.05,
         barracuda: 1.00, shark: 1.45, whale: 1.60, orca: 1.55,
       },

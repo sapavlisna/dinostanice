@@ -97,11 +97,11 @@ ploténky). Vyplnění není totéž co čitelnost.
 
 ### Katalog tvorů (`dinostanice/creatures3d.py`)
 
-Čtrnáct tvorů: osm křídových dinosaurů (trex, velociraptor, triceratops,
-stegosaurus, parasaurolophus, apatosaurus, drak, pteranodon) a šest
-akvarijních ryb (clownfish, shark, puffer, swordfish, lionfish, manta).
-U každého se volí projekce `axes`/`flip` — chodec bokorys, letec shora
-s rozpětím křídel po šířce listu.
+Patnáct tvorů: osm křídových dinosaurů (trex, velociraptor, triceratops,
+stegosaurus, parasaurolophus, apatosaurus, drak, pteranodon) a sedm
+akvarijních plavců (clownfish, shark, puffer, swordfish, lionfish, manta,
+axolotl). U každého se volí projekce `axes`/`flip` — chodec bokorys, letec
+shora s rozpětím křídel po šířce listu.
 
 Výjimkou je **drak**: shora z něj byla Rorschachova skvrna — rozpětí křídel je
 větší než tělo, takže po fitu na list zbyla z hlavy boule na hraně a oko
@@ -115,13 +115,20 @@ není co vybarvovat (vyplnění listu 0,05 proti 0,21 shora). Rozpětí křídel
 po svislé ose listu, tělo i bičíkovitý ocas po vodorovné, a hloubkové znaménko
 `-1` obrací pohled na hřbet (materiál „Top"), ne na bílé břicho.
 
+**Axolotl** taky, a taky změřeně: z boku vyplní list 0,17 (pod žralokem, který
+je z ryb nejhorší na 0,21) a všech šest žaberních stonků splyne v jediný roh nad
+hlavou, shora je to 0,25 a v obrysu jsou čtyři nohy s prsty i stonky rozložené
+do stran (15,6 % obrysových pixelů). Zkoušelo se stonky v klipu natrvalo
+zamést — dopředu podél hlavy 17,4 %, dozadu na předních nohách 13,4 % — ale
+vlastní poloha z modelu vyhrává na obojí a nic si nevymýšlí.
+
 Rybí klíče jsou bez přípony `3d` — ta u dinosaurů odlišovala 3D větev od
 zrušené 2D, která už neexistuje.
 
-Indexy značek: **dinosauři 8–15**, **ryby 16–21**. Prvních osm patřilo první,
+Indexy značek: **dinosauři 8–15**, **akvárium 16–22**. Prvních osm patřilo první,
 zrušené větvi projektu (kresba → ohýbaný 2D pás). Zůstávají volné pro další
 tvory a tyhle se **nepřečíslovávají** — index je natvrdo v rohových značkách na
-už vytištěných listech. Ryby dostaly 16–21 místo recyklování indexů 0–7,
+už vytištěných listech. Ryby dostaly 16–21 (axolotl 22) místo recyklování indexů 0–7,
 protože doma zůstávají vytištěné listy staré větve s těmi indexy.
 
 `markers.py` používá `DICT_4X4_100` (100 kódů), což dává strop **25 tvorů**
@@ -140,7 +147,7 @@ v GLB, protože se model od modelu liší. Všechno se propíše do
 `data/models3d/catalogue3d.json` (`scene`, `strideRate`, `clipFor`, `clips`,
 `pose`, `size`), odkud si to bere scéna přes `GET /api/dino3d?scene=`.
 
-### Ptakoještěr: kostra dopsaná ke geometrii
+### Kostra dopsaná ke geometrii (ptakoještěr, axolotl)
 
 Animovaný pterosaur pod otevřenou licencí neexistuje, statický ano — proto mu
 `tools/make_pteranodon.py` kostru dopisuje. Postup, který by šel použít na
@@ -165,11 +172,31 @@ jakýkoli souměrný model bez rigu:
 
 `glbexport.write_skinned()` z toho složí GLB s kostrou, vahami a animací.
 
+Druhý takový případ je **axolotl** (`tools/make_axolotl.py`): rigovaný ani ten
+pod otevřenou licencí není. Práce je ale kratší — zdroj je jeden mesh, už
+souměrný podle osy x a narovnaný do os, takže krok 2 a 3 padají. Zbývá
+segmentace a ta je zdarma: model není svařený, každá anatomická část je vlastní
+skořápka, takže se vezmou kusy spojené hranou a zařadí podle geometrie (visí pod
+břicho = noha, trčí do strany za hlavou = žábry, obsahuje čenich = hlava,
+obsahuje konec ocasu = trup). Kostra je pak řetěz podél osy těla
+(Head–Body–Tail1–Tail2–Tail3) a dva žaberní vějíře; **nohy vlastní kloub
+nemají** — axolotl je při plavání nese s tělem, každý vrchol si bere váhu
+z řetězu podle své pozice na ose. Klip plavání pošle vlnu podél osy (rostoucí
+rozkmit a fázové zpoždění dozadu, hlava proti vlně) a k tomu žábrám 2,5× hustší
+chvění.
+
+Segmentace na části je i **jediný zdroj vnitřních linek předlohy**: zdroj má
+jediný materiál, takže by z listu byla jedna velká plocha. Části se proto
+exportují jako tři materiály (tělo, nohy, žábry) a předloha si z jejich hranic
+vezme linky. Hlava a trup jdou do jednoho materiálu záměrně — jejich skořápky se
+u šíje prostupují, nejbližší plocha se tam střídá a hranice by vyšla roztřepaná
+jako pila.
+
 ### Z fotky zpátky na model
 
 `capture.detect_sheet()` najde list, srovná ho do roviny a z ID značek řekne,
 který tvor to je; `known_indices()` mu vymezuje, které indexy vůbec existují
-(katalog `creatures3d.py`, dnes 8–21: osm dinosaurů a šest ryb). Žádný rig se
+(katalog `creatures3d.py`, dnes 8–22: osm dinosaurů a sedm akvarijních tvorů). Žádný rig se
 nestaví — model kostru má. `capture3d.save_catch()` ze srovnaného listu udělá
 texturu (`build_texture`) a uloží `texture.png` + `model.json`.
 
@@ -646,7 +673,7 @@ a upload projde, ale testy proti němu neběžely. Jediná systémová
 závislost je `libglib2.0-0`, bez ní se cv2 neimportuje. Node 24 k dispozici,
 ale frontend je čisté ES moduly bez build kroku a bez CDN (poběží offline).
 
-Testy: `python -m pytest -q` — 175 testů; `tests/test_server.py` (36 testů)
+Testy: `python -m pytest -q` — 179 testů; `tests/test_server.py` (36 testů)
 jede end-to-end přes FastAPI TestClient se syntetickými fotkami, žádný běžící
 server není potřeba. TestClient dostane patche na `store.CATCH_ROOT`,
 `store.TRASH_ROOT` a hlavně na `server.STATE_PATH` — to je **kritické**: bez

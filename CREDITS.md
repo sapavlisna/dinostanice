@@ -57,6 +57,30 @@ a ke stažení jen po přihlášení). Kostru i mávání křídly mu proto dopi
 `tools/make_pteranodon.py`; `data/models_src/pteranodon.glb` je odvozenina,
 na kterou se vztahuje tatáž licence.
 
+## Axolotl
+
+| soubor | tvor | autor | licence | zdroj |
+|---|---|---|---|---|
+| `data/models_src/axolotl_static.glb` | axolotl bez kostry | **vildurr** | **CC BY 4.0** | [Sketchfab](https://sketchfab.com/3d-models/axolotl-normal-and-ao-map-1f8197423fdb4949b59acc82979d04bb) |
+
+**Tenhle model vyžaduje uvedení autora** — stejně jako ptakoještěr není CC0.
+Rigovaný axolotl pod otevřenou licencí neexistuje: Quaternius žádného
+obojživelníka nemá, na poly.pizza axolotl není vůbec (jen Salamander od Poly by
+Google, Newt a Tetra), OpenGameArt ani Wikimedia nic, na itch.io jsou axolotlové
+placení a CC0 balíčky (Gobkit, KayKit) žádného nemají. Animovaní axolotlové jsou
+na Sketchfabu, ale všichni pod CC-BY a všichni jen pro přihlášené.
+
+Stažení proto vede přes **[Objaverse](https://huggingface.co/datasets/allenai/objaverse)**
+(Allen AI), což je veřejná kopie CC-licencovaných Sketchfab modelů na
+HuggingFace — soubor `glbs/000-107/1f8197423fdb4949b59acc82979d04bb.glb`. UID
+v Objaverse je totožné se Sketchfab UID, takže se licence i autor dají ověřit
+na původní stránce modelu; ověřeno přes Sketchfab API (`license.slug = "by"`).
+
+Model přišel bez kostry (jediný mesh, 9 342 trojúhelníků, jeden materiál).
+Kostru, rozdělení na části a klip plavání mu dopisuje `tools/make_axolotl.py`;
+`data/models_src/axolotl.glb` je odvozenina, na kterou se vztahuje tatáž
+licence.
+
 ## Knihovny
 
 `web/vendor/GLTFLoader.js`, `BufferGeometryUtils.js`, `OrbitControls.js`,

@@ -329,5 +329,22 @@
   },
   "pose": "Armature|Swim",
   "size": 11.71
+ },
+ {
+  "key": "axolotl",
+  "label": "Axolotl",
+  "motion": "swim",
+  "scene": "aquarium",
+  "glb": "/models3d/axolotl.glb",
+  "texture": "/models3d/axolotl_texture.png",
+  "clips": {
+   "Swim": "Swim"
+  },
+  "clipFor": {
+   "move": "Swim",
+   "fast": "Swim"
+  },
+  "pose": "Swim",
+  "size": 1.99
  }
 ]

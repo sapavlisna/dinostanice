@@ -363,3 +363,49 @@ Nedělá se (čeká na zadání): manta zůstane při jakémkoli natočení plá
 rozpětí leží podél pohledu — pomohl by jen náklon per druh (mapa jako `scale`).
 Druhá cesta k plastičnosti je světlo: protisvětlo od strany kamery by
 nízkopolygonovým modelům oddělilo hrany víc než dalších pět stupňů.
+
+---
+
+## Axolotl do akvária (2026-08-28)
+
+☑ Patnáctý tvor, marker **22**. Rigovaný axolotl pod otevřenou licencí
+neexistuje (Quaternius nemá obojživelníka, poly.pizza axolotla nemá vůbec,
+OpenGameArt/Wikimedia nic, itch.io jen placené, CC0 balíčky Gobkit/KayKit
+taky ne), animovaní jsou jen na Sketchfabu a jen pro přihlášené. Vzal se tedy
+statický **CC-BY model od vildurra** a stáhl se přes **Objaverse** na
+HuggingFace — veřejnou kopii CC-licencovaných Sketchfab modelů, kde UID
+souhlasí se Sketchfabem, takže se licence dá ověřit na původní stránce (a taky
+se ověřila, přes API). Kostru mu dopisuje `tools/make_axolotl.py`.
+
+Rozhodnuto měřením, ne dojmem:
+
+- **Projekce: shora.** Bokorys vyplní list 0,17 — pod žralokem (0,21), který je
+  z rybí šestice nejhorší — a všech šest žaberních stonků v něm splyne v jediný
+  roh nad hlavou. Pohled shora dá 0,25, čtyři nohy s prsty a stonky rozložené do
+  stran (15,6 % obrysových pixelů patří žábrám).
+- **Žábry se v klipu natrvalo nezametají.** Dopředu podél hlavy by přidaly na
+  obrysu 15,6 → 17,4 %, dozadu 13,4 %; vlastní poloha z modelu je nejlepší
+  z boku i shora, takže se nic nevymýšlí — jen chvění.
+- **Oko `down=0,46`.** Na listu je rozdíl proti 0,30 pár milimetrů (auto_eye si
+  kroužek dotlačí dovnitř obrysu), na modelu obrovský: nižší hodnoty ho položí
+  na bok lebky, kde je plocha skoro rovnoběžná s pohledem shora, a z kroužku je
+  bílá rozmazaná čárka. 0,46 ho posadí na temeno, kde vyjde jako kulaté oko.
+- **`scale = 0,52`** v `aquarium.js`. Axolotl je dlouhý jako čtverzubec
+  (dospělec ~25 cm), ale mnohem štíhlejší, a `scale` škáluje odmocninu z plochy
+  siluety, ne délku: 0,52 mu dá stejnou délku na obrazovce (218 px proti 217 px
+  na šířce 1920) a štíhlost si nechá. Při 0,68 by byl o třetinu delší.
+
+Sada je teď 179 testů (identita, registrace, role klipů a existence souborů
+jedou nad celým katalogem, takže nový druh je přidal sám). Kolo naostro přes
+TestClient prošlo (4 značky, `axolotl-…`, textura i model.json). Svislá
+stabilita ve scéně změřena vedle ostatních: 2,4 změny svislého směru za sekundu
+proti 1,7–2,2 u ryb, tedy žádné třepání. Kontaktní list `out/axolotl_kontakt.png`.
+
+**Otevřené věci:**
+- Vějíř žaber se v obrysu předlohy neurovná do vějíře: stonky jsou nad sebou
+  a v pohledu shora se kryjí s předními nohami, takže dítě uvidí spíš „mlok
+  s ozdobami" než žábry. Na modelu (a tedy na televizi) jsou žábry
+  nepřehlédnutelné, viz `out/axolotl_shots.png`.
+- Axolotl je ve skutečnosti tvor dna, ale drží přidělené dráhy jako ryby.
+  Spodní dráha per druh by šla dodělat (`bands[].lanes` + preference v katalogu),
+  ale kvůli jednomu druhu se nový mechanismus scény nezaváděl.

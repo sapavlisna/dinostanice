@@ -150,6 +150,25 @@ CATALOGUE = [
             scene="aquarium", axes=(2, 0, 1), flip=(1, -1, -1),
             eye_bias={"forward": 0.30, "down": 0.18},
             poses=("Swim",), clip_for={"fast": "Swim"}),
+    # Axolotl prisel bez kostry, tu mu dopisuje tools/make_axolotl.py (zdroj
+    # je axolotl_static.glb). Kresli se shora jako manta, a to merene: z boku
+    # vyplni list 0,17 — pod nejhorsi rybou (zralok 0,21) — a vsech sest
+    # zabernich stonku splyne do jedineho rohu nad hlavou, shora je to 0,25,
+    # ctyri nohy s prsty a stonky rozlozene do stran. Hloubkove znamenko -1
+    # obraci pohled na hrbet, ne na bricho.
+    #
+    # Oko: `down` posouva po sirce listu (svisla osa je tady sirka tvora),
+    # `forward` po delce. Auto_eye si krouzek stejne dotlaci dovnitr obrysu,
+    # takze na listu je rozdil mezi 0,3 a 0,46 par milimetru — na modelu je ale
+    # obrovsky. Nizsi hodnoty poslou oko na bok lebky, kde je plocha skoro
+    # rovnobezna s pohledem shora, a z krouzku se stane bila rozmazana carka;
+    # 0,46 ho polozi na temeno hlavy, kde vyjde jako kulate oko (viz
+    # out/axolotl_model_*.png). Kostra ma vlastni joint "Head", `eye_joint`
+    # tedy zustava vychozi.
+    Model3D("axolotl", "Axolotl", "axolotl.glb", 22, motion="swim",
+            scene="aquarium", axes=(2, 0, 1), flip=(1, -1, -1),
+            eye_bias={"forward": 0.88, "down": 0.46},
+            poses=("Swim",), clip_for={"fast": "Swim"}),
 ]
 
 BY_KEY = {m.key: m for m in CATALOGUE}
