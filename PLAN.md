@@ -413,7 +413,7 @@ proti 1,7–2,2 u ryb, tedy žádné třepání. Kontaktní list `out/axolotl_ko
 
 ☑ Vyřešena otevřená věc z kola výš. Vějíř žaber ležel v pohledu shora přesně
 tam, kde přední noha, a v obrysu s ní splynul v jednu palčákovitou plochu:
-na listu byl mlok se čtyřma nohama a jedinou poznávací značku axolotla dítě
+na listu byl mlok se čtyřmi nohami a jedinou poznávací značku axolotla dítě
 nevidělo. Předloha se proto kreslí v póze, která je pro ni udělaná na míru —
 klip **`Sheet`** z `tools/make_axolotl.py`, stejný případ jako drak s `Death`.
 

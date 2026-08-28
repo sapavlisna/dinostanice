@@ -98,7 +98,7 @@ ploténky). Vyplnění není totéž co čitelnost.
 Dva tvory mají pózu naopak natvrdo, protože je poznávací znak čitelný jen
 v jedné: drak drží křídlo rozepjaté v rovině listu v `Death` (t=0,37) a axolotl
 má na předlohu vlastní klip `Sheet`, ve kterém rozevře žaberní vějíř a uhne
-předníma nohama (viz jeho záznam v katalogu).
+předními nohami (viz jeho záznam v katalogu).
 
 ### Katalog tvorů (`dinostanice/creatures3d.py`)
 
@@ -123,7 +123,7 @@ po svislé ose listu, tělo i bičíkovitý ocas po vodorovné, a hloubkové zna
 **Axolotl** taky — a navíc v póze, která je pro předlohu udělaná na míru
 (klip `Sheet` z `tools/make_axolotl.py`, stejný případ jako drak). Ve vlastní
 poloze modelu leží vějíř žaber přesně tam, kde přední noha, a v obrysu s ní
-splyne v jednu plochu: na listu je pak mlok se čtyřma nohama a jedinou
+splyne v jednu plochu: na listu je pak mlok se čtyřmi nohami a jedinou
 poznávací značku axolotla dítě nevidí. Póza proto horní stonek sklopí do roviny
 listu, stonky rozloží do vějíře a přední nohu odklopí o 32° dozadu — vějíř
 vyjde jako tři samostatné prsty před nohou (vyplnění listu 0,197 proti 0,192,
