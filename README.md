@@ -4,6 +4,33 @@ Domácí obdoba exponátu z Haus der Natur v Salzburgu: dítě vybarví předti�
 šablonu, vyfotí ji mobilem — a jeho tvor obživne na televizi: dinosaurus
 v křídové laguně, ryba v akváriu.
 
+![Křídová laguna na televizi](docs/img/scena-krida.jpg)
+
+Obrys šablony se z fotky nehádá: **předloha vzniká promítnutím hotového 3D
+modelu na list**, takže kde na papíře leží bod, tam má na modelu svoje UV.
+Vybarvená fotka sedne na kůži jednou transformací a drží ve všech pózách.
+
+![Od šablony k tvorovi ve scéně](docs/img/retez-axolotl.jpg)
+
+Druhá krajina je akvárium — sedm druhů ryb plave ve čtyřech hloubkách, uhýbá si
+a chodí za krmením, které z mobilu padá na hladinu a klesá ke dnu.
+
+![Akvárium](docs/img/scena-akvarium.jpg)
+
+Modely jsou natočené k divákovi, aby nebyly plochou kulisou. Kolik natočení
+snese, je dané předlohou: čím víc se tvor otočí, tím víc čelní plochy ukáže —
+a tam už kresba z listu není.
+
+![Chodci zešikma](docs/img/detail-chodci.jpg)
+
+Vlevo přehled šablon k tisku, vpravo stránka pro mobil, na kterou vede QR kód
+v rohu scény:
+
+<p>
+  <img src="docs/img/sablony.png" width="62%" alt="Přehled šablon k tisku">
+  <img src="docs/img/mobil.png" width="20%" align="top" alt="Stránka pro mobil">
+</p>
+
 ## Jak to spustit
 
 Nejjednodušeji — dvojklik na **`DinoStanice.cmd`**. Doinstaluje si, co chybí,
@@ -14,16 +41,18 @@ druhé instance nad týmiž úlovky. Konec: `Ctrl+C` v okně.
 V Dockeru (běží pořád, přežije restart PC):
 
 ```powershell
-cd E:\ClaudeProjects\DinoStanice
 docker compose up -d --build      # scéna na http://localhost:8100/
 docker compose logs -f            # co se děje
 docker compose down               # konec
 ```
 
-Port je **8100**, protože 8000 na tomhle stroji drží `fs25-modssearcher`.
-Přepíše se proměnnou `DINO_PORT` (v `.env` nebo na příkazové řádce).
+Port je **8100** (8000 na domácím stroji drží jiná služba). Přepíše se
+proměnnou `DINO_PORT` (v `.env` nebo na příkazové řádce).
 Úlovky (`data/catch/`), koš smazaných (`data/trash/`) i nastavení scény
 (`data/state.json`) jsou bind mountnuté ven, takže přestavbu image přežijí.
+`data/state.json` proto musí existovat **před** prvním `docker compose up` —
+jinak si na jeho místě Docker udělá adresář. Stačí do něj napsat `{}`.
+(Při spuštění bez kontejneru si ho server vyrobí sám.)
 
 Nebo přímo z konzole, bez kontejneru:
 
@@ -306,3 +335,9 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | `launcher.py` | vstupní bod balíku: adresy, volný port, prohlížeč |
 | `dinostanice.spec` | recept pro PyInstaller (co se balí, co se skrývá) |
 | `tools/build_exe.ps1` | jeden příkaz: balík + ZIP k přenesení |
+
+## Licence
+
+Kód a krajina jsou pod [MIT](LICENSE). 3D modely jsou cizí práce s vlastními
+licencemi (většinou CC0, ptakoještěr a axolotl CC BY 4.0) — autoři, licence
+a odkazy jsou v [CREDITS.md](CREDITS.md).
