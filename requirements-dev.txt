@@ -1,0 +1,6 @@
+# Vývojové závislosti — do běhu stanice nepatří, proto ne v requirements.txt.
+-r requirements.txt
+pyinstaller>=6.10       # balík pro Windows bez Pythonu (tools/build_exe.ps1)
+pytest>=8.0             # python -m pytest -q
+# playwright (+ python -m playwright install chromium) potřebují jen
+# tools/gait_report.py a tools/shot_scene.py — snímky scény bez televize

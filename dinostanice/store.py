@@ -13,10 +13,12 @@ import shutil
 import unicodedata
 from datetime import datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CATCH_ROOT = os.path.join(ROOT, "data", "catch")
-REJECTED_ROOT = os.path.join(ROOT, "data", "rejected")
-TRASH_ROOT = os.path.join(ROOT, "data", "trash")
+from . import paths
+
+DATA_ROOT = paths.data_root()
+CATCH_ROOT = os.path.join(DATA_ROOT, "catch")
+REJECTED_ROOT = os.path.join(DATA_ROOT, "rejected")
+TRASH_ROOT = os.path.join(DATA_ROOT, "trash")
 TRASH_KEEP_DAYS = 30
 REJECTED_KEEP = 50
 

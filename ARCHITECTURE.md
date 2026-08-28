@@ -692,6 +692,17 @@ a upload projde, ale testy proti němu neběžely. Jediná systémová
 závislost je `libglib2.0-0`, bez ní se cv2 neimportuje. Node 24 k dispozici,
 ale frontend je čisté ES moduly bez build kroku a bez CDN (poběží offline).
 
+Balík pro Windows bez Pythonu (`dinostanice.spec`, `tools/build_exe.ps1`,
+vstupní bod `launcher.py`) staví PyInstaller. Ve frozen balíku `__file__` míří
+do rozbaleného balíku v temp, který se po vypnutí smaže, takže `paths.py`
+rozděluje dvě věci: `resource_root()` (balená read-only data — `web/`,
+`data/models3d`, `data/templates`, `data/shapes3d`) a `data_root()`
+(zapisovatelná data vedle exe — úlovky, koš, odmítnuté fotky, `state.json`).
+Z konzole i v Dockeru obojí ukazuje do adresáře projektu, takže se tím
+nemění ani jeden z dosavadních režimů; testy dál přebíjejí `store.CATCH_ROOT`
+a `server.STATE_PATH` monkeypatchem, protože to zůstaly obyčejné atributy
+modulu.
+
 Testy: `python -m pytest -q` — 179 testů; `tests/test_server.py` (36 testů)
 jede end-to-end přes FastAPI TestClient se syntetickými fotkami, žádný běžící
 server není potřeba. TestClient dostane patche na `store.CATCH_ROOT`,

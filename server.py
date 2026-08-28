@@ -26,18 +26,18 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dinostanice import capture, capture3d, quality, scenes, store
+from dinostanice import capture, capture3d, paths, quality, scenes, store
 from dinostanice.capture import CaptureError
 from dinostanice.creatures3d import BY_KEY as BY_KEY3D
 from dinostanice.creatures3d import BY_MARKER as BY_MARKER3D
 from dinostanice.creatures3d import CATALOGUE as CATALOGUE3D
 from dinostanice.scenes import DEFAULT_SCENE
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-WEB_DIR = os.path.join(ROOT, "web")
-MODELS3D_DIR = os.path.join(ROOT, "data", "models3d")
-TEMPLATES_DIR = os.path.join(ROOT, "data", "templates")
-STATE_PATH = os.path.join(ROOT, "data", "state.json")
+RES_ROOT = paths.resource_root()
+WEB_DIR = os.path.join(RES_ROOT, "web")
+MODELS3D_DIR = os.path.join(RES_ROOT, "data", "models3d")
+TEMPLATES_DIR = os.path.join(RES_ROOT, "data", "templates")
+STATE_PATH = os.path.join(paths.data_root(), "state.json")
 
 MAX_UPLOAD = 25 * 1024 * 1024
 MAX_BODY = MAX_UPLOAD + 1024 * 1024   # rezerva na multipart obálku okolo fotky

@@ -50,6 +50,41 @@ Dole běží lišta: vlevo kolik je ve scéně kterého tvora, vpravo posledníc
 příchodů a odchodů (`+`/`−`, typ a jméno z odeslané fotky; u tvorů z katalogu
 jméno není, tak je tam `-`).
 
+## Na cizí počítač (balík bez Pythonu)
+
+Když má stanice běžet tam, kde není Python ani Docker:
+
+```powershell
+powershell -File tools\build_exe.ps1
+```
+
+Vznikne `dist\DinoStanice\` s `DinoStanice.exe` a k přenosu
+`dist\DinoStanice-win64.zip` (89 MB) — rozbalit kamkoli, dvojklik na
+`DinoStanice.exe`. Okno vypíše tytéž adresy jako `start.ps1`, vybere volný port
+a otevře scénu v prohlížeči (`--nobrowser`, `--port 8123` fungují stejně).
+
+Je to složka, a ne jediný exe, přesto že jediný exe umí PyInstaller taky
+(`tools\build_exe.ps1 -OneFile`, 89 MB): ten při **každém** startu rozbaluje
+212 MB knihoven do `%TEMP%` — naměřeno 2,7 s do prvního načtení scény proti
+1,1 s u složky, po hrubém ukončení nechá v temp 202 MB smetí a antivirus si ho
+prochází pořád znovu. Jeden ZIP se přenáší stejně dobře jako jeden soubor.
+
+**Úlovky, koš a nastavení scény vznikají v `data\` vedle exe** — přežijí
+vypnutí a dají se zkopírovat jinam. Šablony, modely a frontend jsou naopak
+zapečené v balíku, protože se jen čtou.
+
+Co uživatel na cizím PC uvidí:
+
+- **„Windows protected your PC"** (SmartScreen) — exe není podepsaný,
+  certifikát nemáme. *Více informací* → *Přesto spustit*. Antivirus může
+  udělat totéž a exe na chvíli zdržet.
+- **Dotaz brány Windows firewall** — server poslouchá na `0.0.0.0`, aby na něj
+  dosáhl mobil. Povolit v **privátních** sítích; bez toho scéna na tomtéž PC
+  pojede, ale mobil se nepřipojí.
+
+PyInstaller do `requirements.txt` nepatří (do běhu stanice není potřeba), sedí
+v `requirements-dev.txt` — build script si ho doinstaluje sám.
+
 ## Co tvorové ve scéně dělají
 
 Nový úlovek přichází **vždy zleva** a pár sekund nad ním visí jmenovka se
@@ -268,3 +303,6 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | `data/state.json` | trvalá nastavení: ukázkoví tvorové, krajina domácí TV |
 | `out/` | pracovní výstupy, náhledy, reporty |
 | `DinoStanice.cmd` | spuštění dvojklikem (bez Dockeru) |
+| `launcher.py` | vstupní bod balíku: adresy, volný port, prohlížeč |
+| `dinostanice.spec` | recept pro PyInstaller (co se balí, co se skrývá) |
+| `tools/build_exe.ps1` | jeden příkaz: balík + ZIP k přenesení |

@@ -16,13 +16,14 @@ import numpy as np
 
 from . import capture
 from . import modelsheet
+from . import paths
 from .modelsheet import SheetShape, to_texture
 from .store import write_image
 from .shapes import SHEET_H_MM, SHEET_W_MM
 
 TEXTURE_PPM = 6.0        # jemnejsi nez WARP_PPM uz nema z ceho brat detail
 
-SHAPES3D_DIR = Path(__file__).resolve().parent.parent / "data" / "shapes3d"
+SHAPES3D_DIR = Path(paths.resource_root()) / "data" / "shapes3d"
 
 
 @lru_cache(maxsize=None)
