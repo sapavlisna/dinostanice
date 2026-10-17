@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import model_paint_demo as demo
 from dinostanice import modelsheet as ms
-from dinostanice.creatures3d import BY_KEY, CATALOGUE
+from dinostanice.creatures3d import BY_KEY, CATALOGUE, resolve_roles
 from dinostanice.glbexport import write_with_uv
 from dinostanice.gltf import Model
 from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
@@ -41,6 +41,11 @@ def export(spec, index_only=False) -> dict:
         cv2.imwrite(str(OUT / f"{spec.key}_texture.png"),
                     ms.to_texture(sheet, shape, demo.PPM))
 
+    clips = {name.split("|")[-1].split("_")[-1]: name
+             for name in sorted(model.animations)}
+    roles, missing = resolve_roles(spec.clip_roles(), clips)
+    if missing:
+        print(f"  {spec.key}: bez klipu pro role {', '.join(missing)} — scena je nenabidne")
     entry = {
         "key": spec.key,
         "label": spec.label,
@@ -52,12 +57,13 @@ def export(spec, index_only=False) -> dict:
         # z FBX exportu. Rybi klipy nesou prefix s podtrzitkem
         # ("Fish_Armature|Attack"), takze bez oriznuti po "|" by z Attacku
         # zbylo "Armature|Attack" a scena by roli nenasla.
-        "clips": {name.split("|")[-1].split("_")[-1]: name
-                  for name in sorted(model.animations)},
-        "clipFor": spec.clip_roles(),
+        "clips": clips,
+        "clipFor": roles,
         "pose": shape.anim,
         "size": round(float(np.ptp(verts[:, 2])), 2),
     }
+    if spec.activities:
+        entry["activities"] = spec.activities
     if spec.stride_rate:
         entry["strideRate"] = list(spec.stride_rate)
     return entry

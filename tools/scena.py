@@ -32,7 +32,7 @@ for _s in (sys.stdout, sys.stderr):
 sys.path.insert(0, str(ROOT))
 
 from dinostanice import scenes  # noqa: E402
-from dinostanice.creatures3d import CLIP_FOR_DEFAULT, FIRST_MARKER  # noqa: E402
+from dinostanice.creatures3d import CLIP_FOR_DEFAULT, FIRST_MARKER, REQUIRED_ROLES, resolve_roles  # noqa: E402
 from dinostanice.gltf import Model  # noqa: E402
 from dinostanice.markers import MAX_CREATURE_INDEX  # noqa: E402
 
@@ -47,9 +47,18 @@ ROLE_GUESS = {
     "move": ["Walk", "Walking", "Run", "Swim", "Swimming", "Normal", "Flying", "Fly", "Sail"],
     "stand": ["Idle", "Stand"],
     "jump": ["Jump"],
-    "lie": ["Death", "Die", "Sleep", "Lie"],
+    "lie": ["LieDown", "Lie", "Death", "Die"],
+    "sleep": ["Sleep"],
+    "sit": ["Sit"],
+    "look": ["LookAround", "Idle_2", "Idle_Headlow"],
+    "run": ["Run", "Gallop", "Sprint"],
+    "play": ["Attack", "Play"],
     "fast": ["Fast", "Run", "Sprint"],
 }
+
+# Volitelne role chodce, ktere planovac cinnosti jen nenabidne, kdyz chybi.
+# Ostatni volitelne role (plavci, letci) spadnou na pohyb jako drive.
+SKIP_MISSING = {"jump", "run", "look", "sit", "lie", "sleep", "play"}
 
 
 def read_env(name):
@@ -135,15 +144,17 @@ def guess_roles(motion, model):
                     roles[role] = hit
                 break
         else:
-            if role != "move":
+            if role != "move" and not (motion == "walk" and role in SKIP_MISSING):
                 # role, kterou model nemá, spadne na pohyb (jako manta)
                 roles[role] = roles.get("move", CLIP_FOR_DEFAULT[motion]["move"])
     return roles
 
 
-def check_model(path, entry):
-    """Seznam problémů (prázdný = v pořádku) a model."""
+def check_model(path, entry, warnings=None):
+    """Seznam problémů (prázdný = v pořádku) a model. Chybějící volitelné role
+    jdou do `warnings` — tvor projde, jen scéna danou činnost nenabídne."""
     problems = []
+    warnings = [] if warnings is None else warnings
     try:
         model = Model(path)
     except Exception as e:  # noqa: BLE001 — chceme čitelnou hlášku, ne traceback
@@ -156,10 +167,14 @@ def check_model(path, entry):
         problems.append("model nemá žádnou animaci")
     roles = {**CLIP_FOR_DEFAULT.get(motion, {}), **entry.get("clip_for", {})}
     shorts = {short(n) for n in model.animations}
-    for role, name in roles.items():
-        if name not in shorts:
+    resolved, missing = resolve_roles(roles, shorts)
+    for role, name in resolved.items():
+        if role in REQUIRED_ROLES and name not in shorts:
             problems.append(f"role {role!r} míří na klip {name!r}, model má {sorted(shorts)} "
                             f"— oprav clip_for ve scene.json")
+    for role in missing:
+        warnings.append(f"role {role!r} nemá klip ({roles[role]!r}) — scéna tu činnost "
+                        f"nenabídne; klipy doplní tools/blender_clips.py, jinak clip_for")
     names = [n.get("name", "") for n in model.g.get("nodes", [])]
     if motion == "walk" and not any(re.search(r"foot|toe|paw|hoof", n, re.I) for n in names):
         problems.append("chodec nemá kosti nohou (foot/toe/paw/hoof) — scéna nezměří krok "
@@ -285,7 +300,10 @@ def cmd_import(args, check_only=False):
                 full = model.clip(move)
                 if full:
                     entry["poses"] = [full.split("|")[-1]]
-        problems, _ = check_model(dst, entry)
+        warnings = []
+        problems, _ = check_model(dst, entry, warnings)
+        for w in warnings:
+            print(f"  ! {w}")
         for p in problems:
             print(f"  ✗ {p}")
         if problems:

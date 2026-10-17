@@ -11,37 +11,37 @@
     {
       "key": "trex3d",
       "label": "Tyrannosaurus",
-      "glb": "trex.glb",
+      "glb": "trex_clips.glb",
       "stride_rate": [0.11, 0.18]
     },
     {
       "key": "velociraptor3d",
       "label": "Velociraptor",
-      "glb": "velociraptor.glb",
+      "glb": "velociraptor_clips.glb",
       "stride_rate": [0.3, 0.4]
     },
     {
       "key": "triceratops3d",
       "label": "Triceratops",
-      "glb": "triceratops.glb",
+      "glb": "triceratops_clips.glb",
       "stride_rate": [0.12, 0.18]
     },
     {
       "key": "stegosaurus3d",
       "label": "Stegosaurus",
-      "glb": "stegosaurus.glb",
+      "glb": "stegosaurus_clips.glb",
       "stride_rate": [0.12, 0.18]
     },
     {
       "key": "parasaurolophus3d",
       "label": "Parasaurolophus",
-      "glb": "parasaurolophus.glb",
+      "glb": "parasaurolophus_clips.glb",
       "stride_rate": [0.14, 0.25]
     },
     {
       "key": "apatosaurus3d",
       "label": "Apatosaurus",
-      "glb": "apatosaurus.glb",
+      "glb": "apatosaurus_clips.glb",
       "stride_rate": [0.04, 0.06]
     },
     {

@@ -11,14 +11,23 @@
    "Death": "Armature|TRex_Death",
    "Idle": "Armature|TRex_Idle",
    "Jump": "Armature|TRex_Jump",
+   "LieDown": "Armature|TRex_LieDown",
+   "LookAround": "Armature|TRex_LookAround",
    "Run": "Armature|TRex_Run",
+   "Sit": "Armature|TRex_Sit",
+   "Sleep": "Armature|TRex_Sleep",
    "Walk": "Armature|TRex_Walk"
   },
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|TRex_Walk",
   "size": 31.22,
@@ -39,14 +48,23 @@
    "Death": "Armature|Velociraptor_Death",
    "Idle": "Armature|Velociraptor_Idle",
    "Jump": "Armature|Velociraptor_Jump",
+   "LieDown": "Armature|Velociraptor_LieDown",
+   "LookAround": "Armature|Velociraptor_LookAround",
    "Run": "Armature|Velociraptor_Run",
+   "Sit": "Armature|Velociraptor_Sit",
+   "Sleep": "Armature|Velociraptor_Sleep",
    "Walk": "Armature|Velociraptor_Walk"
   },
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|Velociraptor_Walk",
   "size": 13.59,
@@ -67,14 +85,23 @@
    "Death": "Armature|Triceratops_Death",
    "Idle": "Armature|Triceratops_Idle",
    "Jump": "Armature|Triceratops_Jump",
+   "LieDown": "Armature|Triceratops_LieDown",
+   "LookAround": "Armature|Triceratops_LookAround",
    "Run": "Armature|Triceratops_Run",
+   "Sit": "Armature|Triceratops_Sit",
+   "Sleep": "Armature|Triceratops_Sleep",
    "Walk": "Armature|Triceratops_Walk"
   },
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|Triceratops_Walk",
   "size": 19.77,
@@ -95,14 +122,23 @@
    "Death": "Armature|Stegosaurus_Death",
    "Idle": "Armature|Stegosaurus_Idle",
    "Jump": "Armature|Stegosaurus_Jump",
+   "LieDown": "Armature|Stegosaurus_LieDown",
+   "LookAround": "Armature|Stegosaurus_LookAround",
    "Run": "Armature|Stegosaurus_Run",
+   "Sit": "Armature|Stegosaurus_Sit",
+   "Sleep": "Armature|Stegosaurus_Sleep",
    "Walk": "Armature|Stegosaurus_Walk"
   },
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|Stegosaurus_Walk",
   "size": 21.8,
@@ -123,14 +159,23 @@
    "Death": "Armature|Parasaurolophus_Death",
    "Idle": "Armature|Parasaurolophus_Idle",
    "Jump": "Armature|Parasaurolophus_Jump",
+   "LieDown": "Armature|Parasaurolophus_LieDown",
+   "LookAround": "Armature|Parasaurolophus_LookAround",
    "Run": "Armature|Parasaurolophus_Run",
+   "Sit": "Armature|Parasaurolophus_Sit",
+   "Sleep": "Armature|Parasaurolophus_Sleep",
    "Walk": "Armature|Parasaurolophus_Walk"
   },
   "clipFor": {
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|Parasaurolophus_Walk",
   "size": 12.88,
@@ -150,7 +195,11 @@
    "Attack": "Armature|Apatosaurus_Attack",
    "Idle": "Armature|Apatosaurus_Idle",
    "Jump": "Armature|Apatosaurus_Jump",
+   "LieDown": "Armature|Apatosaurus_LieDown",
+   "LookAround": "Armature|Apatosaurus_LookAround",
    "Run": "Armature|Apatosaurus_Run",
+   "Sit": "Armature|Apatosaurus_Sit",
+   "Sleep": "Armature|Apatosaurus_Sleep",
    "Walk": "Armature|Apatosaurus_Walk",
    "Death": "Armature|Stegosaurus_Death"
   },
@@ -158,7 +207,12 @@
    "move": "Walk",
    "stand": "Idle",
    "jump": "Jump",
-   "lie": "Death"
+   "run": "Run",
+   "look": "LookAround",
+   "sit": "Sit",
+   "lie": "LieDown",
+   "sleep": "Sleep",
+   "play": "Attack"
   },
   "pose": "Armature|Apatosaurus_Walk",
   "size": 47.92,
