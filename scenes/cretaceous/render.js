@@ -37,6 +37,10 @@
                      jde, dokud nemá důvod stát. `stand` = délka postání
                      u jídla (a default dwellu na trase), `fade` prolnutí
                      do stání, `spin` rychlost otočky.
+     look            (volitelně) stojící tvor se jednou za zastavení s šancí
+                     `chance` podívá na děti: otočí krk a hlavu k divákovi na
+                     `hold` = [min,max] s, strop `max` (rad), prolnutí `fade`.
+                     Ulovek od dětí se podívá vždy, když poprvé zastaví.
 
    paths (volitelné) — trasy chodců (bod 9). Část chodců (ne všichni) dostane
    při příchodu trasu a jde po ní místo volného bloumání po pásu:
@@ -83,6 +87,9 @@ export default {
       strideRate: [0.12, 0.22],
       farChance: 0.35,
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
+      // stojici chodec se obcas podiva na deti (jen krk a hlava, strop `max`
+      // v rad — vic uz ukaze rozmazane celo, telo je samo natocene o `turn`)
+      look: { chance: 0.5, hold: [1.5, 3.5], max: 0.61, fade: 0.6 },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
     fly: { sizeFraction: 0.334, baseSpeed: 0.055, bob: true },

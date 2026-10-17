@@ -369,6 +369,10 @@ function addActor(what, opts) {
     pause: '',
     fun: null,
     funAt: 0,
+    looking: null,
+    lookRolled: false,
+    // ulovek od deti se na ne podiva vzdy, jakmile poprve zastavi
+    lookFirst: !silent,
     turnAt: te ? sceneTime + span(te) : Infinity,
     shown: '',
     fade: cfg.rest ? cfg.rest.fade : 0.7,
@@ -600,7 +604,7 @@ function entertain(a, dt) {
   if (!f) {
     if (!waiting(a)) { a.funAt = 0; return; }
     if (!a.funAt) { a.funAt = sceneTime + span(FUN_EVERY); return; }
-    if (sceneTime < a.funAt) return;
+    if (sceneTime < a.funAt || a.looking) return;
     const canLie = a.m3.breakDur.lie, canJump = a.m3.breakDur.jump;
     if (!canLie && !canJump) return;
     // pul na pul skok/lehnuti; tvor bez Death klipu jen skace
@@ -631,6 +635,36 @@ function entertain(a, dt) {
   }
 }
 
+/* Pohled k detem: kdo stoji (fronta, zastavka trasy, jidlo), ten si jednou
+   za zastaveni hodi kostkou (`motions.<typ>.look.chance`) a pripadne na
+   `hold` sekund otoci krk a hlavu k divakovi. Pri rozchodu, otocce nebo
+   zabave se hlava hned vraci (prolnuti obstara Scene3D). */
+function lookAround(a) {
+  const L = motionCfg(a.motion).look;
+  if (!L || !a.m3.look) return;
+  const standing = a.pause === 'stand' && a.mix >= 0.99 && !a.fun
+                && a.face === a.dir && !a.exiting && !a.leaving;
+  if (a.looking) {
+    if (a.looking.debug) return;
+    if (!standing || sceneTime > a.looking.until) {
+      a.looking = null;
+      Scene3D.look(a.m3, 0);
+    }
+    return;
+  }
+  if (!standing) { a.lookRolled = false; return; }
+  if (a.lookRolled) return;
+  a.lookRolled = true;
+  const hold = L.hold || [1.5, 3];
+  // zastavka, ktera za chvili konci, by z pohledu udelala jen cuknuti hlavou
+  // (kolizni fronta konec dopredu nezna, tam se riskuje)
+  if (!a.blocked && a.restUntil - sceneTime < hold[0]) return;
+  if (!a.lookFirst && Math.random() >= (L.chance || 0)) return;
+  a.lookFirst = false;
+  a.looking = { until: sceneTime + span(hold) };
+  Scene3D.look(a.m3, 1, L);
+}
+
 function rest(a, dt) {
   const cfg = motionCfg(a.motion);
   const R = cfg.rest;
@@ -641,6 +675,7 @@ function rest(a, dt) {
     a.pause = '';
   }
   entertain(a, dt);
+  lookAround(a);
 
   // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
   // se tvor rozejde, cuknul by do stojaci pozy.
@@ -1611,6 +1646,7 @@ window.DinoScene = {
     mix: +a.mix.toFixed(2),
     turning: a.face !== a.dir,
     fun: a.fun ? a.fun.pose + ':' + a.fun.phase : null,
+    looking: !!a.looking,
     route: a.route ? a.route.path.name || '' : null,
     ambient: a.ambient,
     exiting: !!a.exiting, feeding: !!a.feed,
@@ -1639,6 +1675,23 @@ window.DinoScene = {
   debugIdle: (s) => idleWarn(s == null ? 120 : s),
   debugSleep: sleepScene,
   debugWake: wakeScene,
+  // pohled k detem na pevny uhel (stupne) pro screenshoty: tvor i zastavi a
+  // stoji, dokud se nezavola debugLook(i, null)
+  debugLook: (i, deg = 35) => {
+    const a = actors[i];
+    if (!a || !a.m3.look) return false;
+    if (deg == null) {
+      a.looking = null;
+      a.restUntil = 0;
+      Scene3D.look(a.m3, 0, motionCfg(a.motion).look);
+      return true;
+    }
+    a.pause = 'stand';
+    a.restUntil = Infinity;
+    a.dir = a.face = Math.sign(a.face) || 1;
+    a.looking = { until: Infinity, debug: true };
+    return Scene3D.look(a.m3, deg > 0 ? 1 : 0, { max: deg * Math.PI / 180 });
+  },
 };
 
 const qr = document.getElementById('qr');
