@@ -37,6 +37,13 @@ function angle(given, dflt) {
 const FOOT = /foot|toe|paw|hoof/i;
 const STRIDE_SAMPLES = 32;
 
+// Pohled k divakovi: toci se jen krk a hlava, ne telo. Textura je bokorys,
+// takze celo a hrudnik se od ~30-45 stupnu k divakovi rozmazou — proto strop.
+// Koncove kosti (_end) jsou jen spicky. Ryby nemaji krk, hlava je Main1.
+const NECK = /neck/i;
+const HEAD = /head/i;
+const LOOK = { max: 0.61, pitch: 0.12, fade: 0.6, split: 0.4 };   // split = podil krku
+
 const loader = new GLTFLoader();
 const textureLoader = new THREE.TextureLoader();
 const glbCache = new Map();
@@ -345,7 +352,21 @@ export async function spawn(entry) {
     action: null,
     breaks: {},                      // pozy, do kterych se da prolnout
     breakDur: {},
+    look: null,
   };
+
+  let neck = null, head = null;
+  model.traverse((o) => {
+    if (!o.isBone || /_end$/.test(o.name)) return;
+    if (!neck && NECK.test(o.name)) neck = o;
+    if (!head && HEAD.test(o.name)) head = o;
+  });
+  if (!head) model.traverse((o) => { if (!head && o.isBone && o.name === 'Main1') head = o; });
+  // bez kosti hlavy se pohled tise vypne (look() nic nedela)
+  if (head) {
+    handle.look = { neck, head, w: 0, want: 0, ...LOOK,
+                    keepNeck: new THREE.Quaternion(), keepHead: new THREE.Quaternion() };
+  }
 
   const clip = find(gltf.animations, entry.clip) || gltf.animations[0];
   if (clip) {
@@ -446,6 +467,67 @@ export function playClamped(handle, name, reverse = false) {
   action.play();
 }
 
+/* Pohled k divakovi: weight 0..1 se k cili prolina rychlosti `fade`.
+   `opts` z dat sceny smi prepsat strop (`max`, rad), naklon (`pitch`) a fade. */
+export function look(handle, weight, opts) {
+  const L = handle && handle.look;
+  if (!L) return false;
+  L.want = Math.max(0, Math.min(1, weight || 0));
+  for (const k of ['max', 'pitch', 'fade']) {
+    if (opts && typeof opts[k] === 'number' && isFinite(opts[k])) L[k] = opts[k];
+  }
+  return true;
+}
+
+const _up = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _side = new THREE.Vector3();
+const _q = new THREE.Quaternion();
+const _qw = new THREE.Quaternion();
+const _qp = new THREE.Quaternion();
+const _turn = new THREE.Quaternion();
+
+/* Otoci kost o rotaci `qw` danou ve svete (kolem jejiho pocatku). Pocita se
+   v lokalnim prostoru kosti pres svetovou rotaci rodice, takze nezalezi na
+   tom, kam ma ktery model natocene osy kosti. */
+function turnBone(bone, qw) {
+  bone.parent.getWorldQuaternion(_qp);
+  _q.copy(_qp).invert().multiply(qw).multiply(_qp);
+  bone.quaternion.premultiply(_q);
+  bone.updateMatrixWorld(true);
+}
+
+function applyLook(a, dt) {
+  const L = a.look;
+  L.w += Math.max(-dt / L.fade, Math.min(dt / L.fade, L.want - L.w));
+  if (L.w <= 1e-3) { L.w = Math.max(0, L.w); return false; }
+  L.keepHead.copy(L.head.quaternion);
+  if (L.neck) L.keepNeck.copy(L.neck.quaternion);
+
+  a.root.updateMatrixWorld(true);
+  // divak je na +Z (ortograficka kamera kouka podel -Z); smer tela je +Z
+  // modelu po otoceni `spin`, uhel k divakovi se meri kolem osy "nahoru" tvora
+  a.spin.getWorldQuaternion(_qw);
+  _up.set(0, 1, 0).applyQuaternion(_qw);
+  _fwd.set(0, 0, 1).applyQuaternion(_qw);
+  const off = Math.atan2(_fwd.x, _fwd.z);      // 0 = celem k divakovi
+  const yaw = -Math.sign(off) * Math.min(L.max, Math.abs(off)) * L.w;
+  // naklon jen podle podilu natoceni, at tvor, co nekouka, nekyva hlavou
+  const turned = L.max > 0 ? Math.abs(yaw) / L.max : 0;
+  const pitch = L.pitch * turned;
+  // naklani se kolem boku uz natocene hlavy, jinak by se hlava naklopila do strany
+  _fwd.applyAxisAngle(_up, yaw);
+  _side.crossVectors(_up, _fwd).normalize();   // kladny uhel = hlava dolu
+
+  const parts = L.neck ? [[L.neck, L.split], [L.head, 1 - L.split]] : [[L.head, 1]];
+  for (const [bone, k] of parts) {
+    _turn.setFromAxisAngle(_side, pitch * k)
+         .multiply(_qw.setFromAxisAngle(_up, yaw * k));
+    turnBone(bone, _turn);
+  }
+  return true;
+}
+
 export function remove(handle) {
   if (!handle) return;
   actors.delete(handle);
@@ -466,6 +548,16 @@ export function info() {
 
 export function render(dt) {
   if (!renderer) return;
-  for (const a of actors) a.mixer.update(dt);
+  const looked = [];
+  for (const a of actors) {
+    a.mixer.update(dt);
+    if (a.look && applyLook(a, dt)) looked.push(a);
+  }
   renderer.render(scene, camera);
+  // pohled je jen pro tenhle snimek: kost, kterou zadny klip neanimuje, by se
+  // jinak dotacela kazdy snimek o kus dal
+  for (const a of looked) {
+    a.look.head.quaternion.copy(a.look.keepHead);
+    if (a.look.neck) a.look.neck.quaternion.copy(a.look.keepNeck);
+  }
 }
