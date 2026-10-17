@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import bpy
+from mathutils import Matrix
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src, dst = Path(argv[0]), Path(argv[1])
@@ -45,6 +46,47 @@ else:
         sys.exit(f"neznámý formát {ext}")
 
 scene = bpy.context.scene
+
+on_bone = [o for o in scene.objects if o.parent is not None
+           and o.parent.type == "ARMATURE" and o.parent_type == "BONE"]
+if ext in (".glb", ".gltf"):
+    # glTF importer (Blender 5.1) převádí potomka kloubu na potomka špičky kosti
+    # a odečte přitom délku kosti vynásobenou měřítkem armatury (Quaternius:
+    # 100×). Parohy pak visí nad hlavou a koncové body nohou (*_end, podle nich
+    # scéna měří krok) skončí u kolen. Vrací se rozdíl.
+    for o in on_bone:
+        arm = o.parent
+        o.matrix_basis.translation.y += (arm.data.bones[o.parent_bone].length
+                                         * (arm.matrix_world.to_scale().y - 1))
+bpy.context.view_layer.update()
+
+# Mesh zavěšený přímo na kost (jelení parohy na Head) nemá skin. Stanice
+# (dinostanice.gltf) bere jen vážené vrcholy, parohy by skončily mimo hlavu
+# a předloha by je neměla — převede se na skin s jedinou kostí, váha 1.
+for o in [o for o in on_bone if o.type == "MESH"]:
+    arm, bone = o.parent, o.parent_bone
+    # vrcholy do prostoru armatury v klidové póze kosti — tam je čeká skin
+    rest = (arm.data.bones[bone].matrix_local @ arm.pose.bones[bone].matrix.inverted()
+            @ arm.matrix_world.inverted() @ o.matrix_world)
+    o.parent = None
+    o.data.transform(rest)
+    o.parent = arm
+    o.parent_type = "OBJECT"
+    o.matrix_parent_inverse = Matrix.Identity(4)
+    o.matrix_basis = Matrix.Identity(4)
+    group = o.vertex_groups.new(name=bone)
+    group.add(range(len(o.data.vertices)), 1.0, "REPLACE")
+    o.modifiers.new("armature", "ARMATURE").object = arm
+    print(f"RIGID {o.name} -> skin {bone}")
+bpy.context.view_layer.update()
+
+# Některé balíčky nesou každý klip dvakrát, "Walk" i "AnimalArmature|Walk"
+# (liší se o desetitisíciny) — GLB pro televizi by byl zbytečně dvojnásobný.
+plain = {a.name for a in bpy.data.actions}
+for a in list(bpy.data.actions):
+    if "|" in a.name and a.name.split("|")[-1] in plain:
+        bpy.data.actions.remove(a)
+
 objs = [o for o in scene.objects if o.type in ("MESH", "ARMATURE", "EMPTY")]
 tops = [o for o in objs if o.parent is None]
 

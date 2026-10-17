@@ -1,0 +1,62 @@
+{
+  "label": "Les",
+  "subtitle": "Lesní mýtina se zvířátky — zatím s krajinou křídové laguny.",
+  "order": 4,
+  "nouns": ["zvíře", "zvířata", "zvířat"],
+  "accusative": "zvířátko",
+  "invite": {"title": "Přidej své zvířátko", "sub": "Naskenuj kód a vyfoť vybarvený obrázek"},
+  "feedHint": "zvířátka na televizi se seběhnou",
+  "feedBusy": "Zvířátka ještě žvýkají — počkej chvilku, než hodíš další porci! 🦌",
+  "creatures": [
+    {
+      "key": "alpaca",
+      "label": "Alpaka",
+      "glb": "alpaca.glb",
+      "motion": "walk",
+      "stride_rate": [0.3, 0.45]
+    },
+    {
+      "key": "deer",
+      "label": "Srnka",
+      "glb": "deer.glb",
+      "motion": "walk",
+      "stride_rate": [0.3, 0.45]
+    },
+    {
+      "key": "fox",
+      "label": "Liška",
+      "glb": "fox.glb",
+      "motion": "walk",
+      "stride_rate": [0.35, 0.5]
+    },
+    {
+      "key": "horse",
+      "label": "Kůň",
+      "glb": "horse.glb",
+      "motion": "walk",
+      "stride_rate": [0.3, 0.45]
+    },
+    {
+      "key": "shiba_inu",
+      "label": "Pejsek",
+      "glb": "shiba_inu.glb",
+      "motion": "walk",
+      "stride_rate": [0.35, 0.5]
+    },
+    {
+      "key": "stag",
+      "label": "Jelen",
+      "glb": "stag.glb",
+      "motion": "walk",
+      "eye_bias": {"forward": 0.8, "down": 0.75},
+      "stride_rate": [0.3, 0.45]
+    },
+    {
+      "key": "wolf",
+      "label": "Vlk",
+      "glb": "wolf.glb",
+      "motion": "walk",
+      "stride_rate": [0.35, 0.5]
+    }
+  ]
+}

@@ -23,20 +23,27 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from dinostanice import scenes  # noqa: E402
 
 
-def load_targets():
+def load_targets(url):
+    """Cíle chodců té scény, kterou URL otevírá (scéna zná jen svůj katalog)."""
+    key = parse_qs(urlparse(url).query).get("scene", ["cretaceous"])[0]
+    owner = next((s.catalogue for s in scenes.SCENES if s.key == key), key)
     cat = json.loads((ROOT / "data/models3d/catalogue3d.json")
                      .read_text(encoding="utf-8"))
     return {e["key"]: tuple(e["strideRate"]) for e in cat
-            if e["motion"] == "walk" and e.get("strideRate")}
+            if e["motion"] == "walk" and e.get("strideRate") and e["scene"] == owner}
 
 
-TARGETS = load_targets()
+TARGETS = {}
 SLIP_MAX = 3.0      # % ujeté dráhy
 TOL = 0.10          # tolerance na okrajích cílového intervalu
 W = 1600
@@ -44,10 +51,7 @@ W = 1600
 SETUP = """
 window.__probe = () => window.DinoScene.actors
   .filter(a => a.m3 && a.motion === 'walk').map(a => {
-    const feet = [];
-    a.m3.root.traverse(o => {
-      if (/foot/i.test(o.name) && !/_end$/.test(o.name)) feet.push(o);
-    });
+    const feet = a.m3.feet || [];
     return { key: a.key, dir: a.dir, x: a.xFrac,
              rate: a.rate, ts: a.m3.action.timeScale,
              rs: a.band.rateScale || 1,
@@ -147,6 +151,9 @@ def main():
                     help="délka měření; kratší okno zkreslí zastávky "
                          "a kolizní čekání na dráze (bod 3)")
     args = ap.parse_args()
+    TARGETS.update(load_targets(args.url))
+    if not TARGETS:
+        sys.exit("scéna nemá chodce s cílem strideRate")
 
     log, where, errors = measure(args.url, args.seconds)
     rows = analyze(log, where)

@@ -26,6 +26,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent.parent
 for _s in (sys.stdout, sys.stderr):
     _s.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
@@ -161,9 +163,12 @@ def check_model(path, entry):
             problems.append(f"role {role!r} míří na klip {name!r}, model má {sorted(shorts)} "
                             f"— oprav clip_for ve scene.json")
     names = [n.get("name", "") for n in model.g.get("nodes", [])]
-    if motion == "walk" and not any(re.search(r"foot|toe|paw|hoof", n, re.I) for n in names):
-        problems.append("chodec nemá kosti nohou (foot/toe/paw/hoof) — scéna nezměří krok "
-                        "a nohy budou klouzat; zvaž motion swim/fly nebo stride_rate")
+    # stejné pravidlo jako feetOf() ve web/scene3d.js: chodidla, jinak špičky nohou
+    if motion == "walk" and not any(re.search(r"foot|toe|paw|hoof", n, re.I)
+                                    or re.search(r"leg.*_end$", n, re.I) for n in names):
+        problems.append("chodec nemá kosti nohou (foot/toe/paw/hoof ani špičku *Leg*_end) "
+                        "— scéna nezměří krok a nohy budou klouzat; zvaž motion swim/fly "
+                        "nebo stride_rate")
     eye = entry.get("eye_joint", "Head")
     if eye not in names:
         problems.append(f"kost oka {eye!r} chybí (kosti: {', '.join(names[:12])}…) "
@@ -193,7 +198,7 @@ def normalize(src, dst, opts, use_blender):
     if r.returncode != 0 or not dst.exists():
         sys.exit(f"Blender selhal u {src.name}:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     for line in r.stdout.splitlines():
-        if line.startswith("DECIMATE"):
+        if line.startswith(("DECIMATE", "RIGID")):
             print("  " + line)
 
 
@@ -210,6 +215,7 @@ def ground(path):
     node = model.g["nodes"][roots[0]]
     tr = node.get("translation", [0.0, 0.0, 0.0])
     node["translation"] = [float(a + b) for a, b in zip(tr, shift)]
+    bind_mesh_nodes(model)
     raw = Path(path).read_bytes()
     jlen = struct.unpack_from("<I", raw, 12)[0]
     rest = raw[20 + jlen:]
@@ -218,6 +224,33 @@ def ground(path):
     out = struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(js) + len(rest))
     out += struct.pack("<I4s", len(js), b"JSON") + js + rest
     Path(path).write_bytes(out)
+
+
+def bind_mesh_nodes(model):
+    """Uzel skinovaného meshe postaví tam, kam ho kreslí kostra.
+
+    Vykreslení uzel skinovaného meshe ignoruje (glTF i three.js berou jen
+    klouby × inverse bind), scéna z něj ale měří velikost a natočení tvora
+    (web/scene3d.js measure()). Blender ho věší pod armaturu, takže u modelu
+    s armaturou ve 100× (Quaternius) by tvor vyšel stokrát menší a s
+    prohozenými osami. Uzel dostane přesně tu transformaci, kterou mají
+    vrcholy v klidové póze — kresba se tím nemění."""
+    world = model.global_matrices(None, 0.0)
+    if model.skin_joints is None:
+        return
+    bind = world[model.skin_joints[0]] @ model.inverse_bind[0]
+    animated = {c["target"].get("node") for a in model.g.get("animations", [])
+                for c in a["channels"]}
+    for i, n in enumerate(model.g["nodes"]):
+        if "skin" not in n or i in animated:
+            continue
+        if np.allclose(world[i], bind, atol=1e-6):
+            continue
+        p = model.parent[i]
+        local = bind if p < 0 else np.linalg.inv(world[p]) @ bind
+        for k in ("translation", "rotation", "scale"):
+            n.pop(k, None)
+        n["matrix"] = [float(v) for v in local.T.reshape(-1)]
 
 
 def assign_markers(keys):
