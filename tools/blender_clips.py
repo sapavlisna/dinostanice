@@ -182,7 +182,7 @@ class Poser:
         for key, leg in BMAP["legs"].items():
             up, low = self.pb[leg["upper"]], self.pb[leg["lower"]]
             foot = self.pb[leg["foot"]]
-            free = foot.parent.name != leg["lower"]
+            free = foot.parent is None or foot.parent.name != leg["lower"]
             self.legs[key] = dict(
                 leg, free=free,
                 group="front" if key.startswith("front") else "back",

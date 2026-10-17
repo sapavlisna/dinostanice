@@ -664,5 +664,46 @@
    0.35,
    0.5
   ]
+ },
+ {
+  "key": "zajic",
+  "label": "Zajíc",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/zajic.glb",
+  "texture": "/models3d/zajic_texture.png",
+  "clips": {
+   "Attack": "Attack",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "HeadLow": "Idle_2_HeadLow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "ToIdle": "Jump_ToIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Attack"
+  },
+  "pose": "Idle",
+  "size": 3.79,
+  "activities": {
+   "run": {
+    "weight": 1.4
+   }
+  },
+  "strideRate": [
+   0.35,
+   0.5
+  ]
  }
 ]

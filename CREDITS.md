@@ -101,6 +101,17 @@ mu dopisuje `tools/make_axolotl.py`;
 `data/models_src/axolotl.glb` je odvozenina, na kterou se vztahuje tatáž
 licence.
 
+## Zajíc (scéna Les) — AI tvar na kostře lišky
+
+| soubor | co to je | původ | licence / podmínky |
+|---|---|---|---|
+| `data/models_src/zajic_tvar.glb` | vyčištěný low-poly tvar (≈2 000 trojúhelníků) | vygenerováno **Hyper3D Rodin** (Deemos Corp.) z textového promptu, 2026-10-17, přes Blender MCP addon (free-trial klíč, režim MAIN_SITE) | [Hyper3D Terms of Service](https://hyper3d.ai/legal/terms), čl. 5: u Rodinu „we will not limit your use of such Output“ (s výhradou zákonů a podmínek třetích stran); čl. 1 zároveň říká, že export je „for private or commercial use depending on your subscription plan“. Pro neveřejnou dětskou stanici je to v pořádku; **komerční šíření by chtělo ověřit podle tarifu**. Deemos neručí za autorskoprávní ochranu výstupu. |
+| `data/models_src/zajic.glb` | tvar navlečený na kostru a klipy lišky | `tools/blender_bind.py` + `tools/bindmaps/zajic.json` | kostra a klipy: Quaternius *Ultimate Animated Animal Pack*, CC0 (viz výše) |
+
+Prompt byl čistě textový, žádný cizí obrázek. Surový výstup Rodinu (1,4 MB
+s texturami) se necommituje; `tools/bindmaps/zajic_tvar.json` popisuje, jak
+z něj vznikl `zajic_tvar.glb` (řez vousů, decimace).
+
 ## Knihovny
 
 `web/vendor/GLTFLoader.js`, `BufferGeometryUtils.js`, `OrbitControls.js`,
