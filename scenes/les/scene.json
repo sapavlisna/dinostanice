@@ -64,6 +64,19 @@
       "glb": "wolf.glb",
       "motion": "walk",
       "stride_rate": [0.35, 0.5]
+    },
+    {
+      "key": "zajic",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": null, "play": "Attack", "lie": null},
+      "label": "Zajíc",
+      "glb": "zajic.glb",
+      "motion": "walk",
+      "poses": ["Idle"],
+      "eye_bias": {"forward": 0.62, "down": 0.68},
+      "stride_rate": [0.35, 0.5],
+      "activities": {
+        "run": {"weight": 1.4}
+      }
     }
   ]
 }
