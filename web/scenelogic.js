@@ -11,7 +11,8 @@
    Druhy cinnosti (kod, ne data — urcuji, jak se cinnost odehraje):
      move   walk, run         tvor jde; run prolne chuzi do klipu Run
      still  stand, look,      stoji v Idle; look/greet navic otoci hlavu
-            eat, greet        k detem (Scene3D.look)
+            eat, greet        k detem (Scene3D.look); eat hraje klip pastvy,
+                              kdyz ho druh ma (jinak stoji u jidla v Idle)
      clip   lookaround,       klip se pusti od zacatku a dohraje (rozhlednuti,
             jump, play        skok, dupnuti), pak zpatky do stani
      pose   sit, lie          klip jednou dolu a podrzet, vstavani = tyz klip
@@ -28,7 +29,7 @@ export const KIND = {
 
 // role klipu (clipFor z katalogu), kterou cinnost potrebuje
 export const ROLE = {
-  run: 'run', stand: 'stand', look: 'stand', eat: 'stand', greet: 'stand',
+  run: 'run', stand: 'stand', look: 'stand', eat: 'eat', greet: 'stand',
   lookaround: 'look', jump: 'jump', play: 'play', sit: 'sit', lie: 'lie',
   sleep: 'sleep',
 };
@@ -40,6 +41,13 @@ export function span(r, rnd = Math.random) {
   if (typeof r === 'number') return r;
   if (!r) return 0;
   return r[0] + rnd() * (r[1] - r[0]);
+}
+
+/* Role, kterou cinnost u tohoto tvora hraje: jidlo bez klipu pastvy je stani. */
+export function roleOf(name, spec, cp) {
+  if (spec && spec.role) return spec.role;
+  if (name === 'eat' && !(cp.clips.eat > 0)) return 'stand';
+  return ROLE[name];
 }
 
 /* Nabidka sceny prepsana nabidkou druhu, po cinnostech (melke slouceni:
@@ -67,7 +75,7 @@ export function offered(table, cp) {
   for (const name of Object.keys(table || {})) {
     const kind = KIND[name];
     if (!kind) continue;
-    const role = table[name].role || ROLE[name];
+    const role = roleOf(name, table[name], cp);
     if (role && !(cp.clips[role] > 0)) continue;
     if (kind !== 'move' && !cp.canStop) continue;
     if (name === 'look' && !cp.head) continue;
@@ -79,14 +87,16 @@ export function offered(table, cp) {
 /* Co prichazi v uvahu v dane situaci:
      free  tvor jde a rozhoduje se, co dal (walk = jit dal)
      wait  stoji ve fronte a nudi se — jen na miste; sit/lie az po `bored` s
-     stop  zastavka trasy delky `left` s — co se do ni vejde */
+     stop  zastavka trasy delky `left` s — co se do ni vejde
+   Jidlo (eat) se nabizi jen druhu s klipem pastvy, jinak jen u krmeni. */
 export function candidates(table, names, ctx) {
   const where = ctx.where || 'free';
   const out = [];
   for (const name of names) {
     const spec = table[name] || {};
     const kind = KIND[name];
-    if (name === 'eat' || name === 'greet') continue;
+    if (name === 'greet') continue;
+    if (name === 'eat' && !(ctx.clips && ctx.clips.eat > 0)) continue;
     if (where === 'free') {
       if (kind === 'pose' && spec.after && (ctx.sinceRest || 0) < spec.after) continue;
       if (kind !== 'move' && ctx.onScreen === false) continue;
@@ -97,8 +107,9 @@ export function candidates(table, names, ctx) {
         if ((ctx.waited || 0) < bored) continue;
       }
       if (where === 'stop') {
-        if (kind === 'pose' && (ctx.left || 0) < 2 * (ctx.clips[spec.role || ROLE[name]] || 0) + 1.5) continue;
-        if (kind === 'clip' && (ctx.left || 0) < (ctx.clips[spec.role || ROLE[name]] || 0)) continue;
+        const clip = ctx.clips[spec.role || ROLE[name]] || 0;
+        if (kind === 'pose' && (ctx.left || 0) < 2 * clip + 1.5) continue;
+        if (kind === 'clip' && (ctx.left || 0) < clip) continue;
       }
     }
     const w = where === 'free' ? spec.weight : (spec.waitWeight ?? spec.weight);
@@ -123,7 +134,7 @@ export function pick(table, names, ctx, rnd = Math.random) {
 export function begin(name, table, cp, now, rnd = Math.random, opts = {}) {
   const spec = (table && table[name]) || {};
   const kind = KIND[name] || 'still';
-  const role = spec.role || ROLE[name] || 'stand';
+  const role = roleOf(name, spec, cp) || 'stand';
   const act = {
     name, kind, role, start: now, phase: kind === 'move' ? 'go' : 'stop',
     until: 0, ext: !!opts.ext, pose: { stand: 1 }, fade: POSE_FADE,
@@ -179,6 +190,10 @@ function step(act, env, cmds, now, clipDur, rnd) {
         act.phase = 'hold';
         act.until = now + act.dur;
         if (HEAD.has(act.name)) cmds.push({ do: 'look', on: true });
+        if (act.role !== 'stand') {
+          act.pose = { [act.role]: 1 };
+          cmds.push({ do: 'restart', clip: act.role });
+        }
       } else if (act.kind === 'clip') {
         act.phase = 'clip';
         act.pose = { [act.role]: 1 };
@@ -314,7 +329,7 @@ export function plan(p, env, table, cp, names, rnd = Math.random) {
     p.act = begin('greet', table, cp, now, rnd);
   } else if (now >= (p.walkUntil || 0) && env.canDecide) {
     const name = pick(table, names, {
-      where: 'free', onScreen: env.onScreen,
+      where: 'free', onScreen: env.onScreen, clips: cp.clips,
       sinceRest: now - (p.restEnd ?? p.born ?? 0),
     }, rnd);
     if (!name || name === 'walk') {

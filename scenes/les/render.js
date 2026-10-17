@@ -83,6 +83,24 @@ export default {
       strideRate: [0.12, 0.22],
       farChance: 0.35,
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
+      // planovac cinnosti: vetsinu casu chuze, zastaveni ma duvod (podivat
+      // se na deti, rozhlednout se, odpocinout si az po delsi chuzi);
+      // pole popisuje hlavicka scenes/cretaceous/render.js
+      activities: {
+        walk: { weight: 8, dur: [14, 30] },
+        stand: { weight: 1, dur: [2, 4] },
+        look: { weight: 3, dur: [2, 3.5] },
+        lookaround: { weight: 2 },
+        sit: { weight: 1.2, dur: [5, 9], after: 40 },
+        lie: { weight: 0.8, dur: [5, 9], after: 70 },
+        sleep: { chance: 0.5, dur: [8, 15], fade: 0.8 },
+        jump: { weight: 0.4 },
+        play: { weight: 0.4 },
+        run: { weight: 0.8, dur: [1.5, 3], speed: 1.8, waitWeight: 0 },
+        eat: { weight: 2, dur: [4, 8] },
+        greet: { dur: [2.5, 4] },
+        wait: { every: [3, 7], bored: 10 },
+      },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
     fly: { sizeFraction: 0.334, baseSpeed: 0.055, bob: true },

@@ -32,15 +32,25 @@
                      vrstvy (MOTION v scene3d.js). Úhel je vlastnost vzhledu
                      krajiny, ne 3D vrstvy — proto se ladí tady.
      rest            umožňuje zastavit (kolizní fronta, dwell na trase,
-                     krmení) a otočit se na místě; bez něj tvor nezastaví
-                     nikdy. Náhodné zastávky "jen tak" neexistují — tvor
-                     jde, dokud nemá důvod stát. `stand` = délka postání
-                     u jídla (a default dwellu na trase), `fade` prolnutí
-                     do stání, `spin` rychlost otočky.
-     look            (volitelně) stojící tvor se jednou za zastavení s šancí
-                     `chance` podívá na děti: otočí krk a hlavu k divákovi na
-                     `hold` = [min,max] s, strop `max` (rad), prolnutí `fade`.
-                     Ulovek od dětí se podívá vždy, když poprvé zastaví.
+                     krmení, činnosti) a otočit se na místě; bez něj tvor
+                     nezastaví nikdy. `stand` = délka postání u jídla
+                     (a default dwellu na trase), `fade` prolnutí do stání,
+                     `spin` rychlost otočky.
+     look            (volitelně) pohled k dětem: strop `max` (rad) a prolnutí
+                     `fade` pro natočení krku a hlavy (činnosti look, greet).
+     activities      nabídka plánovače činností (web/scenelogic.js), druh ji
+                     smí přepsat polem `activities` ve scene.json. Každá
+                     činnost: `weight` (váha při rozhodování za chůze),
+                     `waitWeight` (váha při čekání ve frontě, default weight),
+                     `dur` [min,max] s. Navíc: walk.dur = jak dlouho jde mezi
+                     rozhodnutími (walk.weight = šance jít dál), sit/lie.after
+                     = nejdřív po tolika s od posledního sednutí/lehnutí,
+                     sleep.chance = šance usnout z lehu (fade = prolnutí),
+                     run.speed = násobek rychlosti chůze, greet = zastavení
+                     nového úlovku, eat = u jídla (a pastva, má-li druh klip),
+                     wait.every/bored = jak často si čekající ve frontě něco
+                     vybere a po kolika s smí i sednout/lehnout. Činnost,
+                     ke které druh nemá klip, se nenabízí.
 
    paths (volitelné) — trasy chodců (bod 9). Část chodců (ne všichni) dostane
    při příchodu trasu a jde po ní místo volného bloumání po pásu:
@@ -89,7 +99,24 @@ export default {
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
       // stojici chodec se obcas podiva na deti (jen krk a hlava, strop `max`
       // v rad — vic uz ukaze rozmazane celo, telo je samo natocene o `turn`)
-      look: { chance: 0.5, hold: [1.5, 3.5], max: 0.61, fade: 0.6 },
+      look: { max: 0.61, fade: 0.6 },
+      // planovac cinnosti: vetsinu casu chuze, zastaveni ma duvod (podivat
+      // se na deti, rozhlednout se, odpocinout si az po delsi chuzi)
+      activities: {
+        walk: { weight: 8, dur: [14, 30] },
+        stand: { weight: 1, dur: [2, 4] },
+        look: { weight: 3, dur: [2, 3.5] },
+        lookaround: { weight: 2 },
+        sit: { weight: 1.2, dur: [5, 9], after: 40 },
+        lie: { weight: 0.8, dur: [5, 9], after: 70 },
+        sleep: { chance: 0.5, dur: [8, 15], fade: 0.8 },
+        jump: { weight: 0.4 },
+        play: { weight: 0.4 },
+        run: { weight: 0.8, dur: [1.5, 3], speed: 1.8, waitWeight: 0 },
+        eat: { weight: 1, dur: [4, 8] },
+        greet: { dur: [2.5, 4] },
+        wait: { every: [3, 7], bored: 10 },
+      },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
     fly: { sizeFraction: 0.334, baseSpeed: 0.055, bob: true },
