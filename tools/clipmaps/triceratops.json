@@ -1,0 +1,45 @@
+{
+ "plan": "quadruped",
+ "idle": "Idle",
+ "root": "root",
+ "body": "Body",
+ "spine": [
+  "Hips",
+  "Torso",
+  "Shoulders"
+ ],
+ "neck": [
+  "Neck"
+ ],
+ "head": "Head",
+ "tail": [
+  "Tail1",
+  "Tail2",
+  "Tail3",
+  "Tail4",
+  "Tail5"
+ ],
+ "legs": {
+  "back_l": {
+   "upper": "BackUpLeg.L",
+   "lower": "BackLowLeg.L",
+   "foot": "BackFoot.L"
+  },
+  "back_r": {
+   "upper": "BackUpLeg.R",
+   "lower": "BackLowLeg.R",
+   "foot": "BackFoot.R"
+  },
+  "front_l": {
+   "upper": "FrontUpLeg.L",
+   "lower": "FrontLowLeg.L",
+   "foot": "FrontFoot.L"
+  },
+  "front_r": {
+   "upper": "FrontUpLeg.R",
+   "lower": "FrontLowLeg.R",
+   "foot": "FrontFoot.R"
+  }
+ },
+ "tweaks": {}
+}
