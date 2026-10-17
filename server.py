@@ -80,9 +80,20 @@ if _leftover:
 
 PROCESS_SEM = asyncio.Semaphore(MAX_CONCURRENT)
 
+class RevalidatedFiles(StaticFiles):
+    """Skripty a styly stranek: prohlizec si je smi drzet, ale pred pouzitim
+    se zepta (ETag -> 304). Bez toho televize po nasazeni klidne hodiny bezi
+    se starym modulem vedle nove stranky."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 app = FastAPI(title="DinoStanice")
 app.mount("/catch", StaticFiles(directory=store.CATCH_ROOT), name="catch")
-app.mount("/web", StaticFiles(directory=WEB_DIR), name="web")
+app.mount("/web", RevalidatedFiles(directory=WEB_DIR), name="web")
 app.mount("/models3d", StaticFiles(directory=MODELS3D_DIR), name="models3d")
 app.mount("/templates", StaticFiles(directory=TEMPLATES_DIR), name="templates")
 

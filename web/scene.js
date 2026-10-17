@@ -441,7 +441,6 @@ function addActor(what, opts) {
     const i = actors.findIndex(a => a.exiting || a.leaving);
     dropActor(i >= 0 ? i : 0);
   }
-  Roster.event('in', actor.label, actor.who);
   Roster.cast(actors);
   return actor;
 }
@@ -458,11 +457,10 @@ function liveCount() {
 /* Odchod vzdy odehrat (bod 11): tvor opusti trasu, otoci se k blizsimu okraji
    a odejde/odleti/odpluje za nej vlastnim tempem; dropActor az za okrajem.
    Zachranna brzda: kdyz se do EXIT_TIMEOUT_S nedostane ven, fade jako drive. */
-function beginExit(a, quiet) {
+function beginExit(a) {
   if (!a || a.exiting || a.leaving) return;
   a.exiting = true;
   a.exitWatch = { x: a.xFrac, at: sceneTime };   // hlidac „nehybe se"
-  a.quietOut = !!quiet;
   a.route = null;
   a.feed = null;
   a.pause = '';
@@ -512,9 +510,6 @@ function dropActor(i) {
   const [gone] = actors.splice(i, 1);
   if (!gone) return;
   Scene3D.remove(gone.m3);
-  // `−` v liste az pri skutecnem zmizeni; hromadny reset ma jeden souhrnny
-  // zaznam misto N jednotlivych (quietOut)
-  if (!gone.quietOut) Roster.event('out', gone.label, gone.who);
   Roster.cast(actors);
 }
 
@@ -1278,11 +1273,10 @@ async function fetchSettings() {
    zustanou. Jeden souhrnny zaznam v listě mísi vypadá lip nez zaplaveni N
    jednotlivymi "odešel". */
 function clearCatches() {
-  // odchod se odehrava i tady; quiet drzi jeden souhrnny zaznam v liste
+  // odchod se odehrava i tady
   for (const a of actors) {
-    if (!a.ambient) beginExit(a, true);
+    if (!a.ambient) beginExit(a);
   }
-  Roster.event('note', 'Stanice vyprázdněna');
   topUp();
 }
 

@@ -877,3 +877,11 @@ def test_old_stations_get_tv_token_on_load(tmp_path):
     assert tv.owner == auth.MAIN_ID and len(tv.tv) >= 16
     assert reg.by_tv(tv.tv) is tv
     assert json.loads(path.read_text(encoding="utf-8"))["tv"]["tv"] == tv.tv
+
+
+def test_page_scripts_are_revalidated(client):
+    """Po nasazeni nesmi televize bezet se starym modulem vedle nove stranky."""
+    r = client.get("/web/roster.js")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache"
+    r2 = client.get("/web/roster.js", headers={"If-None-Match": r.headers["etag"]})
+    assert r2.status_code == 304
