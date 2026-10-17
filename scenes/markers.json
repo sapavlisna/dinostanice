@@ -1,0 +1,17 @@
+{
+  "trex3d": 8,
+  "velociraptor3d": 9,
+  "triceratops3d": 10,
+  "stegosaurus3d": 11,
+  "parasaurolophus3d": 12,
+  "apatosaurus3d": 13,
+  "drak3d": 14,
+  "pteranodon3d": 15,
+  "clownfish": 16,
+  "shark": 17,
+  "puffer": 18,
+  "swordfish": 19,
+  "lionfish": 20,
+  "manta": 21,
+  "axolotl": 22
+}

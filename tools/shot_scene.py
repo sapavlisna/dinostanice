@@ -1,6 +1,6 @@
 """Vyfotí živou scénu, aby se dala posoudit bez televize.
 
-    python tools/shot_scene.py --url http://127.0.0.1:8123/ --demo
+    python tools/shot_scene.py --url "http://127.0.0.1:8123/tv?scene=cretaceous" --demo
 
 `--demo` doplní tvory z katalogu (s ukázkovou texturou), aby bylo co soudit
 i když ještě nikdo nic nevybarvil.
@@ -20,7 +20,7 @@ DEMO = ["trex3d", "triceratops3d", "stegosaurus3d", "apatosaurus3d",
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8123/")
+    ap.add_argument("--url", default="http://127.0.0.1:8123/tv?scene=cretaceous")
     ap.add_argument("--demo", action="store_true", help="doplnit tvory z katalogu")
     ap.add_argument("--prefix", default="scena")
     ap.add_argument("--shots", type=int, default=3)

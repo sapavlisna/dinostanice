@@ -1,0 +1,83 @@
+{
+  "label": "Akvárium",
+  "subtitle": "Podvodní scéna: prosvítající hladina, korálové dno a ryby v hloubkách.",
+  "order": 3,
+  "nouns": ["vodní tvor", "vodní tvorové", "vodních tvorů"],
+  "accusative": "rybu",
+  "invite": {"title": "Vypusť si rybu", "sub": "Naskenuj kód a vyfoť vybarvenou rybu"},
+  "feedHint": "ryby na televizi připlavou",
+  "feedBusy": "Ryby ještě papají — počkej chvilku, než nasypeš další krmení! 🐟",
+  "creatures": [
+    {
+      "key": "clownfish",
+      "label": "Klaunská rybka",
+      "glb": "clownfish.glb",
+      "motion": "swim",
+      "clip_for": {"move": "Normal"},
+      "eye_bias": {"forward": 0.74, "down": 0.59},
+      "eye_joint": "Main1",
+      "poses": ["Swimming_Normal"]
+    },
+    {
+      "key": "shark",
+      "label": "Žralok",
+      "glb": "shark.glb",
+      "motion": "swim",
+      "poses": ["Swim"]
+    },
+    {
+      "key": "puffer",
+      "label": "Čtverzubec",
+      "glb": "puffer.glb",
+      "motion": "swim",
+      "clip_for": {"move": "Normal"},
+      "eye_bias": {"forward": 0.72, "down": 0.31},
+      "eye_joint": "Main1",
+      "poses": ["Swimming_Normal"]
+    },
+    {
+      "key": "swordfish",
+      "label": "Mečoun",
+      "glb": "swordfish.glb",
+      "motion": "swim",
+      "clip_for": {"move": "Normal"},
+      "eye_bias": {"forward": 0.2, "down": 0.38},
+      "eye_joint": "Main1",
+      "poses": ["Swimming_Normal"]
+    },
+    {
+      "key": "lionfish",
+      "label": "Perutýn",
+      "glb": "lionfish.glb",
+      "motion": "swim",
+      "clip_for": {"move": "Normal"},
+      "eye_bias": {"forward": 0.41, "down": 0.73},
+      "eye_joint": "Main1",
+      "poses": ["Swimming_Normal"]
+    },
+    {
+      "key": "manta",
+      "label": "Manta",
+      "glb": "manta.glb",
+      "motion": "swim",
+      "clip_for": {"fast": "Swim"},
+      "axes": [2, 0, 1],
+      "flip": [1, -1, -1],
+      "eye_bias": {"forward": 0.3, "down": 0.18},
+      "poses": ["Swim"]
+    },
+    {
+      "key": "axolotl",
+      "label": "Axolotl",
+      "glb": "axolotl.glb",
+      "motion": "swim",
+      "clip_for": {"fast": "Swim"},
+      "axes": [2, 0, 1],
+      "flip": [1, -1, -1],
+      "eye_bias": {"forward": 0.88, "down": 0.46},
+      "poses": ["Sheet"],
+      "anim": "Sheet",
+      "time": 0.0
+    }
+  ]
+}

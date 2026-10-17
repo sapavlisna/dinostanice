@@ -22,11 +22,13 @@ import qrcode
 from PIL import Image, ImageOps, UnidentifiedImageError
 from fastapi import (FastAPI, File, Form, Request, UploadFile, WebSocket,
                      WebSocketDisconnect)
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               RedirectResponse, Response)
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from dinostanice import capture, capture3d, paths, quality, scenes, store
+from dinostanice import (auth, capture, capture3d, paths, quality, scenes,
+                         stations, store)
 from dinostanice.capture import CaptureError
 from dinostanice.creatures3d import BY_KEY as BY_KEY3D
 from dinostanice.creatures3d import BY_MARKER as BY_MARKER3D
@@ -37,7 +39,9 @@ RES_ROOT = paths.resource_root()
 WEB_DIR = os.path.join(RES_ROOT, "web")
 MODELS3D_DIR = os.path.join(RES_ROOT, "data", "models3d")
 TEMPLATES_DIR = os.path.join(RES_ROOT, "data", "templates")
+# state.json je jen zdroj pro migraci domaci stanice (dinostanice.stations)
 STATE_PATH = os.path.join(paths.data_root(), "state.json")
+STATIONS_PATH = stations.default_path()
 
 MAX_UPLOAD = 25 * 1024 * 1024
 MAX_BODY = MAX_UPLOAD + 1024 * 1024   # rezerva na multipart obálku okolo fotky
@@ -47,22 +51,18 @@ MAX_CONCURRENT = 2       # exponat obsluhuje jedno dite po druhem, fronta je spr
 MAX_SIDE = 4000          # detection gains nothing above this, but the warp costs a lot
 MIN_SIDE = 400
 
-# --- Sessions (bod 6) ---------------------------------------------------
-# Session = jedna televize se svym QR, svymi ulovky a svym broadcastem.
-# Default session "tv" je dnesni chovani jedne televize: `/` bez `?s=`,
-# upload bez `s`, stara meta.json bez klice `session` — vsechno patri sem.
-DEFAULT_SESSION = store.DEFAULT_SESSION
-SESSION_RE = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
+# --- Stanice a sessions ---------------------------------------------------
+# Stanice (dinostanice.stations) = trvaly zaznam: krajina, ambient, `stay`.
+# Session = jeji zivy stav v pameti: pripojene televize a mobily, posledni
+# aktivita, spanek, posledni krmeni. Session vznika jen ke stanici, ktera
+# v registru je.
+DEFAULT_SESSION = stations.HOME
 IDLE_SLEEP_S = 15 * 60   # bez skenu QR / uploadu takhle dlouho scena usne
 IDLE_WARN_S = 13 * 60    # 2 minuty pred usnutim bezi na TV odpocet
 IDLE_TICK_S = 10         # jak casto background task sessions kontroluje
 SESSION_TTL_S = 2 * 3600  # session bez klientu a aktivity se zahodi z pameti
-# Default session "tv" doma bezi porad — uspavat ji po 15 minutach bez uploadu
-# by otravovalo. Uspavani proto plati jen pro explicitne zalozene sessions
-# (`?s=` jine nez "tv"). Kdyby mela nekdy usinat i domaci TV, staci ji odtud
-# vyndat.
-IDLE_EXEMPT = {DEFAULT_SESSION}
-FEED_COOLDOWN_S = 10   # krmeni z mobilu: max 1x za tolik sekund per session
+FEED_COOLDOWN_S = 10   # krmeni z mobilu: max 1x za tolik sekund per stanice
+DEVICE_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -86,6 +86,72 @@ app.mount("/web", StaticFiles(directory=WEB_DIR), name="web")
 app.mount("/models3d", StaticFiles(directory=MODELS3D_DIR), name="models3d")
 app.mount("/templates", StaticFiles(directory=TEMPLATES_DIR), name="templates")
 
+# Registr stanic a strazce kodu se zakladaji az pri prvnim pouziti, ne pri
+# importu: testy si cesty presmeruji do tmp_path a import nesmi sahat na
+# skutecna data.
+registry = None
+admins = None
+
+
+def get_registry():
+    global registry
+    if registry is None:
+        registry = stations.Registry(STATIONS_PATH, legacy_state=STATE_PATH)
+    return registry
+
+
+def get_admins():
+    global admins
+    if admins is None:
+        admins = auth.Admins(auth.load_code(log))
+    return admins
+
+
+def current_admin(request):
+    """Prihlaseny spravce z cookie, nebo None."""
+    return get_admins().from_cookie(request.cookies.get(auth.COOKIE))
+
+
+def may_manage(admin, st):
+    return admin is not None and (admin.main or st.owner == admin.id)
+
+
+def managed_station(request, raw_sid):
+    """(stanice, None) kdyz ji prihlaseny spravce smi ovladat, jinak
+    (None, chybova odpoved). Cizi stanice vypada jako neexistujici."""
+    admin = current_admin(request)
+    if admin is None:
+        return None, forbidden()
+    st = station_or_none(raw_sid)
+    if st is None or not may_manage(admin, st):
+        return None, gone()
+    return st, None
+
+
+def forbidden():
+    return JSONResponse({"ok": False, "error": "tohle smí jen správce stanice — "
+                                               "přihlas se kódem v adminu"},
+                        status_code=403)
+
+
+def gone():
+    return JSONResponse({"ok": False, "error": "tahle stanice neběží — požádej "
+                                               "dospělého o nový QR kód"},
+                        status_code=404)
+
+
+def clean_session(raw):
+    """Prazdne id = domaci stanice (stary QR bez `?s=`)."""
+    raw = (raw or "").strip().lower()
+    return raw or DEFAULT_SESSION
+
+
+def station_or_none(raw):
+    sid = clean_session(raw)
+    if not stations.SID_RE.match(sid):
+        return None
+    return get_registry().get(sid)
+
 
 @dataclass
 class Session:
@@ -94,34 +160,20 @@ class Session:
     last_seen: float = field(default_factory=time.monotonic)
     sleeping: bool = False
     last_feed: float = 0.0   # rate-limit krmeni (bod 11)
-    # Aktivni krajina teto televize. Default session ji persistuje ve
-    # state.json (nastavuje Hub.session), ostatni po restartu spadnou na
-    # default — druha TV je docasna zalezitost.
-    scene: str = DEFAULT_SCENE
-
-
-def clean_session(raw):
-    """Neplatne nebo prazdne id spadne do defaultni session — zadna chyba,
-    exponat obsluhuji deti."""
-    raw = (raw or "").strip()
-    return raw if SESSION_RE.match(raw) else DEFAULT_SESSION
 
 
 class Hub:
-    """Klienti a broadcast per session. Neznama session tise vznika pri prvnim
-    dotyku (WS connect, touch, upload) — tak prezije i restart serveru:
-    reconnect sceny si ji znovu zalozi."""
+    """Klienti a broadcast per stanice, plus televize cekajici na sparovani."""
 
     def __init__(self):
         self.sessions: dict[str, Session] = {}
+        self.pairing: dict[str, set] = {}     # parovaci kod -> WS televizi
         self.lock = asyncio.Lock()
 
     def session(self, sid):
         s = self.sessions.get(sid)
         if s is None:
             s = self.sessions[sid] = Session(sid)
-            if sid == DEFAULT_SESSION:
-                s.scene = _read_state()["scene"]
         return s
 
     async def add(self, sid, ws):
@@ -140,6 +192,14 @@ class Hub:
         async with self.lock:
             s = self.sessions.get(sid)
             targets = list(s.clients) if s else []
+        await self._send(targets, message, lambda ws: self.drop(sid, ws))
+
+    async def notify_pair(self, code, message):
+        async with self.lock:
+            targets = list(self.pairing.pop(code, ()))
+        await self._send(targets, message, None)
+
+    async def _send(self, targets, message, on_fail):
         if not targets:
             return
         results = await asyncio.gather(
@@ -147,23 +207,24 @@ class Hub:
             return_exceptions=True)
         for ws, res in zip(targets, results):
             if isinstance(res, BaseException):
-                log.warning("broadcast klientovi selhal (%s), odpojuji ho",
+                log.warning("zprava klientovi selhala (%s), odpojuji ho",
                             type(res).__name__)
-                await self.drop(sid, ws)
+                if on_fail:
+                    await on_fail(ws)
 
 
 hub = Hub()
 
 
 async def touch_session(sid):
-    """Aktivita v session: sken QR (otevreni /pridat), uspesny upload, nebo
-    explicitni touch z mobilu. Spici scenu probudi."""
+    """Aktivita ve stanici: sken QR (otevreni /pridat), uspesny upload, krmeni,
+    nebo explicitni touch z mobilu. Spici scenu probudi."""
     s = hub.session(sid)
     s.last_seen = time.monotonic()
     if s.sleeping:
         s.sleeping = False
         await hub.broadcast(sid, {"type": "wake"})
-        log.info("session %s probuzena", sid)
+        log.info("stanice %s probuzena", sid)
     return s
 
 
@@ -172,7 +233,7 @@ async def idle_tick(now=None):
 
     Uspani NENI mazani: ulovky na disku zustavaji netknute, scena jen ztmavne
     a ceka na sken QR. Sessions bez klientu a bez aktivity > SESSION_TTL_S se
-    zahodi jen z pameti."""
+    zahodi jen z pameti; stanice v registru zustava."""
     now = time.monotonic() if now is None else now
     for sid, s in list(hub.sessions.items()):
         idle = now - s.last_seen
@@ -181,12 +242,13 @@ async def idle_tick(now=None):
             log.info("session %s zahozena z pameti (bez klientu %d min)",
                      sid, int(idle / 60))
             continue
-        if sid in IDLE_EXEMPT or s.sleeping:
+        st = get_registry().get(sid)
+        if st is None or st.stay or s.sleeping:
             continue
         if idle >= IDLE_SLEEP_S:
             s.sleeping = True
             await hub.broadcast(sid, {"type": "sleep"})
-            log.info("session %s usnula (bez aktivity %d min)", sid, int(idle / 60))
+            log.info("stanice %s usnula (bez aktivity %d min)", sid, int(idle / 60))
         elif idle >= IDLE_WARN_S:
             # posila se kazdy tick — odpocet na TV se prubezne srovnava se serverem
             await hub.broadcast(
@@ -204,6 +266,8 @@ async def idle_loop():
 
 @app.on_event("startup")
 async def _start_idle_watch():
+    get_registry()
+    get_admins()
     app.state.idle_task = asyncio.create_task(idle_loop())
 
 
@@ -214,23 +278,12 @@ async def _stop_idle_watch():
         task.cancel()
 
 
-def _read_state():
-    """Malá trvalá nastavení (`ambient` + krajina defaultní televize). Čte se
-    za běhu, ne jednou při startu, ať jde cesta izolovat monkeypatchem stejně
-    jako store.CATCH_ROOT."""
+async def _json_body(request):
     try:
-        with open(STATE_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-        return {"ambient": bool(data.get("ambient", True)),
-                "scene": scenes.clean_scene(data.get("scene"))}
-    except (OSError, json.JSONDecodeError):
-        return {"ambient": True, "scene": DEFAULT_SCENE}
-
-
-def _write_state(state):
-    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    with open(STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=1)
+        body = await request.json()
+    except Exception:
+        body = {}
+    return body if isinstance(body, dict) else {}
 
 
 @app.middleware("http")
@@ -319,7 +372,15 @@ def clean_name(name):
     return name[:40]
 
 
-def _process_model_sheet(spec, warped, markers, data, name, session):
+class ForeignCreature(Exception):
+    """Vyfoceny tvor patri do jine krajiny, nez jaka na stanici bezi."""
+
+    def __init__(self, spec):
+        super().__init__(spec.key)
+        self.spec = spec
+
+
+def _process_model_sheet(spec, warped, markers, data, name, session, owner=""):
     """Vyfoceny list: staci prenest barvy na kuzi, kostru uz model ma."""
     shape = capture3d.load_shape(spec.key)
     coverage = capture3d.ink_coverage(warped, shape)
@@ -330,7 +391,8 @@ def _process_model_sheet(spec, warped, markers, data, name, session):
         photo = store.save_photo(catch_id, data)
         return store.write_meta(catch_id, creature=spec.key, label=spec.label,
                                 motion=spec.motion, name=name, coverage=coverage,
-                                markers=markers, photo=photo, session=session)
+                                markers=markers, photo=photo, session=session,
+                                owner=owner)
     except Exception:
         store.delete_catch(catch_id)
         raise
@@ -351,8 +413,11 @@ def _capture_advice(bgr, err):
     return "; ".join(advice)
 
 
-def process(data, name, session=DEFAULT_SESSION):
-    """The whole pipeline. Blocking — never call this straight from the event loop."""
+def process(data, name, session=DEFAULT_SESSION, accept=None, owner=""):
+    """The whole pipeline. Blocking — never call this straight from the event loop.
+
+    `accept` = sada tvoru, kterou stanice prijima; tvor odjinud vyhodi
+    ForeignCreature jeste pred ulozenim."""
     started = time.perf_counter()
     bgr = decode_photo(data)
 
@@ -362,7 +427,9 @@ def process(data, name, session=DEFAULT_SESSION):
         raise CaptureError(_capture_advice(bgr, e)) from e
 
     spec = BY_MARKER3D[creature_index]
-    meta = _process_model_sheet(spec, warped, markers, data, name, session)
+    if accept is not None and spec.scene != accept:
+        raise ForeignCreature(spec)
+    meta = _process_model_sheet(spec, warped, markers, data, name, session, owner)
     meta["took_ms"] = int((time.perf_counter() - started) * 1000)
     return meta
 
@@ -381,16 +448,37 @@ def _page(filename, missing_message):
 
 
 @app.get("/")
-def scene_page():
+def admin_page():
+    """Hlavni stranka = sprava: prihlaseni, moje stanice, odkazy pro televize."""
+    return _page("admin.html", "Správa stanice zatím není nasazená.")
+
+
+@app.get("/tv")
+def tv_pair_page():
+    """Televize bez odkazu: ukaze parovaci kod (nebo posledni stanici)."""
     return _page("scene.html", "Scéna zatím není nasazená.")
+
+
+@app.get("/tv/{token}")
+def tv_page(token: str):
+    return _page("scene.html", "Scéna zatím není nasazená.")
+
+
+@app.get("/api/tv/{token}")
+def api_tv(token: str):
+    """Tajny odkaz televize -> stanice. Jen tudy se scena ke stanici dostane."""
+    st = get_registry().by_tv(token)
+    if st is None:
+        return gone()
+    return {"s": st.id, "scene": st.scene}
 
 
 @app.get("/pridat")
 async def upload_page(s: str = ""):
-    # sken QR = aktivita v session (a budicek pro spici scenu); bez `s` je to
-    # domaci default, ktery neusina, tak neni co budit
-    if s:
-        await touch_session(clean_session(s))
+    # sken QR = aktivita ve stanici (a budicek pro spici scenu)
+    st = station_or_none(s)
+    if st is not None:
+        await touch_session(st.id)
     return _page("upload.html", "Stránka pro přidání zatím není nasazená.")
 
 
@@ -404,25 +492,228 @@ def sheets_page():
     return _page("sablony.html", "Přehled šablon zatím není nasazený.")
 
 
+@app.get("/admin")
 @app.get("/rezim")
-def rezim_page():
-    return _page("rezim.html", "Režim stanice zatím není nasazený.")
+def old_admin_page():
+    # stare zalozky a odkazy vedou sem
+    return RedirectResponse("/", status_code=307)
 
+
+# --- Spravci: prihlaseni ---------------------------------------------------
+
+@app.post("/api/login")
+async def api_login(request: Request):
+    body = await _json_body(request)
+    ip = request.client.host if request.client else "?"
+    reg = get_admins()
+    if reg.throttled(ip):
+        return JSONResponse({"ok": False, "error": "moc pokusů — zkus to za minutu"},
+                            status_code=429)
+    admin = reg.login(ip, body.get("code"))
+    if admin is None:
+        log.warning("špatný kód správce z %s", ip)
+        return JSONResponse({"ok": False, "error": "tenhle kód neplatí"}, status_code=403)
+    log.info("přihlášen správce %s (%s) z %s", admin.id, admin.name, ip)
+    resp = JSONResponse({"ok": True, **admin.public()})
+    resp.set_cookie(auth.COOKIE, reg.token(admin), max_age=auth.COOKIE_MAX_AGE,
+                    httponly=True, samesite="lax")
+    return resp
+
+
+@app.post("/api/logout")
+def api_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE)
+    return resp
+
+
+@app.get("/api/me")
+def api_me(request: Request):
+    admin = current_admin(request)
+    if admin is None:
+        return {"admin": False}
+    return {"admin": True, **admin.public()}
+
+
+# --- Spravci: sprava (jen hlavni) -------------------------------------------
+
+def _main_only(request):
+    admin = current_admin(request)
+    if admin is None or not admin.main:
+        return forbidden()
+    return None
+
+
+def _admin_info(a):
+    owned = [st for st in get_registry().items.values() if st.owner == a.id]
+    return {**a.public(), "stations": len(owned)}
+
+
+@app.get("/api/admins")
+def api_admins(request: Request):
+    if (err := _main_only(request)):
+        return err
+    items = sorted(get_admins().items.values(), key=lambda a: (not a.main, a.created))
+    return [_admin_info(a) for a in items]
+
+
+@app.post("/api/admins")
+async def api_admin_create(request: Request):
+    if (err := _main_only(request)):
+        return err
+    body = await _json_body(request)
+    admin, code = get_admins().create(body.get("name"))
+    log.info("nový správce %s (%s)", admin.id, admin.name)
+    return {"ok": True, **_admin_info(admin), "code": code}
+
+
+@app.post("/api/admins/{aid}/code")
+def api_admin_new_code(request: Request, aid: str):
+    if (err := _main_only(request)):
+        return err
+    reg = get_admins()
+    if aid not in reg.items:
+        return JSONResponse({"ok": False, "error": "takový správce není"}, status_code=404)
+    if aid == auth.MAIN_ID:
+        return JSONResponse({"ok": False, "error": "kód hlavního správce se mění "
+                                                   "v .env (DINO_ADMIN_CODE)"},
+                            status_code=400)
+    code = reg.reset_code(aid)
+    log.info("správce %s dostal nový kód", aid)
+    return {"ok": True, "code": code}
+
+
+@app.delete("/api/admins/{aid}")
+def api_admin_delete(request: Request, aid: str):
+    """Zrusi spravce; jeho stanice nezmizi, prevezme je hlavni spravce."""
+    if (err := _main_only(request)):
+        return err
+    reg = get_admins()
+    if not reg.remove(aid):
+        return JSONResponse({"ok": False, "error": "tohoto správce zrušit nejde"},
+                            status_code=400)
+    moved = 0
+    for st in list(get_registry().items.values()):
+        if st.owner == aid:
+            get_registry().update(st.id, owner=auth.MAIN_ID)
+            moved += 1
+    log.info("správce %s zrušen, %d stanic převzal hlavní", aid, moved)
+    return {"ok": True, "moved": moved}
+
+
+# --- Stanice -----------------------------------------------------------------
+
+def _station_info(st, with_owner=False):
+    sess = hub.sessions.get(st.id)
+    info = {"s": st.id, "scene": st.scene, "ambient": st.ambient, "stay": st.stay,
+            "created": st.created, "home": st.id == DEFAULT_SESSION,
+            "tv": f"/tv/{st.tv}",
+            "screens": len(sess.clients) if sess else 0,
+            "sleeping": bool(sess and sess.sleeping),
+            "catches": len(store.list_catches(session=st.id))}
+    if with_owner:
+        owner = get_admins().items.get(st.owner)
+        info["owner"] = st.owner
+        info["ownerName"] = owner.name if owner else "?"
+    return info
+
+
+@app.get("/api/stations")
+def api_stations(request: Request):
+    admin = current_admin(request)
+    if admin is None:
+        return forbidden()
+    items = sorted((st for st in get_registry().items.values() if may_manage(admin, st)),
+                   key=lambda st: (st.owner != admin.id, st.id != DEFAULT_SESSION,
+                                   -st.created))
+    return [_station_info(st, with_owner=admin.main) for st in items]
+
+
+@app.post("/api/stations")
+async def api_station_create(request: Request):
+    admin = current_admin(request)
+    if admin is None:
+        return forbidden()
+    body = await _json_body(request)
+    st = get_registry().create(body.get("scene"), owner=admin.id)
+    log.info("založena stanice %s (%s) správcem %s", st.id, st.scene, admin.id)
+    return {"ok": True, **_station_info(st)}
+
+
+@app.delete("/api/stations/{sid}")
+async def api_station_delete(request: Request, sid: str):
+    """Ukonci stanici: jeji ulovky jdou do kose, televize se vrati na parovani,
+    mobily s jejim QR dostanou „stanice nebezi"."""
+    st, err = managed_station(request, sid)
+    if err:
+        return err
+    if st.id == DEFAULT_SESSION:
+        return JSONResponse({"ok": False, "error": "domácí stanici ukončit nejde, "
+                                                   "jen vyprázdnit"}, status_code=400)
+    deleted = await _clear_catches(st.id)
+    get_registry().remove(st.id)
+    await hub.broadcast(st.id, {"type": "ended"})
+    hub.sessions.pop(st.id, None)
+    log.info("stanice %s ukončena (%d úlovků do koše)", st.id, deleted)
+    return {"ok": True, "deleted": deleted}
+
+
+@app.post("/api/pair")
+def api_pair_new():
+    """Televize bez odkazu si vyzada kratky kod; spravce ho opise."""
+    code = get_registry().new_pair_code()
+    return {"code": code, "ttl": stations.PAIR_TTL_S}
+
+
+@app.post("/api/pair/{code}")
+async def api_pair(request: Request, code: str):
+    """Spravce sparuje televizi ukazujici `code` se svou stanici (`s`), nebo
+    s novou. Televize dostane tajny odkaz a dal uz kod nepotrebuje."""
+    admin = current_admin(request)
+    if admin is None:
+        return forbidden()
+    code = auth.normalize(code)
+    reg = get_registry()
+    body = await _json_body(request)
+    st = None
+    if body.get("s"):
+        st, err = managed_station(request, body["s"])
+        if err:
+            return err
+    if not reg.take_pair(code):
+        return JSONResponse({"ok": False, "error": "tenhle kód televize neukazuje "
+                                                   "(nebo už vypršel)"}, status_code=404)
+    if st is None:
+        st = reg.create(body.get("scene"), owner=admin.id)
+        log.info("založena stanice %s (%s) pro televizi s kódem %s", st.id, st.scene, code)
+    await hub.notify_pair(code, {"type": "paired", "s": st.id, "tv": st.tv})
+    return {"ok": True, **_station_info(st)}
+
+
+# --- Sablony, katalog, sceny ---------------------------------------------
 
 @app.get("/api/templates")
-def api_templates():
+def api_templates(scene: str = ""):
     """Předlohy vygenerované z 3D modelů.
 
     Jde se výhradně přes katalog, ne přes obsah adresáře: tvor bez záznamu
     v katalogu nemá index značky, takže by ho vyfocený list neidentifikoval
-    a nabízet takovou předlohu k tisku by byla past.
+    a nabízet takovou předlohu k tisku by byla past. `scene` (klíč scény nebo
+    sady) zúží výběr na tvory, které ta scéna přijme; `scene` v odpovědi je
+    sada tvorů, podle které se předlohy třídí.
     """
+    accept = None
+    if scene:
+        sc = scenes.BY_KEY.get(scene)
+        accept = sc.catalogue if sc else scene
     out = []
     for spec in CATALOGUE3D:
+        if accept is not None and spec.scene != accept:
+            continue
         name = f"{spec.key}.svg"
         if os.path.exists(os.path.join(TEMPLATES_DIR, name)):
-            out.append({"key": spec.key, "label": spec.label,
-                        "motion": spec.motion, "template": f"/templates/{name}"})
+            out.append({"key": spec.key, "label": spec.label, "motion": spec.motion,
+                        "scene": spec.scene, "template": f"/templates/{name}"})
     return JSONResponse(sorted(out, key=lambda e: e["label"]))
 
 
@@ -448,44 +739,50 @@ def _catch_scene(meta):
     return spec.scene if spec is not None else DEFAULT_SCENE
 
 
+def _accepts(st):
+    return scenes.BY_KEY[scenes.clean_scene(st.scene)].catalogue
+
+
 @app.get("/api/scenes")
 def api_scenes():
-    """Registr scén pro /rezim: karty s popisem, `catalogue` říká, kterou
-    sadu tvorů scéna přijímá."""
-    return [{"key": sc.key, "label": sc.label, "subtitle": sc.subtitle,
-             "catalogue": sc.catalogue} for sc in scenes.SCENES]
+    """Registr scén: jméno, popis, `catalogue` (kterou sadu tvorů scéna
+    přijímá) a texty pro děti. Pořadí = pořadí karet v adminu."""
+    return [sc.public() for sc in scenes.SCENES]
+
+
+@app.get("/scenes/{key}/render.js")
+def scene_render(key: str):
+    """Vykreslení scény. Jen přes registr — ze složek scén se jinak nic
+    nevydává (leží v nich i zdrojové modely a poznámky)."""
+    if key not in scenes.BY_KEY:
+        return Response(status_code=404)
+    return FileResponse(os.path.join(scenes.SCENES_DIR, key, "render.js"),
+                        media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/scene/active")
 def api_scene_active(s: str = ""):
-    """Aktivní krajina session. Neznámou session tiše založí (scéna se na ni
-    ptá při startu, dřív než se připojí WS)."""
-    sid = clean_session(s)
-    return {"s": sid, "scene": hub.session(sid).scene}
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    return {"s": st.id, "scene": st.scene}
 
 
 @app.post("/api/scene/active")
 async def api_scene_active_set(request: Request):
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    if not isinstance(body, dict):
-        body = {}
-    sid = clean_session(body.get("s"))
+    body = await _json_body(request)
+    st, err = managed_station(request, body.get("s"))
+    if err:
+        return err
     key = body.get("scene")
     if key not in scenes.BY_KEY:
         return JSONResponse({"ok": False, "error": "taková krajina tu není"},
                             status_code=400)
-    sess = hub.session(sid)
-    sess.scene = key
-    if sid == DEFAULT_SESSION:
-        state = _read_state()
-        state["scene"] = key
-        _write_state(state)
-    log.info("session %s prepnuta na krajinu %s", sid, key)
-    await hub.broadcast(sid, {"type": "scene", "scene": key})
-    return {"ok": True, "s": sid, "scene": key}
+    get_registry().update(st.id, scene=key)
+    log.info("stanice %s přepnuta na krajinu %s", st.id, key)
+    await hub.broadcast(st.id, {"type": "scene", "scene": key})
+    return {"ok": True, "s": st.id, "scene": key}
 
 
 @app.get("/favicon.ico")
@@ -502,8 +799,12 @@ def _keep_rejected(data, reason):
 
 @app.post("/api/upload")
 async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
-                     s: str = Form("")):
-    sid = clean_session(s)
+                     s: str = Form(""), device: str = Form("")):
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    sid = st.id
+    owner = device if DEVICE_RE.match(device or "") else ""
     data = await photo.read(MAX_UPLOAD + 1)
     if not data:
         return JSONResponse({"ok": False, "error": "fotka nedorazila, zkus to znovu"},
@@ -512,9 +813,23 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
         return JSONResponse({"ok": False, "error": "fotka je moc velká (max 25 MB)"},
                             status_code=413)
 
+    accept = _accepts(st)
     try:
         async with PROCESS_SEM:
-            meta = await run_in_threadpool(process, data, clean_name(name), sid)
+            meta = await run_in_threadpool(process, data, clean_name(name), sid,
+                                           accept, owner)
+    except ForeignCreature as e:
+        # Zvire z jine krajiny se neuklada: dite by ho na televizi nevidelo
+        # a nevedelo proc. Fotka neni vadna, do rejected nepatri.
+        sc = scenes.BY_KEY[scenes.clean_scene(st.scene)]
+        log.info("stanice %s: %s nepatří do krajiny %s — odmítnuto",
+                 sid, e.spec.key, st.scene)
+        allowed = [m.label for m in CATALOGUE3D if m.scene == accept]
+        return JSONResponse(
+            {"ok": False, "foreign": True, "allowed": allowed,
+             "error": f"{e.spec.label} sem nepatří — na televizi teď běží "
+                      f"{sc.label}. Vybarvi si někoho odsud!"},
+            status_code=409)
     except CaptureError as e:
         log.warning("upload odmítnut: %s", e)
         _keep_rejected(data, str(e))
@@ -526,24 +841,10 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
             {"ok": False, "error": f"zpracování fotky selhalo ({type(e).__name__})"},
             status_code=500)
 
-    log.info("úlovek %s: %s session=%s markers=%s coverage=%.3f took_ms=%s",
+    log.info("úlovek %s: %s stanice=%s markers=%s coverage=%.3f took_ms=%s",
              meta["id"], meta["creature"], sid,
              meta.get("markers"), meta.get("coverage", 0.0), meta.get("took_ms"))
-    sess = await touch_session(sid)     # uspesny upload = aktivita (a budicek)
-
-    # Tvor z jine krajiny, nez jaka na televizi zrovna bezi: ulovek je ulozeny
-    # (nic se nezahazuje), jen se scene neposila — objevi se po prepnuti.
-    active = scenes.BY_KEY.get(sess.scene)
-    accept = active.catalogue if active else DEFAULT_SCENE
-    home = _catch_scene(meta)
-    if home != accept:
-        home_label = scenes.BY_KEY[home].label if home in scenes.BY_KEY else home
-        note = (f"{meta['label']} patří do jiné krajiny — {home_label}. "
-                f"Je uložený; přepni krajinu v Režimu stanice a objeví se.")
-        log.info("úlovek %s patří do %s, session %s má %s — bez broadcastu",
-                 meta["id"], home, sid, sess.scene)
-        return {"ok": True, **meta, "note": note}
-
+    await touch_session(sid)     # uspesny upload = aktivita (a budicek)
     await hub.broadcast(sid, {"type": "add", "url": meta["url"], "id": meta["id"],
                               "label": meta["label"], "name": meta["name"],
                               "creature": meta["creature"]})
@@ -551,25 +852,39 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
 
 
 @app.get("/api/rigs")
-def api_rigs(s: str = "", scene: str = ""):
-    # bez parametru default session — stavajici klienti (scena, /pridat,
-    # /rezim) tak funguji beze zmeny chovani; `scene` navic filtruje na
-    # ulovky patrici dane krajine (scena po prepnuti nenacita cizi)
-    out = store.list_catches(session=clean_session(s))
+def api_rigs(s: str = "", scene: str = "", mine: str = ""):
+    """Ulovky stanice. `scene` zuzi na ulovky patrici te krajine (scena po
+    prepnuti nenacita cizi), `mine` na ulovky jednoho mobilu."""
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    out = store.list_catches(session=st.id)
     if scene:
         sc = scenes.BY_KEY.get(scene)
         accept = sc.catalogue if sc else scene
         out = [m for m in out if _catch_scene(m) == accept]
+    if mine:
+        out = [m for m in out if m.get("owner") and m.get("owner") == mine]
     return out
 
 
 @app.delete("/api/rigs/{catch_id}")
-async def api_delete(catch_id: str):
+async def api_delete(request: Request, catch_id: str, device: str = ""):
+    """Smazat smi admin, nebo mobil, ktery ulovek poslal."""
     try:
         meta = store.read_meta(catch_id)
-        removed = store.delete_catch(catch_id)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if not meta:
+        return JSONResponse({"ok": False, "error": "takový úlovek tu není"},
+                            status_code=404)
+    own = bool(device) and meta.get("owner") == device
+    st = station_or_none(meta.get("session"))
+    if not (own or (st is not None and may_manage(current_admin(request), st))):
+        return JSONResponse({"ok": False, "error": "smazat můžeš jen svoje zvíře"},
+                            status_code=403)
+    try:
+        removed = store.delete_catch(catch_id)
     except OSError:
         log.exception("odstavení úlovku %s selhalo", catch_id)
         return JSONResponse({"ok": False, "error": "úlovek se nepodařilo smazat, "
@@ -578,8 +893,9 @@ async def api_delete(catch_id: str):
     if not removed:
         return JSONResponse({"ok": False, "error": "takový úlovek tu není"},
                             status_code=404)
-    sid = clean_session((meta or {}).get("session"))
-    log.info("úlovek %s smazán (session %s)", catch_id, sid)
+    sid = clean_session(meta.get("session"))
+    log.info("úlovek %s smazán (stanice %s, %s)", catch_id, sid,
+             "vlastníkem" if own else "správcem")
     await hub.broadcast(sid, {"type": "remove", "id": catch_id})
     leftover = await run_in_threadpool(store.purge_deleted)
     if leftover:
@@ -589,30 +905,29 @@ async def api_delete(catch_id: str):
 
 
 @app.get("/api/scene/settings")
-def api_scene_settings():
-    return _read_state()
+def api_scene_settings(s: str = ""):
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    return {"ambient": st.ambient, "stay": st.stay, "scene": st.scene}
 
 
 @app.post("/api/scene/settings")
-async def api_scene_settings_set(request: Request, s: str = ""):
-    # nastaveni (ambient) je ulozene globalne, ale zprava jde jen scene te
-    # session, ktera si prepina — cizi televize nema proc reagovat
-    sid = clean_session(s)
-    body = await request.json()
-    state = _read_state()
-    state["ambient"] = bool(body.get("ambient", state["ambient"]))
-    _write_state(state)
-    log.info("nastavení scény: ambient=%s", state["ambient"])
-    await hub.broadcast(sid, {"type": "settings", "ambient": state["ambient"]})
-    return state
+async def api_scene_settings_set(request: Request):
+    """Nastaveni jedne stanice: `ambient` (ukazkovi tvorove z katalogu)
+    a `stay` (neusinat)."""
+    body = await _json_body(request)
+    st, err = managed_station(request, body.get("s"))
+    if err:
+        return err
+    fields = {k: bool(body[k]) for k in ("ambient", "stay") if k in body}
+    st = get_registry().update(st.id, **fields)
+    log.info("stanice %s: nastavení %s", st.id, fields)
+    await hub.broadcast(st.id, {"type": "settings", "ambient": st.ambient})
+    return {"ambient": st.ambient, "stay": st.stay, "scene": st.scene}
 
 
-@app.post("/api/scene/reset")
-async def api_scene_reset(s: str = ""):
-    """Vyprázdní stanici: smaže úlovky JEN dané session (ambientní doplňky
-    z katalogu v `data/catch` nejsou, tak se jich to netýká) a pošle jedinou
-    zprávu scéně, ať si nespustí topUp() N-krát za sebou."""
-    sid = clean_session(s)
+async def _clear_catches(sid):
     deleted = 0
     for meta in store.list_catches(session=sid):
         if store.delete_catch(meta["id"]):
@@ -621,44 +936,52 @@ async def api_scene_reset(s: str = ""):
     if leftover:
         log.warning("%d odstavených úlovků drží otevřené soubory, dočistí se po startu",
                     leftover)
-    log.info("stanice %s vyprázdněna: smazáno %d úlovků", sid, deleted)
-    await hub.broadcast(sid, {"type": "cleared"})
+    return deleted
+
+
+@app.post("/api/scene/reset")
+async def api_scene_reset(request: Request, s: str = ""):
+    """Vyprázdní stanici: smaže úlovky JEN dané stanice (ambientní doplňky
+    z katalogu v `data/catch` nejsou, tak se jich to netýká) a pošle jedinou
+    zprávu scéně, ať si nespustí topUp() N-krát za sebou."""
+    st, err = managed_station(request, s)
+    if err:
+        return err
+    deleted = await _clear_catches(st.id)
+    log.info("stanice %s vyprázdněna: smazáno %d úlovků", st.id, deleted)
+    await hub.broadcast(st.id, {"type": "cleared"})
     return {"ok": True, "deleted": deleted}
 
 
 @app.post("/api/feed")
 async def api_feed(request: Request):
     """Krmeni z mobilu (bod 11): shodi do sceny kus zelene, chodci v okoli
-    k nemu zamiri. Rate-limit per session, at deti scenu nezasypou."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    sid = clean_session(body.get("s") if isinstance(body, dict) else "")
-    sess = hub.session(sid)
+    k nemu zamiri. Rate-limit per stanice, at deti scenu nezasypou."""
+    body = await _json_body(request)
+    st = station_or_none(body.get("s"))
+    if st is None:
+        return gone()
+    sess = hub.session(st.id)
     now = time.monotonic()
     if now - sess.last_feed < FEED_COOLDOWN_S:
-        return JSONResponse(
-            {"ok": False, "error": "Dinosauři ještě žvýkají — počkej chvilku, "
-                                   "než hodíš další porci! 🦕"},
-            status_code=429)
+        sc = scenes.BY_KEY[scenes.clean_scene(st.scene)]
+        return JSONResponse({"ok": False, "error": sc.feedBusy}, status_code=429)
     sess.last_feed = now
-    await touch_session(sid)   # krmeni je aktivita (a budicek pro spici scenu)
+    await touch_session(st.id)   # krmeni je aktivita (a budicek pro spici scenu)
     x = round(random.uniform(0.25, 0.75), 3)
-    await hub.broadcast(sid, {"type": "feed", "x": x})
-    log.info("session %s: hozeno žrádlo na x=%.3f", sid, x)
+    await hub.broadcast(st.id, {"type": "feed", "x": x})
+    log.info("stanice %s: hozeno žrádlo na x=%.3f", st.id, x)
     return {"ok": True, "x": x}
 
 
 @app.post("/api/session/touch")
 async def api_session_touch(request: Request):
     """Explicitni „ještě chvíli" z mobilu (a budicek pro spici scenu)."""
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    sid = clean_session(body.get("s") if isinstance(body, dict) else "")
-    sess = await touch_session(sid)
+    body = await _json_body(request)
+    st = station_or_none(body.get("s"))
+    if st is None:
+        return gone()
+    sess = await touch_session(st.id)
     return {"ok": True, "s": sess.id, "sleeping": sess.sleeping}
 
 
@@ -666,16 +989,16 @@ async def api_session_touch(request: Request):
 def api_session_state(sid: str):
     """Stav session pro ladeni a testy; nic nevytvari ani neprodluzuje."""
     sess = hub.sessions.get(clean_session(sid))
-    if sess is None:
+    st = station_or_none(sid)
+    if sess is None or st is None:
         return JSONResponse({"ok": False, "error": "session neexistuje"},
                             status_code=404)
     return {"ok": True, "id": sess.id, "sleeping": sess.sleeping,
-            "scene": sess.scene, "clients": len(sess.clients),
+            "scene": st.scene, "clients": len(sess.clients),
             "idle_s": round(time.monotonic() - sess.last_seen, 3)}
 
 
-@app.get("/api/qr")
-def api_qr(request: Request, s: str = ""):
+def public_base(request):
     port = request.url.port or int(os.environ.get("DINO_PORT", 0)) or 80
     # Point the phone at whatever address the scene itself is being viewed on:
     # over Tailscale or any other tunnel, our LAN address is unreachable.
@@ -684,11 +1007,16 @@ def api_qr(request: Request, s: str = ""):
         # v kontejneru je lan_ip() adresa dockerove site (172.x), ktera mobilu
         # nerekne nic — tam musi adresu hostitele dodat DINO_HOST
         host = PUBLIC_HOST or ("" if IN_CONTAINER else lan_ip()) or host
-    target = f"http://{host}:{port}/pridat"
-    sid = clean_session(s)
-    if sid != DEFAULT_SESSION:
-        # default zustava hole /pridat — QR domaci televize se nemeni
-        target += f"?s={sid}"
+    return f"http://{host}:{port}"
+
+
+@app.get("/api/qr")
+def api_qr(request: Request, s: str = ""):
+    """QR pro deti: vede jen na /pridat dane stanice (foceni, zradlo)."""
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    target = f"{public_base(request)}/pridat?s={st.id}"
     img = qrcode.make(target, box_size=8, border=2)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -698,8 +1026,20 @@ def api_qr(request: Request, s: str = ""):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
-    sid = clean_session(ws.query_params.get("s"))
     await ws.accept()
+    pair = auth.normalize(ws.query_params.get("pair"))
+    if pair:
+        await _ws_pairing(ws, pair)
+        return
+    st = station_or_none(ws.query_params.get("s"))
+    if st is None:
+        try:
+            await ws.send_json({"type": "ended"})
+            await ws.close(code=4404)
+        except Exception:
+            pass
+        return
+    sid = st.id
     await hub.add(sid, ws)
     # reconnect do spici session nesmi scenu probudit do plneho svetla —
     # klient se hned dozvi, ze se spi (budi jen sken QR / touch)
@@ -717,6 +1057,31 @@ async def ws_endpoint(ws: WebSocket):
         pass
     finally:
         await hub.drop(sid, ws)
+
+
+async def _ws_pairing(ws, code):
+    """Televize ceka na sparovani: az admin kod potvrdi, dostane `paired`."""
+    if not get_registry().pair_valid(code):
+        try:
+            await ws.send_json({"type": "pair_expired"})
+            await ws.close()
+        except Exception:
+            pass
+        return
+    async with hub.lock:
+        hub.pairing.setdefault(code, set()).add(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except Exception:
+        pass
+    finally:
+        async with hub.lock:
+            waiting = hub.pairing.get(code)
+            if waiting:
+                waiting.discard(ws)
+                if not waiting:
+                    hub.pairing.pop(code, None)
 
 
 if __name__ == "__main__":

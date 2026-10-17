@@ -4,6 +4,7 @@ out/
 tmp/
 data/catch/
 data/state.json
+data/config/
 .env
 NUL
 data/trash/

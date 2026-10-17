@@ -2,13 +2,11 @@
    scén: stejné pásy, stejní tvorové (catalogue 'cretaceous'), jen backdrop
    v noční variantě a tlumené osvětlení 3D vrstvy. */
 
-import day from './cretaceous.js';
+import day from '/scenes/cretaceous/render.js';
 
 export default {
   ...day,
-  key: 'cretaceous_night',
-  label: 'Noční laguna',
-  backdrop: async () => (await import('../backdrops/cretaceous.js')).create('night'),
+  backdrop: async () => (await import('/web/backdrops/cretaceous.js')).create('night'),
   lighting: {
     hemi: { sky: 0x33456e, ground: 0x1c2233, intensity: 0.62 },
     // mesic sviti z tehoz mista jako slunce ve dne

@@ -41,18 +41,19 @@ druhé instance nad týmiž úlovky. Konec: `Ctrl+C` v okně.
 V Dockeru (běží pořád, přežije restart PC):
 
 ```powershell
-docker compose up -d --build      # scéna na http://localhost:8100/
+docker compose up -d --build      # správa na http://localhost:8100/
 docker compose logs -f            # co se děje
 docker compose down               # konec
 ```
 
 Port je **8100** (8000 na domácím stroji drží jiná služba). Přepíše se
 proměnnou `DINO_PORT` (v `.env` nebo na příkazové řádce).
-Úlovky (`data/catch/`), koš smazaných (`data/trash/`) i nastavení scény
-(`data/state.json`) jsou bind mountnuté ven, takže přestavbu image přežijí.
-`data/state.json` proto musí existovat **před** prvním `docker compose up` —
-jinak si na jeho místě Docker udělá adresář. Stačí do něj napsat `{}`.
-(Při spuštění bez kontejneru si ho server vyrobí sám.)
+Úlovky (`data/catch/`), koš smazaných (`data/trash/`) i stanice a kód správce
+(`data/config/`) jsou bind mountnuté ven, takže přestavbu image přežijí.
+
+**Kód hlavního správce** je v `.env` jako `DINO_ADMIN_CODE=…`. Když tam není, server ho
+při prvním startu vygeneruje, uloží do `data/config/admin.json` a vypíše do
+logu (`docker compose logs | findstr kód`).
 
 Nebo přímo z konzole, bez kontejneru:
 
@@ -158,30 +159,38 @@ zapéct natrvalo.
 Regresní kontrola chůze: `python tools/gait_report.py` osadí běžící scénu
 chodci, chvíli měří a spadne, když prokluz nebo tempo vyjedou z mezí.
 
-## Více obrazovek (sessions)
+## Stanice, správci a děti
 
-Scéna bez parametru je domácí televize (session `tv`). `/?s=<id>` otevře
-druhou nezávislou obrazovku: vlastní QR kód, vlastní úlovky, vlastní krajina —
-co se nahraje u jedné, u druhé se neukáže. Session vzniká sama prvním
-otevřením, nic se nezakládá.
+Hlavní stránka (`http://<adresa>:8100/`) je **správa**. Postup:
 
-Vedlejší sessions po čtvrthodině bez aktivity **usnou**: na TV běží dvě minuty
-odpočet, pak scéna ztmavne a zbude velké QR. Probudí ji sken QR, upload nebo
-krmení; nic se přitom nemaže. Domácí `tv` se neuspává nikdy.
+1. Přihlas se svým **kódem správce**.
+2. **Založ stanici** (vybereš krajinu). Stanice = jedna televize se svou
+   krajinou, svými zvířaty a QR kódem pro děti.
+3. U stanice je **odkaz pro televizi** (`/tv/<tajný kód>`). Otevři ho
+   v prohlížeči na počítači u televize (klávesa F = celá obrazovka). Kdo odkaz
+   nemá, cizí scénu neotevře. Na televizi, kde se odkaz špatně píše, stačí
+   otevřít `/tv` — ukáže čtyřmístný kód, který se zadá u stanice ve správě.
+4. Děti naskenují **QR kód** (na televizi i k vytištění) a dostanou se jen
+   na focení obrázku, házení žrádla, náhledy zvířat, která běžící krajina
+   pustí, a svoje zvířata (smazat jde jen svoje — pozná se podle mobilu).
+5. Ve správě stanice přepínáš krajinu, ukázková zvířata, „neusínat",
+   mažeš zvířata od dětí, tiskneš předlohy (roztříděné podle krajin) a QR
+   a nakonec stanici ukončíš.
 
-## Režim stanice (/rezim)
+**Víc správců na jednom serveru.** Hlavní správce (kód z `.env`) přidává ve
+správě další správce — každý dostane vlastní kód a vidí jen svoje stanice,
+hlavní správce všechny. Kód se ukáže jen při vytvoření; ztracený se nahradí
+novým (starý přestane platit). Zrušený správce o stanice nepřijde — převezme
+je hlavní.
 
-Stránka pro rodiče (odkaz „Zpět na scénu · Šablony · Přidat" má i zpáteční
-směr):
+Zvíře z jiné krajiny se **odmítne a neuloží** — dítě dostane hlášku, co
+sem patří. Neznámá stanice se nezaloží: skončená stanice řekne „neběží".
 
-- **Krajina** — přepnutí scény za běhu (Křídová laguna / Noční laguna /
-  Akvárium).
-  Krajiny se prolnou, tvorové staré krajiny odejdou a přijdou ti, kdo patří
-  do nové. Úlovky cizí krajiny se nemažou — čekají na přepnutí zpátky;
-  upload do cizí krajiny se uloží a mobil dostane vysvětlení.
-- **Ukázkoví tvorové** — zapne/vypne doplňování scény z katalogu. Vypnutí
-  nemaže, jen se přestane doplňovat.
-- **Vyprázdnit stanici** — smaže úlovky téhle obrazovky (s potvrzením).
+Domácí stanice `tv` vznikla z dřívějšího nastavení a neusíná. Ostatní po
+čtvrthodině bez aktivity **usnou** (lze vypnout přepínačem „Neusínat"): na TV
+běží dvě minuty odpočet, pak scéna ztmavne a zbude velké QR. Probudí ji sken
+QR, upload nebo krmení; nic se přitom nemaže. Staré odkazy `/admin`
+a `/rezim` vedou na hlavní stránku.
 
 Smazané úlovky (i jednotlivé, mazané ze stránky pro mobil) nekončí v nicotě,
 ale v koši `data/trash/` — jsou to dětské výtvory a omylem stisknuté tlačítko
@@ -189,8 +198,9 @@ je nesmí zničit. Koš se čistí po 30 dnech.
 
 ## Jak vytisknout šablony
 
-Otevři `/sablony` — jsou tam všechny předlohy s náhledem a tlačítkem
-k tisku. Vyrobit znovu: `python tools/model_sheet.py`.
+Ve správě stanice (nebo na `/sablony`) jsou předlohy roztříděné podle krajin;
+„🖨 Tisk všech" pošle na tiskárnu celou krajinu, každou předlohu na vlastní
+list A4 na šířku. Vyrobit znovu: `python tools/model_sheet.py`.
 
 Tiskni **na 100 %**, žádné „přizpůsobit stránce" — na měřítku záleží, rozměry
 v milimetrech drží celou pipeline pohromadě. Zmenšený list se pozná: rohové
@@ -241,10 +251,33 @@ na přepnutí.
 
 Modely jsou hotové rigované GLB (`data/models_src/*.glb`, většinou CC0 od
 Quaternia; ptakoještěr a axolotl přišli bez kostry a pod CC-BY, tak ji mají
-dopsanou — autoři a licence v [CREDITS.md](CREDITS.md)). Přidat dalšího tvora znamená
-sehnat model, zapsat záznam do `CATALOGUE` v `dinostanice/creatures3d.py`
-(s **novým** indexem značky — přečíslování znehodnotí už vytištěné listy)
-a spustit generátory níž.
+dopsanou — autoři a licence v [CREDITS.md](CREDITS.md)).
+
+## Jak přidat scénu (a zvířata)
+
+Scéna je složka `scenes/<klíč>/`: `scene.json` (jméno, popis, texty pro děti,
+zvířata), `render.js` (krajina, světla, pásy, pohyb, krmení) a volitelně
+`POZNAMKY.md` (proč má které zvíře výjimky).
+
+```powershell
+python tools/scena.py nova les --z cretaceous   # 1. složka podle vzorové scény
+#   2. modely (glb/fbx/obj/blend, s kostrou a animacemi) do scenes/les/modely/
+python tools/scena.py import les                # 3. Blender srovná, předlohy a modely se vygenerují
+docker compose up -d --build                    # 4. nasadit
+```
+
+Import modely převede Blenderem (headless; cesta v `.env` jako `BLENDER=…`,
+hotová GLB projdou i s `--bez-blenderu`), postaví je na zem, odhadne pohyb
+(chůze/let/plavání) a role klipů, zkontroluje kostru, klipy a kost oka a vypíše,
+co opravit ve `scene.json`. **Indexy značek přiděluje sám** do
+`scenes/markers.json` — jen přibývají, nikdy se nerecyklují (index je
+vytištěný v rozích listů). `python tools/scena.py kontrola les` jen zkontroluje
+bez zápisu. Náhled předlohy je pak v `out/<zvíře>_sheet.png` — **prohlédnout**,
+póza a oko se ladí ve `scene.json` (`poses`, `anim`/`time`, `eye_joint`,
+`eye_bias`, `axes`/`flip`, `"import": {"rotate_y": 90}`) a import se pustí znovu.
+
+Scéna, která má jen jinou krajinu se stejnými zvířaty (jako Noční laguna), má
+ve `scene.json` jen `"catalogue": "<vlastník>"` a texty zdědí.
 
 Póza předlohy se vybírá sama — projde se cyklus chůze a vezme se okamžik, kdy
 tvar nejlíp vyplní list (rozkročené nohy jsou čitelnější a pro texturu
@@ -277,7 +310,7 @@ v trávě a ne nad ní. Kamera je ortografická a nastavená v pixelech obrazovk
 takže obě vrstvy sedí bez dopočítávání perspektivy.
 
 Scéna je **data**: pásy, chování, osvětlení a krajina žijí v definici
-`web/scenes/<key>.js`, samotný `web/scene.js` je generický stroj nad ní.
+`scenes/<key>/render.js`, samotný `web/scene.js` je generický stroj nad ní.
 Druhá krajina (noční laguna) je proto pár řádků navrch.
 
 Než něco přinesou děti, scéna se doplní tvory z katalogu s ukázkovými texturami,
@@ -318,9 +351,11 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | `data/models3d/` | modely pro scénu a prohlížeč: GLB s UV, textury, katalog |
 | `data/shapes3d/` | geometrie předloh (obrys, linky, oko, `Placement`) |
 | `data/templates/` | vygenerované šablony (SVG k tisku), server je vydává na `/templates` |
-| `web/` | scéna na TV, stránky pro mobil, tisk, režim |
+| `web/` | scéna na TV, dětská stránka, admin, předlohy |
 | `web/scene3d.js` | 3D tvorové ve scéně: ortokamera v pixelech, měřený krok |
-| `web/scenes/` | definice scén (pásy, chování, trasy, světla) — scéna jako data |
+| `scenes/<key>/` | scény: `scene.json` (texty, zvířata) + `render.js` (pásy, chování, světla) |
+| `scenes/markers.json` | indexy značek zvířat — jen přibývají |
+| `tools/scena.py` | nová scéna, import modelů přes Blender, kontrola |
 | `web/backdrops/` | malované krajiny s variantami (den/noc) |
 | `tools/model_sheet.py` | předlohy z modelů (SVG, náhled, geometrie) |
 | `tools/gait_report.py` | regresní brána chůze: prokluz a tempo per druh |
@@ -329,7 +364,8 @@ každou osu degradace fotky a drží naměřené hranice snímání pod kontrolo
 | `data/catch/` | úlovky — co děti nafotily |
 | `data/trash/` | koš smazaných úlovků (30 dní) |
 | `data/rejected/` | posledních 50 odmítnutých fotek (testovací data) |
-| `data/state.json` | trvalá nastavení: ukázkoví tvorové, krajina domácí TV |
+| `data/config/` | stanice, správci (otisky kódů), tajný klíč a vygenerovaný kód hlavního správce |
+| `data/state.json` | staré nastavení domácí TV — čte se jen při první migraci |
 | `out/` | pracovní výstupy, náhledy, reporty |
 | `DinoStanice.cmd` | spuštění dvojklikem (bez Dockeru) |
 | `launcher.py` | vstupní bod balíku: adresy, volný port, prohlížeč |

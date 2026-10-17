@@ -17,6 +17,7 @@ ONEFILE = bool(os.environ.get("DINO_ONEFILE"))
 # vznikají vedle exe, aby přežily vypnutí (paths.data_root()).
 datas = [
     ("web", "web"),
+    ("scenes", "scenes"),
     ("data/models3d", "data/models3d"),
     ("data/templates", "data/templates"),
     ("data/shapes3d", "data/shapes3d"),

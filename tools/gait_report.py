@@ -1,6 +1,6 @@
 """Regresní kontrola chůze: prokluz chodidel a tempo per druh proti cílům.
 
-    python tools/gait_report.py --url http://127.0.0.1:8100/
+    python tools/gait_report.py --url "http://127.0.0.1:8100/tv?scene=cretaceous"
 
 Osadí běžící scénu šesti chodci, několik desítek sekund loguje polohu tvorů
 a světové X jejich zadních chodidel a spočítá:
@@ -142,7 +142,7 @@ def analyze(log, where):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8100/")
+    ap.add_argument("--url", default="http://127.0.0.1:8100/tv?scene=cretaceous")
     ap.add_argument("--seconds", type=float, default=60,
                     help="délka měření; kratší okno zkreslí zastávky "
                          "a kolizní čekání na dráze (bod 3)")

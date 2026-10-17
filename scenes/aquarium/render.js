@@ -29,10 +29,7 @@
    žádná kolizní fronta. `paths` taky ne, ryby plavou volně. */
 
 export default {
-  key: 'aquarium',
-  label: 'Akvárium',
-  catalogue: 'aquarium',
-  backdrop: async () => (await import('../backdrops/aquarium.js')).create(),
+  backdrop: async () => (await import('/web/backdrops/aquarium.js')).create(),
   lighting: {
     // pod vodou je světlo modré a rozptýlené: silná obloha, slabší směrové
     // světlo shora (od hladiny) a modrozelené doplňkové zezdola od písku
@@ -88,5 +85,4 @@ export default {
     top: 0.11, floor: 0.655, sinkRate: 0.045, life: 18, bites: 5,
   },
   ambientMin: 8,
-  invite: { title: 'Vypusť si rybu', sub: 'Naskenuj kód a vyfoť vybarvenou rybu' },
 };

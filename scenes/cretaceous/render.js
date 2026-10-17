@@ -1,9 +1,9 @@
 /* Definice scény „Křídová laguna" — scéna jako data.
 
-   scene.js nezná žádné zóny ani konstanty krajiny; všechno čte odsud:
+   scene.js nezná žádné zóny ani konstanty krajiny; všechno čte odsud.
+   Jméno, sada tvorů (`catalogue`) a texty pro děti jsou ve vedlejším
+   scene.json — scene.js je k definici přimíchá z /api/scenes.
 
-     key        klíč scény (musí sedět s registrem na serveru, scenes.py)
-     catalogue  sada tvorů (Model3D.scene), kterou scéna doplňuje a přijímá
      backdrop   async továrna na kreslič krajiny {draw, drawFront, sun, depthScale}
      lighting   světla 3D vrstvy (Scene3D.setLighting)
      bands      pásy scény: y0/y1 v podílu výšky plátna, `motions` říká, kdo
@@ -50,10 +50,7 @@
    po y některé dráhy se počítá i do kolizí na té dráze. */
 
 export default {
-  key: 'cretaceous',
-  label: 'Křídová laguna',
-  catalogue: 'cretaceous',
-  backdrop: async () => (await import('../backdrops/cretaceous.js')).create('day'),
+  backdrop: async () => (await import('/web/backdrops/cretaceous.js')).create('day'),
   lighting: {
     hemi: { sky: 0xcfe2ff, ground: 0x5c5b3a, intensity: 1.05 },
     // slunce je na malovane obloze vpravo nahore, at stiny sedi
@@ -106,5 +103,4 @@ export default {
     },
   ],
   ambientMin: 6,
-  invite: { title: 'Přidej svého dinosaura', sub: 'Naskenuj kód a vyfoť vybarvený obrázek' },
 };

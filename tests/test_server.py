@@ -18,25 +18,47 @@ from fastapi.testclient import TestClient
 
 import helpers as H
 import server
-from dinostanice import store, synth
+from dinostanice import auth, stations, store, synth
 
 PPM = 6.0
 
 
+ADMIN_CODE = "TEST42"
+# stanice, se kterymi testy pracuji (krome domaci "tv", ta vznika migraci)
+STATIONS = ("aaa", "bbb", "ccc", "abc", "xyz", "kid7", "nap1", "zzz")
+
+
+def _isolate(monkeypatch, tmp_path):
+    monkeypatch.setattr(store, "CATCH_ROOT", str(tmp_path / "catch"))
+    monkeypatch.setattr(store, "REJECTED_ROOT", str(tmp_path / "rejected"))
+    monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
+    # registr stanic i stary state.json (zdroj migrace) jdou z tmp_path — se
+    # zivymi daty by testy prepinaly krajinu skutecne televizi
+    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+    monkeypatch.setattr(server, "STATIONS_PATH", str(tmp_path / "config" / "stations.json"))
+    monkeypatch.setattr(server, "registry", None)
+    monkeypatch.setattr(server, "admins", auth.Admins(
+        ADMIN_CODE, path=str(tmp_path / "config" / "admins.json"), secret="s" * 64))
+    server.hub.sessions.clear()   # sessions z minulych testu nesmi prosakovat
+    server.hub.pairing.clear()
+    reg = server.get_registry()
+    for sid in STATIONS:
+        reg.items[sid] = stations.Station(id=sid, scene="cretaceous")
+    reg.save()
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    catch_root = tmp_path / "catch"
-    rejected_root = tmp_path / "rejected"
-    monkeypatch.setattr(store, "CATCH_ROOT", str(catch_root))
-    monkeypatch.setattr(store, "REJECTED_ROOT", str(rejected_root))
-    monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
-    # i krajina defaultni televize musi jit z tmp_path: se zivym data/state.json
-    # (stanice prepnuta na akvarium) by ulovky z kridy neprosly scoping filtrem
-    # a test cekajici na broadcast by visel navzdy
-    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
-    server.hub.sessions.clear()   # sessions z minulych testu nesmi prosakovat
+    _isolate(monkeypatch, tmp_path)
     with TestClient(server.app) as c:
         yield c
+
+
+@pytest.fixture
+def admin(client):
+    """Tentyz klient, prihlaseny kodem spravce (cookie si TestClient drzi)."""
+    assert client.post("/api/login", json={"code": ADMIN_CODE}).status_code == 200
+    return client
 
 
 @pytest.fixture
@@ -44,14 +66,10 @@ def fast_idle_client(monkeypatch, tmp_path):
     """Jako client, ale s milisekundovymi casy uspavani — konstanty se musi
     zkratit PRED startem TestClienta, background task cte IDLE_TICK_S az
     v behu smycky."""
-    monkeypatch.setattr(store, "CATCH_ROOT", str(tmp_path / "catch"))
-    monkeypatch.setattr(store, "REJECTED_ROOT", str(tmp_path / "rejected"))
-    monkeypatch.setattr(store, "TRASH_ROOT", str(tmp_path / "trash"))
-    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+    _isolate(monkeypatch, tmp_path)
     monkeypatch.setattr(server, "IDLE_WARN_S", 0.15)
     monkeypatch.setattr(server, "IDLE_SLEEP_S", 0.5)
     monkeypatch.setattr(server, "IDLE_TICK_S", 0.03)
-    server.hub.sessions.clear()
     with TestClient(server.app) as c:
         yield c
 
@@ -90,10 +108,12 @@ def png_with_header(w, h):
             + chunk(b"IDAT", b"") + chunk(b"IEND", b""))
 
 
-def upload(client, data, filename="photo.jpg", name="Test", s=None):
+def upload(client, data, filename="photo.jpg", name="Test", s=None, device=None):
     form = {"name": name}
     if s is not None:
         form["s"] = s
+    if device is not None:
+        form["device"] = device
     return client.post("/api/upload",
                        files={"photo": (filename, data, "image/jpeg")},
                        data=form)
@@ -197,7 +217,8 @@ def test_upload_extreme_aspect(client):
     assert "celý list" in r.json()["error"]
 
 
-def test_delete_catch(client):
+def test_delete_catch(admin):
+    client = admin
     catch_id = upload(client, model_photo_jpg()).json()["id"]
 
     r = client.delete(f"/api/rigs/{catch_id}")
@@ -223,7 +244,8 @@ def test_purge_deleted_cleans_leftovers(client):
     assert any(name.startswith("trex3d-dead-") for name in binned)
 
 
-def test_ws_add_and_remove(client):
+def test_ws_add_and_remove(admin):
+    client = admin
     with client.websocket_connect("/ws") as ws:
         catch_id = upload(client, model_photo_jpg()).json()["id"]
         msg = ws.receive_json()
@@ -235,36 +257,188 @@ def test_ws_add_and_remove(client):
         assert msg == {"type": "remove", "id": catch_id}
 
 
-def test_scene_settings_roundtrip(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
+# --- Spravce: prihlaseni kodem ----------------------------------------------
 
-    # bez souboru je vychozi ambient zapnuty (a krajina default)
-    assert client.get("/api/scene/settings").json() == {
-        "ambient": True, "scene": "cretaceous"}
+def test_login_sets_cookie_and_me(client):
+    assert client.get("/api/me").json() == {"admin": False}
+    r = client.post("/api/login", json={"code": "spatny"})
+    assert r.status_code == 403
+    assert client.get("/api/me").json() == {"admin": False}
 
-    r = client.post("/api/scene/settings", json={"ambient": False})
+    # kod se opisuje rucne: velikost pismen a mezery nevadi
+    r = client.post("/api/login", json={"code": " test 42 "})
+    assert r.status_code == 200
+    assert auth.COOKIE in r.cookies
+    me = client.get("/api/me").json()
+    assert me["admin"] is True and me["main"] is True and me["id"] == auth.MAIN_ID
+
+    client.post("/api/logout")
+    client.cookies.clear()
+    assert client.get("/api/me").json() == {"admin": False}
+
+
+def test_login_is_throttled(client):
+    for _ in range(auth.LOGIN_TRIES):
+        assert client.post("/api/login", json={"code": "x"}).status_code == 403
+    # i spravny kod je po vycerpani pokusu chvili blokovany
+    r = client.post("/api/login", json={"code": ADMIN_CODE})
+    assert r.status_code == 429
+
+
+def test_forged_cookie_is_not_admin(client):
+    other = auth.Admins(ADMIN_CODE, path=server.admins.path + ".jiny", secret="j" * 64)
+    client.cookies.set(auth.COOKIE, other.token(other.items[auth.MAIN_ID]))
+    assert client.get("/api/me").json() == {"admin": False}
+    client.cookies.set(auth.COOKIE, "hlavni.nesmysl")
+    assert client.get("/api/me").json() == {"admin": False}
+
+
+@pytest.mark.parametrize("method,url,body", [
+    ("get", "/api/stations", None),
+    ("post", "/api/stations", {}),
+    ("delete", "/api/stations/aaa", None),
+    ("post", "/api/scene/active", {"s": "aaa", "scene": "cretaceous_night"}),
+    ("post", "/api/scene/settings", {"s": "aaa", "ambient": False}),
+    ("post", "/api/scene/reset?s=aaa", None),
+    ("post", "/api/pair/ABCD", {}),
+])
+def test_admin_actions_need_login(client, method, url, body):
+    kw = {"json": body} if body is not None else {}
+    r = getattr(client, method)(url, **kw)
+    assert r.status_code == 403, url
+    assert "správce" in r.json()["error"]
+
+
+def test_generated_admin_code_is_persisted(monkeypatch, tmp_path):
+    monkeypatch.delenv("DINO_ADMIN_CODE", raising=False)
+    monkeypatch.setattr(auth, "CONFIG_DIR", str(tmp_path))
+    code = auth.load_code()
+    assert len(code) == auth.CODE_LEN and set(code) <= set(auth.ALPHABET)
+    assert auth.load_code() == code          # druhy start: stejny kod
+    monkeypatch.setenv("DINO_ADMIN_CODE", "abc-123")
+    assert auth.load_code() == "ABC123"      # .env ma prednost
+
+
+# --- Stanice ---------------------------------------------------------------
+
+def test_station_create_list_and_end(admin):
+    client = admin
+    r = client.post("/api/stations", json={"scene": "aquarium"})
+    assert r.status_code == 200
+    sid = r.json()["s"]
+    assert r.json()["scene"] == "aquarium"
+    assert any(st["s"] == sid for st in client.get("/api/stations").json())
+    # domaci stanice je v seznamu prvni
+    assert client.get("/api/stations").json()[0]["s"] == "tv"
+
+    catch_id = upload(client, model_photo_jpg(), s="aaa").json()["id"]
+    with client.websocket_connect("/ws?s=aaa") as ws:
+        r = client.delete("/api/stations/aaa")
+        assert r.json() == {"ok": True, "deleted": 1}
+        assert ws.receive_json() == {"type": "ended"}
+    assert not server.os.path.isdir(store.catch_dir(catch_id))
+    # po ukonceni je stanice pro vsechny pryc
+    assert client.get("/api/scene/active?s=aaa").status_code == 404
+    assert client.post("/api/feed", json={"s": "aaa"}).status_code == 404
+    # domaci stanici ukoncit nejde
+    assert client.delete("/api/stations/tv").status_code == 400
+
+
+def test_station_registry_survives_restart(admin):
+    client = admin
+    sid = client.post("/api/stations", json={"scene": "cretaceous_night"}).json()["s"]
+    client.post("/api/scene/settings", json={"s": sid, "ambient": False, "stay": True})
+    server.registry = None          # "restart": registr se nacte znovu z disku
+    server.hub.sessions.clear()
+    assert client.get(f"/api/scene/active?s={sid}").json()["scene"] == "cretaceous_night"
+    assert client.get(f"/api/scene/settings?s={sid}").json() == {
+        "ambient": False, "stay": True, "scene": "cretaceous_night"}
+
+
+def test_home_station_migrates_from_state_json(monkeypatch, tmp_path):
+    (tmp_path / "state.json").write_text(json.dumps({"ambient": False, "scene": "aquarium"}),
+                                         encoding="utf-8")
+    reg = stations.Registry(str(tmp_path / "config" / "stations.json"),
+                            legacy_state=str(tmp_path / "state.json"))
+    home = reg.get("tv")
+    assert (home.scene, home.ambient, home.stay) == ("aquarium", False, True)
+    assert (tmp_path / "config" / "stations.json").exists()
+
+
+def test_unknown_station_is_not_created(client):
+    assert client.get("/api/scene/active?s=nikdo").status_code == 404
+    assert client.post("/api/feed", json={"s": "nikdo"}).status_code == 404
+    assert client.get("/api/qr?s=nikdo").status_code == 404
+    r = upload(client, model_photo_jpg(), s="nikdo")
+    assert r.status_code == 404 and "neběží" in r.json()["error"]
+    assert "nikdo" not in server.get_registry().items
+    with client.websocket_connect("/ws?s=nikdo") as ws:
+        assert ws.receive_json() == {"type": "ended"}
+
+
+def test_tv_pairing(admin):
+    client = admin
+    code = client.post("/api/pair").json()["code"]
+    assert len(code) == stations.PAIR_LEN
+    with client.websocket_connect(f"/ws?pair={code}") as tv:
+        r = client.post(f"/api/pair/{code.lower()}", json={"scene": "aquarium"})
+        assert r.status_code == 200
+        sid = r.json()["s"]
+        msg = tv.receive_json()
+        assert msg["type"] == "paired" and msg["s"] == sid
+        assert "/tv/" + msg["tv"] == r.json()["tv"]
+    assert client.get(f"/api/scene/active?s={sid}").json()["scene"] == "aquarium"
+    # kod je jednorazovy
+    assert client.post(f"/api/pair/{code}", json={}).status_code == 404
+
+
+def test_tv_pairing_to_existing_station(admin):
+    client = admin
+    code = client.post("/api/pair").json()["code"]
+    with client.websocket_connect(f"/ws?pair={code}") as tv:
+        r = client.post(f"/api/pair/{code}", json={"s": "tv"})
+        assert r.json()["s"] == "tv"
+        msg = tv.receive_json()
+        assert (msg["type"], msg["s"]) == ("paired", "tv") and msg["tv"]
+
+
+def test_expired_pair_code(client, monkeypatch):
+    code = client.post("/api/pair").json()["code"]
+    server.get_registry().pairs[code] = 0.0
+    with client.websocket_connect(f"/ws?pair={code}") as tv:
+        assert tv.receive_json() == {"type": "pair_expired"}
+
+
+# --- Nastaveni a vyprazdneni stanice ---------------------------------------
+
+def test_scene_settings_roundtrip(admin):
+    client = admin
+    assert client.get("/api/scene/settings?s=aaa").json() == {
+        "ambient": True, "stay": False, "scene": "cretaceous"}
+
+    r = client.post("/api/scene/settings", json={"s": "aaa", "ambient": False})
     assert r.status_code == 200
     assert r.json()["ambient"] is False
-
-    # perzistuje pres dalsi cteni i primo na disku
-    assert client.get("/api/scene/settings").json()["ambient"] is False
-    saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
-    assert saved["ambient"] is False
-
-    r = client.post("/api/scene/settings", json={"ambient": True})
-    assert r.json()["ambient"] is True
-    assert client.get("/api/scene/settings").json()["ambient"] is True
+    assert client.get("/api/scene/settings?s=aaa").json()["ambient"] is False
+    saved = json.loads(open(server.STATIONS_PATH, encoding="utf-8").read())
+    assert saved["aaa"]["ambient"] is False
+    # nastaveni je per stanice
+    assert client.get("/api/scene/settings?s=bbb").json()["ambient"] is True
 
 
-def test_scene_settings_broadcasts(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
-    with client.websocket_connect("/ws") as ws:
-        client.post("/api/scene/settings", json={"ambient": False})
-        msg = ws.receive_json()
-        assert msg == {"type": "settings", "ambient": False}
+def test_scene_settings_broadcast_only_to_own_station(admin):
+    client = admin
+    with client.websocket_connect("/ws?s=aaa") as a, \
+            client.websocket_connect("/ws?s=bbb") as b:
+        client.post("/api/scene/settings", json={"s": "aaa", "ambient": False})
+        assert a.receive_json() == {"type": "settings", "ambient": False}
+        client.post("/api/scene/settings", json={"s": "bbb", "ambient": True})
+        # prvni zprava B je jeho vlastni nastaveni, ne to od A
+        assert b.receive_json() == {"type": "settings", "ambient": True}
 
 
-def test_scene_reset_clears_catches_and_broadcasts(client):
+def test_scene_reset_clears_catches_and_broadcasts(admin):
+    client = admin
     catch_id = upload(client, model_photo_jpg()).json()["id"]
     assert len(client.get("/api/rigs").json()) == 1
 
@@ -279,19 +453,54 @@ def test_scene_reset_clears_catches_and_broadcasts(client):
     assert not server.os.path.isdir(store.catch_dir(catch_id))
 
 
-def test_scene_reset_with_nothing_to_delete(client):
-    r = client.post("/api/scene/reset")
+def test_scene_reset_with_nothing_to_delete(admin):
+    r = admin.post("/api/scene/reset")
     assert r.status_code == 200
     assert r.json() == {"ok": True, "deleted": 0}
 
 
-def test_rezim_page(client):
-    r = client.get("/rezim")
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
+def test_main_page_is_admin_and_old_links_redirect(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "Správa" in r.text
+    for old in ("/admin", "/rezim?s=aaa"):
+        r = client.get(old, follow_redirects=False)
+        assert r.status_code == 307 and r.headers["location"] == "/"
+    assert client.get("/tv").status_code == 200
+    assert client.get("/tv/cokoli").status_code == 200
 
 
-# --- Sessions (bod 6) ----------------------------------------------------
+# --- Detske mobily: vlastni ulovky ------------------------------------------
+
+DEV_A = "mobil-aaaaaaaa"
+DEV_B = "mobil-bbbbbbbb"
+
+
+def test_kid_sees_and_deletes_only_own_catches(client):
+    mine = upload(client, model_photo_jpg(), device=DEV_A).json()["id"]
+    other = upload(client, model_photo_jpg(), device=DEV_B).json()["id"]
+    ids = lambda r: [m["id"] for m in r.json()]
+    assert ids(client.get(f"/api/rigs?mine={DEV_A}")) == [mine]
+    assert ids(client.get(f"/api/rigs?mine={DEV_B}")) == [other]
+
+    # cizi zvire smazat nejde, ani bez device
+    r = client.delete(f"/api/rigs/{other}?device={DEV_A}")
+    assert r.status_code == 403
+    assert client.delete(f"/api/rigs/{other}").status_code == 403
+    assert server.os.path.isdir(store.catch_dir(other))
+
+    assert client.delete(f"/api/rigs/{mine}?device={DEV_A}").status_code == 200
+    assert ids(client.get("/api/rigs")) == [other]
+
+
+def test_catch_without_owner_is_nobodys(client):
+    """Stare ulovky (bez `owner`) ani nevalidni device nesmi nikomu dat pravo."""
+    cid = upload(client, model_photo_jpg(), device="kratke").json()["id"]
+    assert store.read_meta(cid)["owner"] == ""
+    assert client.get("/api/rigs?mine=").json() != []        # prazdny filtr = vse
+    assert client.delete(f"/api/rigs/{cid}?device=").status_code == 403
+
+
+# --- Stanice izolovane ----------------------------------------------------
 
 def test_sessions_rigs_isolated(client):
     body = upload(client, model_photo_jpg(), s="aaa").json()
@@ -301,7 +510,7 @@ def test_sessions_rigs_isolated(client):
     ids = lambda r: [m["id"] for m in r.json()]
     assert ids(client.get("/api/rigs?s=aaa")) == [body["id"]]
     assert ids(client.get("/api/rigs?s=bbb")) == []
-    # default "tv" cizi ulovek nevidi — a naopak
+    # domaci "tv" cizi ulovek nevidi — a naopak
     assert ids(client.get("/api/rigs")) == []
 
     tv = upload(client, model_photo_jpg()).json()
@@ -322,7 +531,8 @@ def test_old_meta_without_session_counts_as_default(client):
     assert client.get("/api/rigs?s=aaa").json() == []
 
 
-def test_sessions_ws_routing(client):
+def test_sessions_ws_routing(admin):
+    client = admin
     with client.websocket_connect("/ws?s=aaa") as ws_a, \
          client.websocket_connect("/ws?s=bbb") as ws_b:
         id_a = upload(client, model_photo_jpg(), s="aaa").json()["id"]
@@ -334,26 +544,27 @@ def test_sessions_ws_routing(client):
         msg_b = ws_b.receive_json()
         assert (msg_b["type"], msg_b["id"]) == ("add", id_b)
 
-        # remove jde do session ulovku, ne vsem
+        # remove jde do stanice ulovku, ne vsem
         assert client.delete(f"/api/rigs/{id_b}").status_code == 200
         assert ws_b.receive_json() == {"type": "remove", "id": id_b}
         assert client.delete(f"/api/rigs/{id_a}").status_code == 200
         assert ws_a.receive_json() == {"type": "remove", "id": id_a}
 
 
-def test_qr_carries_session(client):
+def test_qr_leads_only_to_pridat(client):
     r = client.get("/api/qr?s=abc")
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
-    assert "s=abc" in r.headers["X-Upload-Url"]
-    # bez parametru zustava hole /pridat — QR domaci televize se nemeni
-    assert "s=" not in client.get("/api/qr").headers["X-Upload-Url"]
-    # neplatne id spadne do defaultu, zadna chyba
-    assert "s=" not in client.get("/api/qr?s=..%2F..").headers["X-Upload-Url"]
+    url = r.headers["X-Upload-Url"]
+    assert url.endswith("/pridat?s=abc")
+    # i domaci televize ma v QR vyslovne svou stanici
+    assert client.get("/api/qr").headers["X-Upload-Url"].endswith("/pridat?s=tv")
+    assert client.get("/api/qr?s=..%2F..").status_code == 404
 
 
-def test_reset_scoped_to_session(client):
+def test_reset_scoped_to_session(admin):
+    client = admin
     id_a = upload(client, model_photo_jpg(), s="aaa").json()["id"]
     id_b = upload(client, model_photo_jpg(), s="bbb").json()["id"]
 
@@ -369,7 +580,6 @@ def test_reset_scoped_to_session(client):
 
 
 def test_session_touch_and_state(client):
-    # touch session zalozi a nastavi last_seen
     r = client.post("/api/session/touch", json={"s": "abc"})
     assert r.json() == {"ok": True, "s": "abc", "sleeping": False}
     assert "abc" in server.hub.sessions
@@ -384,24 +594,27 @@ def test_session_touch_and_state(client):
     assert server.hub.sessions["abc"].last_seen >= before
 
     assert client.get("/api/session/neni").status_code == 404
+    assert client.post("/api/session/touch", json={"s": "neni"}).status_code == 404
 
 
 def test_pridat_with_session_touches(client):
     assert "kid7" not in server.hub.sessions
     assert client.get("/pridat?s=kid7").status_code == 200
     assert "kid7" in server.hub.sessions
-    # bez parametru se nic nezaklada (default nikdy nespi)
-    n = len(server.hub.sessions)
-    client.get("/pridat")
-    assert len(server.hub.sessions) == n
+    # neznama stanice: stranka se ukaze (rekne „nebezi"), ale nic nevznikne
+    assert client.get("/pridat?s=nikdo").status_code == 200
+    assert "nikdo" not in server.hub.sessions
 
 
-def test_idle_tick_logic(monkeypatch):
-    """Deterministicka cast hlidace: prah varovani/uspani, vyjimka pro default
-    "tv", zahazovani opustenych sessions z pameti. Cerstvy Hub, zadny server."""
+def test_idle_tick_logic(client, monkeypatch):
+    """Deterministicka cast hlidace: prah varovani/uspani, vyjimka pro
+    stanice se `stay` (domaci "tv"), zahazovani opustenych sessions z pameti."""
     import asyncio
 
     monkeypatch.setattr(server, "hub", server.Hub())
+    reg = server.get_registry()
+    for sid in ("kid", "fresh", "gone"):
+        reg.items[sid] = stations.Station(id=sid, scene="cretaceous")
     now = 1_000_000.0
     hub = server.hub
     # hluboko za prahem uspani, ale pod TTL — uklid pameti je jina vec
@@ -411,13 +624,12 @@ def test_idle_tick_logic(monkeypatch):
     hub.session("gone").last_seen = now - server.SESSION_TTL_S - 1
 
     async def run():
-        # jeden bh smycky: tick uspava/zahazuje, touch pak budi (v jednom
-        # event loopu — asyncio.Lock hubu nesmi mezi loopy)
         await server.idle_tick(now=now)
         assert "gone" not in hub.sessions      # opustena session zmizela z pameti
+        assert "gone" in reg.items             # ...ale stanice zustava
         assert hub.sessions["kid"].sleeping is True
         assert hub.sessions["fresh"].sleeping is False
-        # default "tv" se NEUSPAVA, at je necinna jakkoli dlouho
+        # domaci "tv" (stay) se NEUSPAVA, at je necinna jakkoli dlouho
         assert hub.sessions["tv"].sleeping is False
         await server.touch_session("kid")      # touch spici session probudi
         assert hub.sessions["kid"].sleeping is False
@@ -434,7 +646,6 @@ def test_idle_sleep_wake_over_ws(fast_idle_client):
         assert msg["type"] == "idle"
         assert 0 <= msg["seconds_left"] <= server.IDLE_SLEEP_S
 
-        # idle chodi kazdy tick, nez prijde sleep
         for _ in range(200):
             msg = ws.receive_json()
             if msg["type"] == "sleep":
@@ -464,16 +675,32 @@ def test_api_scenes_registry(client):
     assert "cretaceous" in keys and "cretaceous_night" in keys
     for s in scenes:
         assert s["label"] and s["subtitle"] and s["catalogue"]
-    # obe varianty laguny sdili touz sadu tvoru
+        assert len(s["nouns"]) == 3 and s["invite"]["title"] and s["feedBusy"]
     by_key = {s["key"]: s for s in scenes}
     assert by_key["cretaceous_night"]["catalogue"] == "cretaceous"
+    assert [s["order"] for s in scenes] == sorted(s["order"] for s in scenes)
+
+
+def test_scene_render_served_only_for_registered_scenes(client):
+    r = client.get("/scenes/aquarium/render.js")
+    assert r.status_code == 200 and "javascript" in r.headers["content-type"]
+    assert client.get("/scenes/neni/render.js").status_code == 404
+    assert client.get("/scenes/aquarium/scene.json").status_code == 404
+
+
+def test_templates_carry_scene_and_filter(client):
+    everything = client.get("/api/templates").json()
+    assert {t["scene"] for t in everything} == {"cretaceous", "aquarium"}
+    fish = client.get("/api/templates?scene=aquarium").json()
+    assert fish and all(t["scene"] == "aquarium" for t in fish)
+    night = client.get("/api/templates?scene=cretaceous_night").json()
+    assert night and all(t["scene"] == "cretaceous" for t in night)
 
 
 def test_dino3d_scene_filter(client):
     everything = client.get("/api/dino3d").json()
     cretaceous = client.get("/api/dino3d?scene=cretaceous").json()
     aquarium = client.get("/api/dino3d?scene=aquarium").json()
-    # filtr musi katalog opravdu rozdelit, ne vratit vsechno
     assert 0 < len(cretaceous) < len(everything)
     assert 0 < len(aquarium) < len(everything)
     assert len(cretaceous) + len(aquarium) == len(everything)
@@ -482,8 +709,8 @@ def test_dino3d_scene_filter(client):
     assert client.get("/api/dino3d?scene=neexistuje").json() == []
 
 
-def test_scene_active_per_session(client):
-    # neznama session vznika s defaultni krajinou
+def test_scene_active_per_session(admin):
+    client = admin
     assert client.get("/api/scene/active?s=xyz").json() == {
         "s": "xyz", "scene": "cretaceous"}
 
@@ -495,66 +722,45 @@ def test_scene_active_per_session(client):
 
     assert client.get("/api/scene/active?s=xyz").json()["scene"] == "cretaceous_night"
     assert client.get("/api/session/xyz").json()["scene"] == "cretaceous_night"
-    # jina session zustava na defaultu
-    assert client.get("/api/scene/active?s=jina").json()["scene"] == "cretaceous"
+    assert client.get("/api/scene/active?s=aaa").json()["scene"] == "cretaceous"
 
     r = client.post("/api/scene/active", json={"scene": "atlantida", "s": "xyz"})
     assert r.status_code == 400
     assert "krajina" in r.json()["error"]
 
 
-def test_default_scene_survives_restart(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "STATE_PATH", str(tmp_path / "state.json"))
-    r = client.post("/api/scene/active", json={"scene": "cretaceous_night"})
-    assert r.json()["ok"] is True
-    saved = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
-    assert saved["scene"] == "cretaceous_night"
-
-    # "restart": sessions z pameti zmizi, default si krajinu vezme ze state.json
-    server.hub.sessions.clear()
-    assert client.get("/api/scene/active").json()["scene"] == "cretaceous_night"
-
-
-@pytest.fixture
-def aquarium(monkeypatch):
-    """Docasna scena s cizi sadou tvoru — trex do ni nepatri."""
-    from dinostanice import scenes as scenes_mod
-    fake = scenes_mod.Scene("aquarium", "Akvárium", "test", "aquarium")
-    monkeypatch.setattr(scenes_mod, "SCENES", scenes_mod.SCENES + [fake])
-    monkeypatch.setattr(scenes_mod, "BY_KEY",
-                        {**scenes_mod.BY_KEY, "aquarium": fake})
-    return fake
-
-
-def test_upload_to_foreign_scene_saves_without_broadcast(client, aquarium):
+def test_foreign_creature_is_rejected_and_not_saved(admin):
+    client = admin
     with client.websocket_connect("/ws?s=aaa") as ws:
-        r = client.post("/api/scene/active", json={"scene": "aquarium", "s": "aaa"})
-        assert r.json()["ok"] is True
+        client.post("/api/scene/active", json={"scene": "aquarium", "s": "aaa"})
         assert ws.receive_json() == {"type": "scene", "scene": "aquarium"}
 
-        body = upload(client, model_photo_jpg(), s="aaa").json()
-        assert body["ok"] is True
-        # ulovek se ULOZIL, mobil dostal ceskou hlasku o jine krajine
-        assert "Křídová laguna" in body["note"]
-        assert server.os.path.isdir(store.catch_dir(body["id"]))
+        r = upload(client, model_photo_jpg(), s="aaa")
+        assert r.status_code == 409
+        body = r.json()
+        assert body["foreign"] is True
+        assert "Akvárium" in body["error"] and "Tyrannosaurus" in body["error"]
+        assert "Žralok" in body["allowed"]
 
         # scena zadny `add` nedostala: dalsi zprava na WS je az tohle prepnuti
         client.post("/api/scene/active", json={"scene": "cretaceous", "s": "aaa"})
         assert ws.receive_json() == {"type": "scene", "scene": "cretaceous"}
 
-    # rigs: bez filtru je videt, s filtrem patri jen do kridy
-    ids = lambda r: [m["id"] for m in r.json()]
-    assert ids(client.get("/api/rigs?s=aaa")) == [body["id"]]
-    assert ids(client.get("/api/rigs?s=aaa&scene=aquarium")) == []
-    assert ids(client.get("/api/rigs?s=aaa&scene=cretaceous")) == [body["id"]]
-    # nocni laguna sdili sadu tvoru s denni, ulovek do ni patri taky
-    assert ids(client.get("/api/rigs?s=aaa&scene=cretaceous_night")) == [body["id"]]
+    # nic se neulozilo — ani mezi ulovky, ani mezi odmitnute fotky
+    assert client.get("/api/rigs?s=aaa").json() == []
+    assert not server.os.path.isdir(store.REJECTED_ROOT) or \
+        not list(server.os.scandir(store.REJECTED_ROOT))
 
 
-def test_upload_to_matching_scene_has_no_note(client):
-    body = upload(client, model_photo_jpg()).json()
+def test_shared_catalogue_accepts_creature(admin):
+    """Nocni laguna sdili dinosaury s denni — trex do ni patri."""
+    client = admin
+    client.post("/api/scene/active", json={"scene": "cretaceous_night", "s": "aaa"})
+    body = upload(client, model_photo_jpg(), s="aaa").json()
     assert body["ok"] is True
-    assert "note" not in body
+    ids = lambda r: [m["id"] for m in r.json()]
+    assert ids(client.get("/api/rigs?s=aaa&scene=cretaceous")) == [body["id"]]
+    assert ids(client.get("/api/rigs?s=aaa&scene=aquarium")) == []
 
 
 # --- Krmeni z mobilu (bod 11) ----------------------------------------------
@@ -571,19 +777,25 @@ def test_feed_broadcast_rate_limit_and_isolation(client):
         assert 0.25 <= msg["x"] <= 0.75
         assert msg["x"] == body["x"]
 
-        # rate-limit: druhy hod hned po prvnim vraci 429 s ceskou hlaskou
+        # rate-limit: druhy hod hned po prvnim vraci 429 s hlaskou krajiny
         r2 = client.post("/api/feed", json={"s": "aaa"})
         assert r2.status_code == 429
         assert r2.json()["ok"] is False
         assert "žvýkají" in r2.json()["error"]
 
-        # cizi session feed nedostala: prvni zprava na jejim WS je az jeji
-        # vlastni hod (rate-limit je per session, aaa ho neblokuje)
         r3 = client.post("/api/feed", json={"s": "bbb"})
         assert r3.status_code == 200
         msg_b = ws_b.receive_json()
         assert msg_b["type"] == "feed"
         assert msg_b["x"] == r3.json()["x"]
+
+
+def test_feed_busy_text_follows_scene(admin):
+    client = admin
+    client.post("/api/scene/active", json={"scene": "aquarium", "s": "ccc"})
+    assert client.post("/api/feed", json={"s": "ccc"}).status_code == 200
+    r = client.post("/api/feed", json={"s": "ccc"})
+    assert r.status_code == 429 and "Ryby" in r.json()["error"]
 
 
 def test_feed_cooldown_expires(client, monkeypatch):
@@ -593,3 +805,75 @@ def test_feed_cooldown_expires(client, monkeypatch):
     import time as _time
     _time.sleep(0.06)
     assert client.post("/api/feed", json={"s": "ccc"}).status_code == 200
+
+
+# --- Vic spravcu -------------------------------------------------------------
+
+def _login(client, code):
+    client.cookies.clear()
+    r = client.post("/api/login", json={"code": code})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_main_admin_issues_codes_and_admins_see_only_own(client):
+    _login(client, ADMIN_CODE)
+    r = client.post("/api/admins", json={"name": "Učitelka Jana"})
+    assert r.status_code == 200
+    jana_code, jana_id = r.json()["code"], r.json()["id"]
+    assert len(jana_code) == auth.CODE_LEN
+    # kod se uklada jen jako otisk
+    assert jana_code not in open(server.admins.path, encoding="utf-8").read()
+
+    me = _login(client, jana_code)
+    assert me["name"] == "Učitelka Jana" and me["main"] is False
+    sid = client.post("/api/stations", json={"scene": "aquarium"}).json()["s"]
+    mine = [st["s"] for st in client.get("/api/stations").json()]
+    assert mine == [sid]                         # cizi stanice (tv, aaa…) nevidi
+    # cizi stanici neovlada ani primo
+    assert client.post("/api/scene/active", json={"s": "aaa", "scene": "aquarium"}
+                       ).status_code == 404
+    assert client.post("/api/scene/reset?s=tv").status_code == 404
+    assert client.delete("/api/stations/aaa").status_code == 404
+    assert client.get("/api/admins").status_code == 403   # spravu spravcu ma jen hlavni
+
+    _login(client, ADMIN_CODE)
+    every = {st["s"]: st for st in client.get("/api/stations").json()}
+    assert sid in every and "tv" in every        # hlavni vidi vsechno
+    assert every[sid]["ownerName"] == "Učitelka Jana"
+
+    # novy kod zneplatni stary i Janino prihlaseni
+    jana_cookie = _login(client, jana_code) and client.cookies.get(auth.COOKIE)
+    _login(client, ADMIN_CODE)
+    new_code = client.post(f"/api/admins/{jana_id}/code").json()["code"]
+    client.cookies.clear()
+    assert client.post("/api/login", json={"code": jana_code}).status_code == 403
+    client.cookies.set(auth.COOKIE, jana_cookie)
+    assert client.get("/api/me").json() == {"admin": False}
+    _login(client, new_code)
+
+    # zruseni spravce: stanice prevezme hlavni
+    _login(client, ADMIN_CODE)
+    assert client.delete(f"/api/admins/{jana_id}").json() == {"ok": True, "moved": 1}
+    assert server.get_registry().get(sid).owner == auth.MAIN_ID
+    assert client.delete(f"/api/admins/{auth.MAIN_ID}").status_code == 400
+
+
+def test_tv_link_resolves_station(admin):
+    st = admin.post("/api/stations", json={"scene": "cretaceous_night"}).json()
+    token = st["tv"].rsplit("/", 1)[1]
+    assert len(token) >= 16
+    assert admin.get(f"/api/tv/{token}").json() == {"s": st["s"], "scene": "cretaceous_night"}
+    admin.cookies.clear()                        # odkaz plati i bez prihlaseni
+    assert admin.get(f"/api/tv/{token}").status_code == 200
+    assert admin.get("/api/tv/uhodnuty-token-xyz").status_code == 404
+
+
+def test_old_stations_get_tv_token_on_load(tmp_path):
+    path = tmp_path / "stations.json"
+    path.write_text(json.dumps({"tv": {"scene": "aquarium", "stay": True}}), encoding="utf-8")
+    reg = stations.Registry(str(path))
+    tv = reg.get("tv")
+    assert tv.owner == auth.MAIN_ID and len(tv.tv) >= 16
+    assert reg.by_tv(tv.tv) is tv
+    assert json.loads(path.read_text(encoding="utf-8"))["tv"]["tv"] == tv.tv

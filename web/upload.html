@@ -4,89 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#12161c">
-<title>Přidat dinosaura</title>
+<title>Přidat zvíře</title>
+<link rel="stylesheet" href="/web/common.css">
 <style>
-  :root {
-    --bg: #12161c;
-    --card: #1b212a;
-    --line: #2c3542;
-    --text: #e8eef6;
-    --muted: #9aa7b8;
-    --accent: #ffb347;
-    --accent-dark: #2a1f0e;
-    --ok: #6ddf9c;
-    --bad: #ff8f7a;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); }
-  body {
-    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    padding: 20px 18px calc(28px + env(safe-area-inset-bottom));
-    max-width: 560px; margin: 0 auto;
-  }
+  body { font-size: 17px; padding-top: 20px; }
   h1 { font-size: 25px; margin: 4px 0 2px; }
   .lead { color: var(--muted); margin: 0 0 22px; font-size: 15px; }
 
-  .shoot {
+  .shoot, .feed-btn {
     display: block; width: 100%; border: none; border-radius: 20px;
-    background: var(--accent); color: #1a1206;
-    font-size: 22px; font-weight: 700; padding: 26px 18px;
-    text-align: center; cursor: pointer;
+    text-align: center; cursor: pointer; font-weight: 700;
+  }
+  .shoot {
+    background: var(--accent); color: var(--accent-ink);
+    font-size: 22px; padding: 26px 18px;
     box-shadow: 0 10px 24px rgba(255, 179, 71, .18);
   }
-  .shoot:active { transform: translateY(2px); }
-  .shoot small { display: block; font-size: 14px; font-weight: 500; opacity: .7; margin-top: 4px; }
-  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
-
-  /* krmeni (bod 11): jedina interakce s televizi */
   .feed-btn {
-    display: block; width: 100%; border: none; border-radius: 20px;
     margin-top: 14px; background: #2e4a35; color: #d9f2e0;
-    font-size: 20px; font-weight: 700; padding: 20px 18px;
-    text-align: center; cursor: pointer;
+    font-size: 20px; padding: 20px 18px;
     box-shadow: 0 8px 20px rgba(46, 74, 53, .3);
   }
-  .feed-btn:active { transform: translateY(2px); }
+  .shoot:active, .feed-btn:active { transform: translateY(2px); }
   .feed-btn:disabled { opacity: .55; }
-  .feed-btn small { display: block; font-size: 14px; font-weight: 500; opacity: .7; margin-top: 4px; }
+  .shoot small, .feed-btn small {
+    display: block; font-size: 14px; font-weight: 500; opacity: .7; margin-top: 4px;
+  }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
   #feedNote { display: block; margin-top: 8px; text-align: center; font-size: 14px; min-height: 1.3em; }
   #feedNote.ok { color: var(--ok); }
   #feedNote.bad { color: var(--bad); }
 
-  .card {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 18px; padding: 16px; margin-top: 18px;
-  }
-  .hidden { display: none !important; }
-
   #preview { width: 100%; border-radius: 12px; display: block; background: #000; }
   .meta { color: var(--muted); font-size: 13px; margin-top: 8px; }
-
   label.field { display: block; margin: 18px 0 8px; font-size: 15px; color: var(--muted); }
-  input[type=text] {
-    width: 100%; padding: 15px 14px; font-size: 18px; border-radius: 14px;
-    border: 1px solid var(--line); background: #10151b; color: var(--text);
-  }
-  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
 
   .row { display: flex; gap: 10px; margin-top: 16px; }
-  button.action {
-    flex: 1; border: none; border-radius: 16px; padding: 18px 12px;
-    font-size: 18px; font-weight: 700; cursor: pointer;
-  }
-  .primary { background: var(--accent); color: #1a1206; }
-  .ghost { background: transparent; color: var(--muted); border: 1px solid var(--line) !important; flex: 0 0 40%; }
-  button:disabled { opacity: .45; }
+  .row .btn { flex: 1; padding: 16px 12px; font-size: 18px; border-radius: 16px; }
+  .row .btn.ghost { flex: 0 0 40%; }
 
-  .status { margin-top: 20px; font-size: 17px; }
-  .spinner {
-    display: inline-block; width: 18px; height: 18px; vertical-align: -3px;
-    margin-right: 10px; border: 3px solid rgba(255,255,255,.2);
-    border-top-color: var(--accent); border-radius: 50%;
-    animation: spin .8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
+  #status { margin-top: 20px; font-size: 17px; }
   .result { border-left: 4px solid var(--ok); padding: 14px 16px; background: #16241d; border-radius: 12px; }
   .result strong { font-size: 20px; }
   .error { border-left: 4px solid var(--bad); padding: 14px 16px; background: #26191a; border-radius: 12px; }
@@ -94,141 +51,175 @@
   .hints { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 15px; }
   .hints li { margin: 4px 0; }
 
-  .field-label { font-size: 15px; color: var(--muted); margin-bottom: 4px; }
-  .roster-card { padding: 6px 10px; }
-  .roster-row {
-    display: flex; align-items: center; gap: 12px; padding: 12px 6px;
+  .mine-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 2px;
     border-bottom: 1px solid var(--line);
   }
-  .roster-row:last-child { border-bottom: none; }
-  .roster-row.confirm { flex-direction: column; align-items: stretch; gap: 10px; }
-  .roster-thumb {
-    width: 52px; height: 52px; border-radius: 10px; object-fit: contain;
-    background: #fff; flex: none;
-  }
-  .roster-info { flex: 1; min-width: 0; }
-  .roster-name {
-    font-weight: 600; font-size: 16px; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap;
-  }
-  .roster-kind { color: var(--muted); font-size: 13px; }
-  .roster-del {
+  .mine-row:last-child { border-bottom: none; }
+  .mine-row.confirm { flex-direction: column; align-items: stretch; gap: 0; }
+  .mine-thumb { width: 52px; height: 52px; border-radius: 10px; object-fit: contain; background: #fff; flex: none; }
+  .mine-info { flex: 1; min-width: 0; }
+  .mine-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mine-kind { color: var(--muted); font-size: 13px; }
+  .mine-del {
     flex: none; width: 42px; height: 42px; border-radius: 50%; border: none;
-    background: #232b36; color: var(--bad); font-size: 19px; cursor: pointer;
+    background: #232b36; color: var(--bad); font-size: 19px;
   }
-  .roster-del:active { background: #2c3542; }
-  .roster-confirm-text { margin: 0 0 12px; font-size: 15px; }
-  .roster-empty { color: var(--muted); font-size: 15px; padding: 12px 6px; }
-  .action.danger { background: var(--bad); color: #2a0e0e; }
+  .empty { color: var(--muted); font-size: 15px; }
 
-  /* decentni paticka: drzi stanici vzhuru (touch), kdyz se blizi uspani */
   .stay-foot { margin-top: 26px; text-align: center; }
   .stay-foot button {
     border: 1px solid var(--line); background: transparent; color: var(--muted);
-    border-radius: 999px; padding: 10px 18px; font-size: 15px; cursor: pointer;
+    border-radius: 999px; padding: 10px 18px; font-size: 15px;
   }
-  .stay-foot button:active { background: var(--card); }
   #stayNote { display: block; margin-top: 8px; color: var(--ok); font-size: 14px; }
 
-  /* paticka s dalsimi strankami (bod 6): rozcestnik u televize je jen text
-     k opsani, skutecne prokliknuti odsud dal je tady, na mobilu */
-  .footer-links { margin-top: 26px; text-align: center; }
-  .footer-links a { color: #7fc4ff; text-decoration: none; font-size: 14px; }
+  .ended { text-align: center; margin-top: 18vh; }
+  .ended .big { font-size: 56px; }
 </style>
 </head>
 <body>
 
-<h1>Přidat dinosaura</h1>
-<p class="lead">Vybarvi si obrázek, vyfoť ho a tvůj dinosaurus vyrazí do krajiny na televizi.</p>
-
-<label class="shoot" for="file">
-  📷 Vyfotit dinosaura
-  <small>na počítači vybere soubor z disku</small>
-</label>
-<input id="file" type="file" accept="image/*" capture="environment">
-
-<button class="feed-btn" id="feedBtn" type="button">
-  🍖 Hodit žrádlo
-  <small>dinosauři na televizi se seběhnou</small>
-</button>
-<span id="feedNote"></span>
-
-<div class="field-label" style="margin-top:22px">Dinosauři ve stanici</div>
-<div class="card roster-card">
-  <div id="rosterList"></div>
+<div id="ended" class="ended hidden">
+  <div class="big">🌙</div>
+  <h1>Tahle stanice už neběží</h1>
+  <p class="lead">Požádej dospělého o nový QR kód.</p>
 </div>
 
-<div id="sheet" class="card hidden">
-  <img id="preview" alt="Náhled fotky">
-  <div class="meta" id="meta"></div>
+<main id="page">
+  <h1 id="title">Přidat zvíře</h1>
+  <p class="lead" id="lead">Vybarvi si obrázek, vyfoť ho a tvoje zvíře vyrazí do krajiny na televizi.</p>
 
-  <label class="field" for="name">Jak se jmenuješ? (nemusíš vyplňovat)</label>
-  <input id="name" type="text" maxlength="40" autocomplete="off" placeholder="třeba Anička">
+  <label class="shoot" for="file">
+    <span id="shootText">📷 Vyfotit obrázek</span>
+    <small>na počítači vybere soubor z disku</small>
+  </label>
+  <input id="file" type="file" accept="image/*" capture="environment">
 
-  <div class="row">
-    <button class="action ghost" id="again" type="button">Jiná fotka</button>
-    <button class="action primary" id="send" type="button">Odeslat</button>
+  <div id="sheet" class="card hidden">
+    <img id="preview" alt="Náhled fotky">
+    <div class="meta" id="meta"></div>
+    <label class="field" for="name">Jak se jmenuješ? (nemusíš vyplňovat)</label>
+    <input id="name" type="text" maxlength="40" autocomplete="off" placeholder="třeba Anička">
+    <div class="row">
+      <button class="btn ghost" id="again" type="button">Jiná fotka</button>
+      <button class="btn primary" id="send" type="button">Odeslat</button>
+    </div>
   </div>
-</div>
 
-<div id="status" class="status"></div>
+  <div id="status"></div>
 
-<div class="stay-foot">
-  <button id="stay" type="button">Ještě chvíli ⏰</button>
-  <span id="stayNote"></span>
-</div>
+  <button class="feed-btn" id="feedBtn" type="button">
+    🍖 Hodit žrádlo
+    <small id="feedHint"></small>
+  </button>
+  <span id="feedNote"></span>
 
-<div class="footer-links">
-  <a href="/sablony">Šablony k tisku</a> &middot; <a href="/rezim">Režim stanice</a>
-</div>
+  <section>
+    <h2 id="allowedTitle">Co sem teď patří</h2>
+    <div class="sheets" id="allowed"></div>
+    <p class="hint">Vybarvi si jednoho z nich — jiná zvířata tahle krajina nepustí.</p>
+  </section>
 
+  <section>
+    <h2>Moje zvířata</h2>
+    <div id="mine"><div class="empty">Zatím jsi nic nepřidal(a).</div></div>
+  </section>
+
+  <div class="stay-foot">
+    <button id="stay" type="button">Ještě chvíli ⏰</button>
+    <span id="stayNote"></span>
+  </div>
+</main>
+
+<script src="/web/common.js"></script>
 <script>
 "use strict";
 
 const MAX_SIDE = 2000;
 const QUALITY = 0.85;
+const STATION = SID || "tv";
+const DEVICE = deviceId();
 
-// Session (bod 6): QR televize vede na /pridat?s=<id>; bez parametru je to
-// domaci default "tv". Otevreni stranky je aktivita (budi spici stanici).
-const SID = new URLSearchParams(location.search).get("s") || "tv";
-
-function touchSession() {
-  return fetch("/api/session/touch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ s: SID }),
-  }).catch(() => {});
-}
-touchSession();
-
-const fileInput = document.getElementById("file");
-const sheet = document.getElementById("sheet");
-const preview = document.getElementById("preview");
-const metaBox = document.getElementById("meta");
-const nameInput = document.getElementById("name");
-const sendBtn = document.getElementById("send");
-const againBtn = document.getElementById("again");
-const statusBox = document.getElementById("status");
-const rosterList = document.getElementById("rosterList");
-
+let scene = null;          // aktivni krajina stanice (z /api/scenes)
 let pending = null;
 let previewUrl = null;
 
-function setStatus(html) { statusBox.innerHTML = html; }
-
-function fail(why, hints) {
-  const list = (hints || []).map(h => "<li>" + h + "</li>").join("");
-  setStatus('<div class="error"><div class="why">' + why + "</div>" +
-            (list ? '<ul class="hints">' + list + "</ul>" : "") + "</div>");
+function showEnded() {
+  $("page").classList.add("hidden");
+  $("ended").classList.remove("hidden");
+  document.title = "Stanice neběží";
 }
 
-function kb(bytes) { return Math.round(bytes / 1024) + " kB"; }
+// --- Texty a povolena zvirata podle bezici krajiny ----------------------------
+
+async function loadScene() {
+  const r = await api("/api/scene/active?s=" + encodeURIComponent(STATION));
+  if (r.status === 404) { showEnded(); return false; }
+  if (!r.ok) return true;
+  const list = await loadScenes();
+  scene = list.find((s) => s.key === r.data.scene) || null;
+  if (scene) {
+    document.title = "Přidat " + scene.accusative;
+    $("title").textContent = "Přidat " + scene.accusative;
+    $("shootText").textContent = "📷 Vyfotit " + scene.accusative;
+    $("feedHint").textContent = scene.feedHint;
+    $("lead").textContent = "Na televizi je " + scene.label +
+      ". Vybarvi si obrázek, vyfoť ho a pustíš ho do krajiny.";
+  }
+  const t = await api("/api/templates?scene=" + encodeURIComponent(r.data.scene));
+  const box = $("allowed");
+  box.replaceChildren();
+  for (const s of (t.ok ? t.data : [])) {
+    const card = document.createElement("div");
+    card.className = "sheet-thumb";
+    const img = document.createElement("img");
+    img.src = s.template;
+    img.alt = "";
+    img.loading = "lazy";
+    const name = document.createElement("span");
+    name.textContent = s.label;
+    card.append(img, name);
+    box.append(card);
+  }
+  return true;
+}
+
+// --- Foceni a odeslani -------------------------------------------------------
+
+const statusBox = $("status");
+
+function say(kind, title, lines) {
+  const box = document.createElement("div");
+  box.className = kind;
+  const head = document.createElement(kind === "result" ? "strong" : "div");
+  if (kind === "error") head.className = "why";
+  head.textContent = title;
+  box.append(head);
+  if (lines && lines.length) {
+    const ul = document.createElement("ul");
+    ul.className = "hints";
+    for (const l of lines) {
+      const li = document.createElement("li");
+      li.textContent = l;
+      ul.append(li);
+    }
+    box.append(ul);
+  }
+  statusBox.replaceChildren(box);
+}
+
+function busy(text) {
+  const sp = document.createElement("span");
+  sp.className = "spinner";
+  statusBox.replaceChildren(sp, document.createTextNode(text));
+}
 
 async function loadBitmap(file) {
   if (window.createImageBitmap) {
     try {
       return await createImageBitmap(file, { imageOrientation: "from-image" });
-    } catch (e) { /* Safari without the option, fall through */ }
+    } catch (e) { /* Safari bez volby, zkusi se <img> */ }
   }
   return await new Promise((resolve, reject) => {
     const img = new Image();
@@ -239,242 +230,210 @@ async function loadBitmap(file) {
   });
 }
 
-// Phones shoot 12 Mpx; the sheet is legible far below that and the upload is
-// then instant even on a weak wifi.
+// Telefony foti 12 Mpx; list je citelny hluboko pod tim a upload je pak
+// okamzity i na slabe wifi.
 async function shrink(file) {
   const src = await loadBitmap(file);
   const w = src.width || src.naturalWidth;
   const h = src.height || src.naturalHeight;
   if (!w || !h) throw new Error("prázdný obrázek");
-
   const scale = Math.min(1, MAX_SIDE / Math.max(w, h));
   const cw = Math.max(1, Math.round(w * scale));
   const ch = Math.max(1, Math.round(h * scale));
-
   const canvas = document.createElement("canvas");
   canvas.width = cw; canvas.height = ch;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(src, 0, 0, cw, ch);
   if (src.close) src.close();
-
-  const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", QUALITY));
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", QUALITY));
   if (!blob) throw new Error("nelze zmenšit");
   return { blob, w: cw, h: ch };
 }
 
-fileInput.addEventListener("change", async () => {
-  const file = fileInput.files && fileInput.files[0];
+$("file").addEventListener("change", async () => {
+  const file = $("file").files && $("file").files[0];
   if (!file) return;
-  setStatus('<span class="spinner"></span>Připravuji fotku…');
-  sheet.classList.add("hidden");
+  busy("Připravuji fotku…");
+  $("sheet").classList.add("hidden");
   try {
     const out = await shrink(file);
     pending = out.blob;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(out.blob);
-    preview.src = previewUrl;
-    metaBox.textContent = out.w + " × " + out.h + " px · " + kb(out.blob.size);
-    sheet.classList.remove("hidden");
-    sendBtn.disabled = false;
-    setStatus("");
-    sheet.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    $("preview").src = previewUrl;
+    $("meta").textContent = out.w + " × " + out.h + " px · " + Math.round(out.blob.size / 1024) + " kB";
+    $("sheet").classList.remove("hidden");
+    $("send").disabled = false;
+    statusBox.replaceChildren();
+    $("sheet").scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (e) {
     pending = null;
-    fail("Fotku se nepodařilo načíst.", ["Zkus ji vyfotit znovu."]);
+    say("error", "Fotku se nepodařilo načíst.", ["Zkus ji vyfotit znovu."]);
   }
-  fileInput.value = "";
+  $("file").value = "";
 });
 
-againBtn.addEventListener("click", () => fileInput.click());
+$("again").addEventListener("click", () => $("file").click());
 
-sendBtn.addEventListener("click", async () => {
+$("send").addEventListener("click", async () => {
   if (!pending) return;
-  sendBtn.disabled = true;
-  againBtn.disabled = true;
-  setStatus('<span class="spinner"></span>Oživuji dinosaura…');
+  $("send").disabled = $("again").disabled = true;
+  busy("Oživuji " + (scene ? scene.accusative : "zvíře") + "…");
 
   const body = new FormData();
   body.append("photo", pending, "photo.jpg");
-  body.append("name", nameInput.value.trim());
-  body.append("s", SID);
+  body.append("name", $("name").value.trim());
+  body.append("s", STATION);
+  body.append("device", DEVICE);
 
   let res, data;
   try {
     res = await fetch("/api/upload", { method: "POST", body });
     data = await res.json();
   } catch (e) {
-    againBtn.disabled = false;
-    sendBtn.disabled = false;
-    fail("Nepodařilo se spojit se stanicí.", [
-      "Zkontroluj, že jsi na stejné wifi jako televize.",
-      "Pak zkus Odeslat znovu."
-    ]);
+    $("send").disabled = $("again").disabled = false;
+    say("error", "Nepodařilo se spojit se stanicí.", [
+      "Zkontroluj, že jsi na stejné wifi jako televize.", "Pak zkus Odeslat znovu."]);
     return;
   }
+  $("again").disabled = false;
 
-  againBtn.disabled = false;
+  if (res.status === 404) { showEnded(); return; }
+  if (res.status === 409 && data && data.foreign) {
+    // jine zvire nez z bezici krajiny: fotka je v poradku, jen ne sem
+    pending = null;
+    $("sheet").classList.add("hidden");
+    say("error", data.error, data.allowed && data.allowed.length
+      ? ["Sem patří: " + data.allowed.join(", ") + "."] : []);
+    return;
+  }
   if (!res.ok || !data || !data.ok) {
-    sendBtn.disabled = false;
-    fail((data && data.error ? data.error : "něco se pokazilo") + ".", [
+    $("send").disabled = false;
+    say("error", (data && data.error ? data.error : "něco se pokazilo") + ".", [
       "Na fotce musí být vidět všechny čtyři černé čtverečky v rozích listu.",
       "Foť shora, ať je list rovně a celý v záběru.",
-      "Ať na papír nesvítí lampa přímo — leskne se to."
-    ]);
+      "Ať na papír nesvítí lampa přímo — leskne se to."]);
     return;
   }
 
   const who = data.name ? data.name + ", tvůj " + data.label : "Tvůj " + data.label;
-  const pct = Math.round((data.coverage || 0) * 100);
-  if (data.note) {
-    // tvor patri do jine krajiny, nez jaka ted bezi na televizi: je ulozeny,
-    // objevi se po prepnuti — server posila celou cesku vetu
-    const div = document.createElement("div");
-    div.textContent = data.note;
-    setStatus('<div class="result"><strong>' + who + " je uložený!</strong>" +
-              '<div class="meta">' + div.innerHTML + "</div></div>");
-  } else {
-    setStatus('<div class="result"><strong>' + who +
-              " vyrazil do krajiny — sleduj levý kraj televize!</strong>" +
-              '<div class="meta">Vybarveno na ' + pct + " % · zpracováno za " +
-              (data.took_ms || 0) + " ms</div></div>");
-  }
+  say("result", who + " vyrazil do krajiny — sleduj levý kraj televize!");
   pending = null;
-  sheet.classList.add("hidden");
-  nameInput.value = nameInput.value.trim();
-  loadRoster();
+  $("sheet").classList.add("hidden");
+  loadMine();
 });
 
-// --- Dinosauři ve stanici: seznam s mazáním (bod d) --------------------
+// --- Moje zvirata ------------------------------------------------------------
 
-function rosterRow(r) {
+function mineRow(r) {
   const row = document.createElement("div");
-  row.className = "roster-row";
-
+  row.className = "mine-row";
   const thumb = document.createElement("img");
-  thumb.className = "roster-thumb";
+  thumb.className = "mine-thumb";
   thumb.src = "/catch/" + r.id + "/texture.png";
   thumb.alt = "";
-
   const info = document.createElement("div");
-  info.className = "roster-info";
+  info.className = "mine-info";
   const name = document.createElement("div");
-  name.className = "roster-name";
-  name.textContent = r.name || "–";
-  const species = document.createElement("div");
-  species.className = "roster-kind";
-  species.textContent = r.label || r.creature || "";
-  info.append(name, species);
-
+  name.className = "mine-name";
+  name.textContent = r.name || r.label;
+  const kind = document.createElement("div");
+  kind.className = "mine-kind";
+  kind.textContent = r.name ? r.label : "";
+  info.append(name, kind);
   const del = document.createElement("button");
-  del.className = "roster-del";
+  del.className = "mine-del";
   del.type = "button";
   del.setAttribute("aria-label", "Smazat");
   del.textContent = "✕";
-  del.addEventListener("click", () => rosterAskDelete(row, r));
-
+  del.addEventListener("click", () => askDelete(row, r));
   row.append(thumb, info, del);
   return row;
 }
 
-function rosterAskDelete(row, r) {
+function askDelete(row, r) {
   row.replaceChildren();
   row.classList.add("confirm");
   const text = document.createElement("div");
-  text.className = "roster-confirm-text";
-  text.textContent = "Fakt smazat " + (r.name ? r.name + ", tvého " : "tohoto ")
-                     + (r.label || "dinosaura") + "?";
-
+  text.textContent = "Fakt smazat " + (r.name ? r.name + ", tvého " : "tohoto ") + r.label + "?";
   const buttons = document.createElement("div");
   buttons.className = "row";
   const yes = document.createElement("button");
-  yes.className = "action danger";
+  yes.className = "btn danger-solid";
   yes.type = "button";
   yes.textContent = "Ano, smazat";
   const no = document.createElement("button");
-  no.className = "action ghost";
+  no.className = "btn ghost";
   no.type = "button";
   no.textContent = "Ne";
-  no.addEventListener("click", () => row.replaceWith(rosterRow(r)));
-
+  no.addEventListener("click", () => row.replaceWith(mineRow(r)));
   yes.addEventListener("click", async () => {
-    yes.disabled = true;
-    no.disabled = true;
-    try {
-      const res = await fetch("/api/rigs/" + r.id, { method: "DELETE" });
-      if (res.ok) { row.remove(); return; }
-    } catch (e) { /* padne do hlášky níž */ }
-    text.textContent = "Smazání se nepovedlo, zkus to znovu.";
-    yes.disabled = false;
-    no.disabled = false;
+    yes.disabled = no.disabled = true;
+    const res = await api("/api/rigs/" + r.id + "?device=" + encodeURIComponent(DEVICE),
+                          { method: "DELETE" });
+    if (res.ok) { row.remove(); if (!$("mine").children.length) loadMine(); return; }
+    text.textContent = errorText(res, "Smazání se nepovedlo, zkus to znovu.");
+    yes.disabled = no.disabled = false;
   });
-
   buttons.append(yes, no);
   row.append(text, buttons);
 }
 
-async function loadRoster() {
-  let rigs = [];
-  try {
-    const data = await (await fetch("/api/rigs?s=" + encodeURIComponent(SID))).json();
-    rigs = data.rigs || data;
-  } catch (e) { /* seznam prostě zůstane prázdný */ }
-  rosterList.replaceChildren();
-  if (!rigs.length) {
+async function loadMine() {
+  const r = await api("/api/rigs?s=" + encodeURIComponent(STATION) +
+                      "&mine=" + encodeURIComponent(DEVICE));
+  const box = $("mine");
+  box.replaceChildren();
+  const list = r.ok ? r.data : [];
+  if (!list.length) {
     const empty = document.createElement("div");
-    empty.className = "roster-empty";
-    empty.textContent = "Zatím tu nikdo není.";
-    rosterList.append(empty);
+    empty.className = "empty";
+    empty.textContent = "Zatím jsi nic nepřidal(a).";
+    box.append(empty);
     return;
   }
-  rigs.slice().reverse().forEach((r) => rosterList.append(rosterRow(r)));
+  list.slice().reverse().forEach((m) => box.append(mineRow(m)));
 }
 
-loadRoster();
+// --- Zradlo a „jeste chvili“ -------------------------------------------------
 
-// --- Hodit žrádlo (bod 11): jediná interakce s televizí --------------------
-
-const feedBtn = document.getElementById("feedBtn");
-const feedNote = document.getElementById("feedNote");
 let feedNoteTimer = 0;
-
-function showFeedNote(text, ok) {
-  feedNote.textContent = text;
-  feedNote.className = ok ? "ok" : "bad";
+function feedNote(text, ok) {
+  $("feedNote").textContent = text;
+  $("feedNote").className = ok ? "ok" : "bad";
   clearTimeout(feedNoteTimer);
-  feedNoteTimer = setTimeout(() => { feedNote.textContent = ""; }, 6000);
+  feedNoteTimer = setTimeout(() => { $("feedNote").textContent = ""; }, 6000);
 }
 
-feedBtn.addEventListener("click", async () => {
-  feedBtn.disabled = true;
-  try {
-    const res = await fetch("/api/feed", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ s: SID }),
-    });
-    const data = await res.json().catch(() => null);
-    if (res.ok && data && data.ok) {
-      showFeedNote("Žrádlo letí — koukni na televizi! 🍖", true);
-    } else {
-      showFeedNote((data && data.error) || "Nepodařilo se hodit žrádlo, zkus to znovu.", false);
-    }
-  } catch (e) {
-    showFeedNote("Nepodařilo se spojit se stanicí.", false);
-  }
-  setTimeout(() => { feedBtn.disabled = false; }, 2000);
+$("feedBtn").addEventListener("click", async () => {
+  $("feedBtn").disabled = true;
+  const r = await api("/api/feed", { body: { s: STATION } });
+  if (r.status === 404) { showEnded(); return; }
+  if (r.ok) feedNote("Žrádlo letí — koukni na televizi! 🍖", true);
+  else feedNote(errorText(r, "Nepodařilo se hodit žrádlo, zkus to znovu."), false);
+  setTimeout(() => { $("feedBtn").disabled = false; }, 2000);
 });
 
-// „Ještě chvíli" (bod 6): explicitni touch — stanice nezhasne, i kdyz se
-// zrovna nic nenahrava. Upload sam je touch, tam neni potreba nic.
-const stayBtn = document.getElementById("stay");
-const stayNote = document.getElementById("stayNote");
-stayBtn.addEventListener("click", async () => {
-  stayBtn.disabled = true;
-  await touchSession();
-  stayNote.textContent = "Stanice zůstane vzhůru. 🌞";
-  setTimeout(() => { stayNote.textContent = ""; stayBtn.disabled = false; }, 4000);
+// Upload i krmeni stanici budi samy; tohle je pro chvile, kdy se jen kouka.
+$("stay").addEventListener("click", async () => {
+  $("stay").disabled = true;
+  await api("/api/session/touch", { body: { s: STATION } });
+  $("stayNote").textContent = "Stanice zůstane vzhůru. 🌞";
+  setTimeout(() => { $("stayNote").textContent = ""; $("stay").disabled = false; }, 4000);
 });
+
+// --- Start a zive zmeny ------------------------------------------------------
+
+(async () => {
+  if (!(await loadScene())) return;
+  loadMine();
+  const stop = liveSocket("/ws?s=" + encodeURIComponent(STATION), (msg) => {
+    if (msg.type === "ended") { stop(); showEnded(); }
+    else if (msg.type === "scene") loadScene();
+    else if (msg.type === "remove" || msg.type === "cleared") loadMine();
+  });
+})();
 </script>
 </body>
 </html>

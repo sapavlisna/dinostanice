@@ -266,9 +266,10 @@ snímky), `tools/shot3d.py` přesměrován na /dino3d.
 - Frontend review C6 (trimTail eps per kanál), C8 (rychlost letců dle
   hloubky) — vědomě odloženo (kvalita obrazu, ne stabilita). B5 (2D rig
   prolínání zastávky) padlo se smazáním staré větve.
-- Backend review P1-9 retence data/catch (strop počtu úlovků) a P1-10
-  autentizace/zúžení /catch statiky — vyžaduje Pavlovo rozhodnutí
-  (domácí LAN vs. Tailscale expozice).
+- Backend review P1-9 retence data/catch (strop počtu úlovků) — vyžaduje
+  Pavlovo rozhodnutí. P1-10 (autentizace) vyřešeno 2026-10-16 kódem správce
+  pro všechny řídicí akce (README „Stanice, správce a děti"); `/catch`
+  statika zůstává veřejná (textury úlovků, id nejsou tajná).
 - Stará 2D rig větev: SMAZÁNA (viz bod 10.5).
 
 ## Pavlovy opravy po zhlédnutí TV (2026-08-27)

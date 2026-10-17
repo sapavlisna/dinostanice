@@ -11,15 +11,18 @@ services:
       - ./data/catch:/app/data/catch
       # kos smazanych ulovku patri na hostitele — kvuli obnove i EXDEV
       - ./data/trash:/app/data/trash
-      # nastaveni sceny (ambient) — soubor musi na hostiteli existovat pred
-      # prvnim startem, jinak si Docker misto nej udela adresar
-      - ./data/state.json:/app/data/state.json
+      # stanice (krajina, nastaveni) a vygenerovany kod spravce
+      - ./data/config:/app/data/config
+      # stare nastaveni domaci TV, cte se jen pri prvni migraci do config/
+      - ./data/state.json:/app/data/state.json:ro
     environment:
       # adresa a port, na kterych stanici uvidi mobil; pouzije se pro QR kod,
       # kdyz je scena otevrena pres localhost. V kontejneru se adresa hostitele
       # zjistit neda, proto se predava z .env
       DINO_HOST: "${DINO_HOST:-}"
       DINO_PORT: "${DINO_PORT:-8100}"
+      # kod spravce (/admin); bez nej se vygeneruje do data/config/admin.json
+      DINO_ADMIN_CODE: "${DINO_ADMIN_CODE:-}"
     restart: unless-stopped
     # pipeline ma peak ~300 MB na beh a soubezne bezi max 2 (PROCESS_SEM);
     # kdyby preci jen neco uteklo, at to nepotopi hostitele

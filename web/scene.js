@@ -9,11 +9,25 @@ import * as Scene3D from './scene3d.js';
 import * as Tune from './tune.js';
 import * as Roster from './roster.js';
 
-/* Session (bod 6): TV bez `?s=` je domaci default "tv" — dnesni chovani jedne
-   televize. `?s=<id>` oddeli druhou obrazovku: vlastni QR, vlastni ulovky,
-   vlastni broadcast. Neznamou session si server tise zalozi. */
-const SID = new URLSearchParams(location.search).get('s') || 'tv';
-const SIDQ = 's=' + encodeURIComponent(SID);
+/* Stanice: tajny odkaz /tv/<token> ze spravy. Holé /tv vezme odkaz, ke
+   kteremu byla televize naposled pripojena (localStorage), jinak ukaze
+   parovaci kod a ceka, az ho spravce zada. `?scene=` bez odkazu je ladici
+   rezim (tools/) nad domaci stanici. Token se na stanici (`SID`, kterou
+   pouziva API a dětský QR) prelozi pri startu. */
+const STORE_KEY = 'dino.tv';
+const PARAMS = new URLSearchParams(location.search);
+function storedToken() {
+  try { return localStorage.getItem(STORE_KEY) || ''; } catch (e) { return ''; }
+}
+function rememberToken(token) {
+  try {
+    if (token) localStorage.setItem(STORE_KEY, token); else localStorage.removeItem(STORE_KEY);
+  } catch (e) { /* bez uloziste se jen nepamatuje */ }
+}
+const URL_TOKEN = (location.pathname.match(/^\/tv\/([A-Za-z0-9_-]+)/) || [])[1] || '';
+const TOKEN = URL_TOKEN || storedToken();
+let SID = TOKEN ? '' : (PARAMS.get('scene') ? 'tv' : '');
+let SIDQ = 's=' + encodeURIComponent(SID);
 
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -47,12 +61,11 @@ const FEED_RADIUS = 0.3;
 const FEED_REACH = 0.04;
 
 /* Scena jako data (bod 8): vsechno, co je vlastnost krajiny — pasy, chovani
-   pohybu, osvetleni, backdrop — zije v definici web/scenes/<key>.js. scene.js
+   pohybu, osvetleni, backdrop — zije v definici scenes/<key>/render.js. scene.js
    je jeden genericky stroj nad aktivni definici. Vyber sceny: `?scene=` v URL
    prebiji, jinak plati hodnota session ze serveru; zpravou `scene` z WS se
    prepina za behu. */
 const SCENE_OVERRIDE = new URLSearchParams(location.search).get('scene') || '';
-const DEFAULT_SCENE = 'cretaceous';
 let sceneDef = null;      // aktivni definice sceny
 let backdrop = null;      // instance kreslice krajiny {draw, drawFront, ...}
 let xfade = null;         // { old, t, buf } — prolnuti stare krajiny do nove
@@ -1254,14 +1267,14 @@ async function catalogue() {
 
 async function fetchSettings() {
   try {
-    const s = await (await fetch('/api/scene/settings')).json();
+    const s = await (await fetch('/api/scene/settings?' + SIDQ)).json();
     ambientEnabled = !!s.ambient;
   } catch (e) {
     /* necháme výchozí (zapnuto) — scéna se dá ladit i bez serveru */
   }
 }
 
-/* Reset z /rezim (bod d): ulovky zmizi, ambientni doplnky z katalogu
+/* Vyprazdneni z adminu (bod d): ulovky zmizi, ambientni doplnky z katalogu
    zustanou. Jeden souhrnny zaznam v listě mísi vypadá lip nez zaplaveni N
    jednotlivymi "odešel". */
 function clearCatches() {
@@ -1330,8 +1343,21 @@ async function reconcile() {
   topUp();
 }
 
+/* Definice = vykreslení ze scenes/<key>/render.js + jméno, sada tvorů a texty
+   ze scene.json (přes /api/scenes; scene.json čte jen server). */
+let sceneMeta = null;
+async function sceneList() {
+  if (!sceneMeta) {
+    try {
+      sceneMeta = await (await fetch('/api/scenes')).json();
+    } catch (e) { sceneMeta = []; }
+  }
+  return sceneMeta;
+}
 async function loadSceneDef(key) {
-  return (await import(`./scenes/${key}.js`)).default;
+  const meta = (await sceneList()).find((s) => s.key === key) || { key, label: key, catalogue: key };
+  const render = (await import(`/scenes/${key}/render.js`)).default;
+  return { ...render, ...meta };
 }
 
 /* Přepnutí scény za běhu (zpráva `scene` z WS): tvorové odejdou zmenšením do
@@ -1420,6 +1446,10 @@ function connect() {
       sleepScene();
     } else if (msg.type === 'wake') {
       wakeScene();
+    } else if (msg.type === 'ended') {
+      // spravce stanici ukoncil: televize se vrati na parovani
+      rememberToken('');
+      location.href = '/tv';
     }
   };
   ws.onclose = () => {
@@ -1618,9 +1648,7 @@ window.DinoScene = {
 };
 
 const qr = document.getElementById('qr');
-qr.src = '/api/qr?' + SIDQ;
 qr.onerror = () => { hintEl.style.display = 'none'; };
-document.getElementById('sleepqr').src = qr.src;
 
 Roster.init();
 Scene3D.onNote(note);
@@ -1640,16 +1668,20 @@ async function boot() {
   let key = SCENE_OVERRIDE;
   if (!key) {
     try {
-      key = (await (await fetch('/api/scene/active?' + SIDQ)).json()).scene;
+      const res = await fetch('/api/scene/active?' + SIDQ);
+      if (res.status === 404) { stationGone(); return; }
+      key = (await res.json()).scene;
     } catch (e) { /* bez serveru plati default */ }
   }
+  // nahradni krajina je prvni z registru (scene.json s nejnizsim `order`)
+  const fallback = ((await sceneList())[0] || {}).key || 'cretaceous';
   try {
-    sceneDef = await loadSceneDef(key || DEFAULT_SCENE);
+    sceneDef = await loadSceneDef(key || fallback);
     qrInvite();
   } catch (e) {
     try {
-      sceneDef = await loadSceneDef(DEFAULT_SCENE);
-      note('scéna ' + key + ' se nenačetla, jede ' + DEFAULT_SCENE);
+      sceneDef = await loadSceneDef(fallback);
+      note('scéna ' + key + ' se nenačetla, jede ' + fallback);
     } catch (e2) {
       die('Definice scény se nenačetla: ' + (e2 && e2.message || e2));
       window.__ready = true;
@@ -1668,7 +1700,78 @@ async function boot() {
   window.__ready = true;
 }
 
-boot();
-connect();
+/* Stanice neexistuje (ukoncena, nebo stary odkaz): zapamatovany odkaz se
+   zapomene a televize jde parovat; odkaz primo v adrese jen rekne, ze nebezi. */
+function stationGone() {
+  rememberToken('');
+  if (!URL_TOKEN) { location.href = '/tv'; return; }
+  die('Tahle stanice už neběží. Nový odkaz pro televizi najdeš ve správě.');
+  window.__ready = true;
+}
+
+/* Parovani: kratky kod z /api/pair, cekani na WS `paired`. Kod plati deset
+   minut; pak (nebo kdyz spojeni spadne) se vyzada novy. */
+async function pairing() {
+  const box = document.getElementById('pair');
+  box.classList.add('show');
+  hintEl.style.display = 'none';
+  document.getElementById('pairurl').textContent = location.host;
+  let code = '';
+  try {
+    code = (await (await fetch('/api/pair', { method: 'POST' })).json()).code;
+  } catch (e) {
+    setTimeout(pairing, 5000);
+    return;
+  }
+  document.getElementById('paircode').textContent = code;
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(proto + '://' + location.host + '/ws?pair=' + code);
+  let done = false;
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.type === 'paired' && msg.tv) {
+      done = true;
+      rememberToken(msg.tv);
+      location.href = '/tv/' + msg.tv;
+    }
+  };
+  ws.onclose = () => { if (!done) setTimeout(pairing, 2000); };
+}
+
+async function start() {
+  if (TOKEN) {
+    try {
+      const res = await fetch('/api/tv/' + encodeURIComponent(TOKEN));
+      if (res.status === 404) { stationGone(); return; }
+      SID = (await res.json()).s;
+      SIDQ = 's=' + encodeURIComponent(SID);
+      rememberToken(TOKEN);
+    } catch (e) {
+      setTimeout(start, 5000);   // server zrovna nebezi — zkusit znovu
+      return;
+    }
+  }
+  if (SID) {
+    qr.src = '/api/qr?' + SIDQ;
+    document.getElementById('sleepqr').src = qr.src;
+    boot();
+    connect();
+    qrInit();
+    return;
+  }
+  // v pozadi bezi prvni krajina s ukazkovymi zviraty, ale bez stanice
+  window.__ready = false;
+  (async () => {
+    sceneDef = await loadSceneDef(((await sceneList())[0] || {}).key || 'cretaceous');
+    Scene3D.setLighting(sceneDef.lighting);
+    backdrop = await sceneDef.backdrop();
+    await catalogue();
+    await topUp();
+    window.__ready = true;
+  })().catch((e) => note('krajina: ' + (e && e.message || e)));
+  pairing();
+}
+
+start();
 requestAnimationFrame(frame);
-qrInit();

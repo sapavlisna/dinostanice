@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12161c">
+<title>Správa · DinoStanice</title>
+<link rel="stylesheet" href="/web/common.css">
+<style>
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 24px; margin: 0; }
+  .back { color: var(--link); text-decoration: none; font-size: 14px; }
+  .sub { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+  .who { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+  .tiles { display: grid; gap: 8px; }
+  .tile {
+    display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+    background: var(--well); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; color: var(--text); text-decoration: none;
+  }
+  .tile:not(:disabled):active { transform: translateY(1px); }
+  .tile .info { flex: 1; min-width: 0; }
+  .tile .name { font-weight: 700; font-size: 17px; }
+  .tile .small { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .tile .mark { font-size: 13px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+  .tile.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tile.active .mark { color: var(--accent); }
+  .tile.active:disabled { opacity: 1; }
+  .tile .btn { padding: 8px 10px; font-size: 13px; }
+
+  .switch-row { display: flex; align-items: center; gap: 14px; }
+  .switch-row + .switch-row { margin-top: 14px; }
+  .switch-row .label { flex: 1; font-weight: 600; }
+  .switch-row .label small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; }
+  .switch {
+    flex: none; position: relative; width: 56px; height: 32px; border-radius: 16px;
+    border: 1px solid var(--line); background: var(--well); padding: 0;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+    border-radius: 50%; background: var(--muted); transition: transform .15s;
+  }
+  .switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(24px); background: var(--accent-ink); }
+
+  .count { display: flex; align-items: baseline; gap: 10px; }
+  .count .num { font-size: 34px; font-weight: 800; line-height: 1; }
+  .count .what { color: var(--muted); }
+  .breakdown { font-size: 14px; color: var(--muted); margin-top: 6px; }
+
+  .qr-box { text-align: center; }
+  .qr { display: block; margin: 4px auto 8px; width: min(280px, 100%); aspect-ratio: 1;
+        background: #fff; border-radius: 12px; }
+  .qr-url { font-size: 13px; color: var(--muted); word-break: break-all; }
+
+  .code-row { display: flex; gap: 8px; margin-top: 10px; }
+  .code-row input { flex: 1; min-width: 0; }
+  .code-row input.code { text-transform: uppercase; letter-spacing: .2em; font-weight: 700; }
+  .code-row input.link { font-size: 14px; }
+
+  .new-code { background: #16241d; border-color: #2e5a3c; }
+  .new-code .value { font-size: 30px; font-weight: 800; letter-spacing: .2em; margin: 8px 0; }
+
+  .group + .group { margin-top: 18px; }
+  .group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .group-head b { font-size: 16px; }
+  .group-head .now { color: var(--accent); font-size: 13px; font-weight: 700; margin-left: 6px; }
+
+  footer { margin-top: 26px; text-align: center; font-size: 14px; }
+  footer button { background: none; border: none; color: var(--link); padding: 0; }
+
+  /* tisk QR: jen kod a pozvanka, nic z ovladani */
+  #printQr { display: none; }
+  @media print {
+    body > *:not(#printQr) { display: none !important; }
+    #printQr { display: block; text-align: center; color: #000; padding-top: 30mm; }
+    #printQr h1 { font-size: 34pt; margin: 0 0 6mm; }
+    #printQr p { font-size: 16pt; margin: 0 0 12mm; }
+    #printQr img { width: 120mm; height: 120mm; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<!-- prihlaseni -->
+<div id="loginView" class="hidden">
+  <header><h1>DinoStanice</h1></header>
+  <p class="sub">Děti vybarví zvíře, vyfotí ho a to ožije na televizi. Tady se stanice spravují.</p>
+  <section>
+    <h2>Přihlášení správce</h2>
+    <p class="sub" style="margin-top:0">Zadej svůj kód správce. Kód ti dá hlavní správce serveru.</p>
+    <div class="code-row">
+      <input id="loginCode" class="code" type="password" autocomplete="current-password"
+             placeholder="kód" aria-label="Kód správce">
+      <button class="btn primary" id="loginBtn" type="button">Přihlásit</button>
+    </div>
+    <div class="status" id="loginStatus"></div>
+  </section>
+</div>
+
+<!-- moje stanice -->
+<div id="listView" class="hidden">
+  <header><h1>Moje stanice</h1><span class="who" id="who"></span></header>
+  <p class="sub">Stanice = jedna televize se svou krajinou, svými zvířaty a QR kódem pro děti.
+    Založ ji, otevři její odkaz na počítači u televize a ovládej ji odsud.</p>
+
+  <section>
+    <h2>Založit stanici</h2>
+    <div class="tiles" id="newScenes"></div>
+    <div class="btn-row">
+      <button class="btn primary" id="create" type="button">＋ Založit stanici</button>
+    </div>
+    <div class="status" id="newStatus"></div>
+  </section>
+
+  <section>
+    <h2>Stanice</h2>
+    <div class="tiles" id="stationList"></div>
+    <p class="hint" id="noStations">Zatím žádná — založ první.</p>
+  </section>
+
+  <section id="adminsBox" class="hidden">
+    <h2>Správci</h2>
+    <p class="sub" style="margin-top:0">Každý správce má svůj kód a vidí jen svoje stanice. Ty vidíš všechny.</p>
+    <div class="tiles" id="adminList"></div>
+    <div class="code-row">
+      <input id="newAdmin" type="text" maxlength="40" autocomplete="off"
+             placeholder="jméno, třeba Školka Sluníčko" aria-label="Jméno nového správce">
+      <button class="btn" id="addAdmin" type="button">Přidat</button>
+    </div>
+    <div class="confirm new-code hidden" id="codeShow">
+      <p id="codeText"></p>
+      <p class="value" id="codeValue"></p>
+      <p class="hint" style="margin:0">Kód se ukazuje jen teď — opiš ho a předej. Kdyby se ztratil, vygeneruješ nový.</p>
+    </div>
+    <div class="status" id="adminStatus"></div>
+  </section>
+</div>
+
+<!-- jedna stanice -->
+<div id="stationView" class="hidden">
+  <header>
+    <a class="back" href="/">← Moje stanice</a>
+    <span class="conn" id="conn">bez spojení</span>
+  </header>
+  <h1 id="stationName" style="margin-top:8px"></h1>
+  <p class="sub" id="stationSub"></p>
+
+  <section>
+    <h2>1 · Scéna na televizi</h2>
+    <p class="sub" style="margin-top:0">Otevři tenhle odkaz v prohlížeči na počítači u televize
+      (klávesa F = celá obrazovka). Kdo odkaz má, scénu vidí; ovládat ji jde jen odsud.</p>
+    <div class="code-row">
+      <input id="tvLink" class="link" type="text" readonly aria-label="Odkaz pro televizi">
+      <button class="btn" id="copyTv" type="button">Kopírovat</button>
+    </div>
+    <div class="btn-row">
+      <a class="btn primary" id="openScene" href="/" target="_blank">📺 Otevřít scénu tady</a>
+    </div>
+    <div class="status" id="tvStatus"></div>
+    <p class="hint">Televize, kde se odkaz špatně píše: otevři na ní jen adresu serveru s <b>/tv</b>
+      na konci, ukáže čtyřmístný kód. Ten zadej sem:</p>
+    <div class="code-row">
+      <input id="pairCode" class="code" type="text" maxlength="4" autocomplete="off" placeholder="KÓD" aria-label="Kód z televize">
+      <button class="btn" id="pairHere" type="button">Připojit</button>
+    </div>
+    <div class="status" id="pairStatus"></div>
+  </section>
+
+  <section class="qr-box">
+    <h2>2 · QR kód pro děti</h2>
+    <img class="qr" id="qrImg" alt="QR kód pro děti">
+    <div class="qr-url" id="qrUrl"></div>
+    <p class="hint">Vede jen na focení obrázku a házení žrádla. Je vidět i na televizi.</p>
+    <div class="btn-row" style="justify-content:center">
+      <button class="btn" id="printQrBtn" type="button">🖨 Vytisknout QR</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Předlohy k vybarvení</h2>
+    <div id="templates"></div>
+  </section>
+
+  <section>
+    <h2>Krajina</h2>
+    <div class="tiles" id="tiles"></div>
+    <div class="status" id="sceneStatus"></div>
+  </section>
+
+  <section>
+    <h2>Nastavení</h2>
+    <div class="switch-row">
+      <span class="label" id="ambientLabel">Ukázková zvířata
+        <small>Než děti něco přinesou, scénu oživí zvířata z katalogu.</small></span>
+      <button class="switch" id="ambient" type="button" role="switch"
+              aria-checked="false" aria-labelledby="ambientLabel"></button>
+    </div>
+    <div class="switch-row">
+      <span class="label" id="stayLabel">Neusínat
+        <small>Jinak scéna po 15 minutách bez dětí ztmavne a čeká na QR.</small></span>
+      <button class="switch" id="stay" type="button" role="switch"
+              aria-checked="false" aria-labelledby="stayLabel"></button>
+    </div>
+    <div class="status" id="settingsStatus"></div>
+  </section>
+
+  <section>
+    <h2>Zvířata od dětí</h2>
+    <div class="count"><span class="num" id="catchNum">–</span><span class="what" id="catchWhat">zvířat</span></div>
+    <div class="breakdown" id="breakdown"></div>
+    <div class="btn-row" id="resetRow">
+      <button class="btn danger" id="resetBtn" type="button">Smazat všechna…</button>
+    </div>
+    <div class="confirm hidden" id="resetConfirm">
+      <p id="resetText"></p>
+      <div class="btn-row">
+        <button class="btn danger-solid" id="resetYes" type="button">Smazat</button>
+        <button class="btn ghost" id="resetNo" type="button">Nechat</button>
+      </div>
+    </div>
+    <div class="status" id="resetStatus"></div>
+  </section>
+
+  <section id="endBox">
+    <h2>Ukončit</h2>
+    <div class="btn-row" id="endRow" style="margin-top:0">
+      <button class="btn danger" id="endBtn" type="button">Ukončit stanici…</button>
+    </div>
+    <div class="confirm hidden" id="endConfirm">
+      <p>Odkaz pro televizi i QR kód přestanou platit a zvířata od dětí půjdou do koše stanice (30 dní).</p>
+      <div class="btn-row">
+        <button class="btn danger-solid" id="endYes" type="button">Ukončit</button>
+        <button class="btn ghost" id="endNo" type="button">Nechat běžet</button>
+      </div>
+    </div>
+    <div class="status" id="endStatus"></div>
+  </section>
+</div>
+
+<footer id="footer" class="hidden"><button id="logout" type="button">Odhlásit</button></footer>
+
+<div id="printQr">
+  <h1 id="printTitle"></h1>
+  <p id="printSub"></p>
+  <img id="printImg" alt="">
+</div>
+
+<script src="/web/common.js"></script>
+<script>
+"use strict";
+
+const CATCH = ["zvíře", "zvířata", "zvířat"];
+let me = null;
+let scenes = [];
+let station = null;
+let newScene = "";
+
+function stationName(st) {
+  return st.home ? "Domácí televize" : "Stanice " + st.s.toUpperCase();
+}
+function sceneByKey(key) { return scenes.find((s) => s.key === key); }
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text) n.textContent = text;
+  return n;
+}
+
+function show(view) {
+  for (const v of ["loginView", "listView", "stationView"])
+    $(v).classList.toggle("hidden", v !== view);
+  $("footer").classList.toggle("hidden", view === "loginView");
+}
+
+// --- Prihlaseni ---------------------------------------------------------------
+
+async function login() {
+  $("loginBtn").disabled = true;
+  const r = await api("/api/login", { body: { code: $("loginCode").value } });
+  $("loginBtn").disabled = false;
+  if (!r.ok) { setStatus($("loginStatus"), errorText(r, "Přihlášení se nepovedlo."), "bad"); return; }
+  start();
+}
+$("loginBtn").addEventListener("click", login);
+$("loginCode").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+$("logout").addEventListener("click", async () => {
+  await api("/api/logout", { method: "POST" });
+  location.href = "/";
+});
+
+// --- Moje stanice ---------------------------------------------------------------
+
+function sceneTile(sc, active, onPick, markText) {
+  const b = el("button", "tile" + (active ? " active" : ""));
+  b.type = "button";
+  b.setAttribute("aria-pressed", String(active));
+  const info = el("div", "info");
+  info.append(el("div", "name", sc.label), el("div", "small", sc.subtitle || ""));
+  const mark = el("div", "mark", markText);
+  b.append(info, mark);
+  b.addEventListener("click", () => onPick(sc, b, mark));
+  return b;
+}
+
+function paintNewScenes() {
+  const box = $("newScenes");
+  box.replaceChildren();
+  for (const sc of scenes)
+    box.append(sceneTile(sc, sc.key === newScene, (s) => { newScene = s.key; paintNewScenes(); },
+                         sc.key === newScene ? "✓" : ""));
+}
+
+async function loadStations() {
+  const r = await api("/api/stations");
+  if (r.status === 403) { show("loginView"); return; }
+  const list = r.ok ? r.data : [];
+  const box = $("stationList");
+  box.replaceChildren();
+  $("noStations").classList.toggle("hidden", list.length > 0);
+  for (const st of list) {
+    const sc = sceneByKey(st.scene);
+    const a = el("a", "tile");
+    a.href = "/?s=" + encodeURIComponent(st.s);
+    const info = el("div", "info");
+    const parts = [sc ? sc.label : st.scene, st.catches + " " + plural(st.catches, CATCH),
+                   st.screens ? "televize připojená" : "televize nepřipojená"];
+    if (st.sleeping) parts.push("spí");
+    if (st.ownerName && st.owner !== me.id) parts.push("správce: " + st.ownerName);
+    info.append(el("div", "name", stationName(st)), el("div", "small", parts.join(" · ")));
+    a.append(info, el("div", "mark", "Otevřít ›"));
+    box.append(a);
+  }
+}
+
+$("create").addEventListener("click", async () => {
+  $("create").disabled = true;
+  const r = await api("/api/stations", { body: { scene: newScene } });
+  $("create").disabled = false;
+  if (!r.ok) { setStatus($("newStatus"), errorText(r, "Stanici se nepodařilo založit."), "bad"); return; }
+  location.href = "/?s=" + encodeURIComponent(r.data.s);
+});
+
+// --- Spravci (jen hlavni) -------------------------------------------------------
+
+function showCode(text, code) {
+  $("codeText").textContent = text;
+  $("codeValue").textContent = code;
+  $("codeShow").classList.remove("hidden");
+}
+
+function adminRow(a) {
+  const row = el("div", "tile");
+  const info = el("div", "info");
+  info.append(el("div", "name", a.name + (a.main ? " (ty)" : "")),
+              el("div", "small", a.stations + " " + plural(a.stations, ["stanice", "stanice", "stanic"])));
+  row.append(info);
+  if (a.main) return row;
+  const again = el("button", "btn", "Nový kód");
+  again.type = "button";
+  again.addEventListener("click", async () => {
+    const res = await api("/api/admins/" + a.id + "/code", { method: "POST" });
+    if (res.ok) showCode("Nový kód pro " + a.name + " (starý přestal platit):", res.data.code);
+    else setStatus($("adminStatus"), errorText(res, "Nepovedlo se."), "bad");
+  });
+  const del = el("button", "btn danger", "Zrušit");
+  del.type = "button";
+  del.addEventListener("click", async () => {
+    if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Opravdu?"; return; }
+    const res = await api("/api/admins/" + a.id, { method: "DELETE" });
+    if (!res.ok) { setStatus($("adminStatus"), errorText(res, "Nepovedlo se."), "bad"); return; }
+    setStatus($("adminStatus"), a.name + ": zrušeno" +
+      (res.data.moved ? ", stanice teď spravuješ ty." : "."), "ok");
+    loadAdmins();
+    loadStations();
+  });
+  row.append(again, del);
+  return row;
+}
+
+async function loadAdmins() {
+  const r = await api("/api/admins");
+  if (!r.ok) return;
+  $("adminList").replaceChildren(...r.data.map(adminRow));
+}
+
+$("addAdmin").addEventListener("click", async () => {
+  const name = $("newAdmin").value.trim();
+  if (!name) { setStatus($("adminStatus"), "Napiš jméno, ať víš, komu kód patří.", "bad"); return; }
+  const r = await api("/api/admins", { body: { name } });
+  if (!r.ok) { setStatus($("adminStatus"), errorText(r, "Správce se nepodařilo přidat."), "bad"); return; }
+  $("newAdmin").value = "";
+  setStatus($("adminStatus"), "");
+  showCode("Kód pro " + r.data.name + ":", r.data.code);
+  loadAdmins();
+});
+
+async function showList() {
+  show("listView");
+  $("who").textContent = me.name;
+  $("adminsBox").classList.toggle("hidden", !me.main);
+  newScene = newScene || (scenes[0] || {}).key;
+  paintNewScenes();
+  await loadStations();
+  if (me.main) loadAdmins();
+}
+
+// --- Jedna stanice --------------------------------------------------------------
+
+function paintStation() {
+  $("stationName").textContent = stationName(station);
+  const sc = sceneByKey(station.scene);
+  $("stationSub").textContent = "Běží " + (sc ? sc.label : station.scene) + "." +
+    (station.ownerName && station.owner !== me.id ? " Správce: " + station.ownerName + "." : "");
+  document.title = stationName(station) + " · správa";
+  $("ambient").setAttribute("aria-checked", String(station.ambient));
+  $("stay").setAttribute("aria-checked", String(station.stay));
+  $("endBox").classList.toggle("hidden", station.home);
+  const box = $("tiles");
+  box.replaceChildren();
+  for (const s of scenes) {
+    const active = s.key === station.scene;
+    const t = sceneTile(s, active, switchScene, active ? "✓ běží" : "Přepnout");
+    t.disabled = active;
+    box.append(t);
+  }
+}
+
+// Prepnuti nic nemaze — zvirata cizi krajiny jen pockaji — proto bez potvrzeni.
+async function switchScene(sc, btn, mark) {
+  for (const t of $("tiles").querySelectorAll(".tile")) t.disabled = true;
+  mark.textContent = "Přepínám…";
+  const r = await api("/api/scene/active", { body: { scene: sc.key, s: station.s } });
+  if (r.ok) {
+    station.scene = r.data.scene;
+    setStatus($("sceneStatus"), "Na televizi teď běží " + sc.label + ".", "ok");
+    loadTemplates();
+  } else {
+    setStatus($("sceneStatus"), errorText(r, "Přepnout se nepodařilo."), "bad");
+  }
+  paintStation();
+  loadCounts();
+}
+
+function bindSwitch(id, field) {
+  $(id).addEventListener("click", async () => {
+    const want = $(id).getAttribute("aria-checked") !== "true";
+    $(id).setAttribute("aria-checked", String(want));
+    setStatus($("settingsStatus"), "");
+    const r = await api("/api/scene/settings", { body: { s: station.s, [field]: want } });
+    if (r.ok) { station.ambient = r.data.ambient; station.stay = r.data.stay; }
+    else {
+      $(id).setAttribute("aria-checked", String(!want));
+      setStatus($("settingsStatus"), errorText(r, "Nastavení se neuložilo."), "bad");
+    }
+  });
+}
+bindSwitch("ambient", "ambient");
+bindSwitch("stay", "stay");
+
+$("copyTv").addEventListener("click", async () => {
+  $("tvLink").select();
+  try {
+    await navigator.clipboard.writeText($("tvLink").value);
+    setStatus($("tvStatus"), "Odkaz je ve schránce.", "ok");
+  } catch (e) {
+    // bez https schranka nejde; oznaceny text se zkopiruje postaru
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e2) { /* nic */ }
+    setStatus($("tvStatus"), ok ? "Odkaz je ve schránce." : "Odkaz je označený — zkopíruj ho (Ctrl+C).", "ok");
+  }
+});
+
+$("pairHere").addEventListener("click", async () => {
+  const code = $("pairCode").value.trim().toUpperCase();
+  if (code.length !== 4) { setStatus($("pairStatus"), "Kód z televize má čtyři znaky.", "bad"); return; }
+  const r = await api("/api/pair/" + encodeURIComponent(code), { body: { s: station.s } });
+  setStatus($("pairStatus"), r.ok ? "Televize připojená." : errorText(r, "Připojení se nepovedlo."),
+            r.ok ? "ok" : "bad");
+  if (r.ok) $("pairCode").value = "";
+});
+
+// --- Zvirata od deti ------------------------------------------------------------
+
+let total = 0;
+async function loadCounts() {
+  const [r, t] = await Promise.all([api("/api/rigs?s=" + encodeURIComponent(station.s)),
+                                    api("/api/templates")]);
+  if (!r.ok) { $("catchNum").textContent = "?"; return; }
+  total = r.data.length;
+  const catOf = {};
+  for (const x of (t.ok ? t.data : [])) catOf[x.key] = x.scene;
+  const owner = {};
+  for (const sc of scenes) owner[sc.catalogue] = owner[sc.catalogue] || sc;
+  const byCat = {};
+  for (const m of r.data) {
+    const c = catOf[m.creature] || "?";
+    byCat[c] = (byCat[c] || 0) + 1;
+  }
+  $("catchNum").textContent = total;
+  $("catchWhat").textContent = plural(total, CATCH);
+  $("breakdown").textContent = total === 0 ? "Děti sem zatím nic nepřinesly." :
+    Object.entries(byCat).map(([c, n]) =>
+      n + " " + plural(n, (owner[c] && owner[c].nouns) || CATCH)).join(" · ");
+  if (total === 0) closeReset();
+  else if ($("resetConfirm").classList.contains("hidden")) $("resetRow").classList.remove("hidden");
+}
+
+function closeReset() {
+  $("resetConfirm").classList.add("hidden");
+  $("resetRow").classList.toggle("hidden", total === 0);
+}
+$("resetBtn").addEventListener("click", () => {
+  $("resetText").textContent = "Smaže " + total + " " + plural(total, CATCH) +
+    " této stanice ze všech krajin. Ukázková zvířata zůstanou. Smazaná se 30 dní drží v koši stanice.";
+  $("resetYes").textContent = "Smazat " + total;
+  setStatus($("resetStatus"), "");
+  $("resetRow").classList.add("hidden");
+  $("resetConfirm").classList.remove("hidden");
+});
+$("resetNo").addEventListener("click", closeReset);
+$("resetYes").addEventListener("click", async () => {
+  $("resetYes").disabled = $("resetNo").disabled = true;
+  const r = await api("/api/scene/reset?s=" + encodeURIComponent(station.s), { method: "POST" });
+  setStatus($("resetStatus"), r.ok ? "Smazáno " + r.data.deleted + " " + plural(r.data.deleted, CATCH) + "."
+                                   : errorText(r, "Smazat se nepodařilo."), r.ok ? "ok" : "bad");
+  $("resetYes").disabled = $("resetNo").disabled = false;
+  closeReset();
+  loadCounts();
+});
+
+// --- Predlohy podle scen --------------------------------------------------------
+
+async function loadTemplates() {
+  const r = await api("/api/templates");
+  const list = r.ok ? r.data : [];
+  const box = $("templates");
+  box.replaceChildren();
+  // skupina = sada zvirat; bezici krajina nahore
+  const groups = [];
+  for (const sc of scenes) {
+    if (groups.some((g) => g.catalogue === sc.catalogue)) continue;
+    groups.push({ catalogue: sc.catalogue, scenes: scenes.filter((x) => x.catalogue === sc.catalogue) });
+  }
+  const cur = (sceneByKey(station.scene) || {}).catalogue;
+  groups.sort((a, b) => (b.catalogue === cur) - (a.catalogue === cur));
+  for (const g of groups) {
+    const items = list.filter((t) => t.scene === g.catalogue);
+    if (!items.length) continue;
+    const wrap = el("div", "group");
+    const head = el("div", "group-head");
+    const title = el("div");
+    title.append(el("b", null, g.scenes.map((s) => s.label).join(" / ")));
+    if (g.catalogue === cur) title.append(el("span", "now", "běží"));
+    const all = el("a", "btn", "🖨 Tisk všech (" + items.length + ")");
+    all.href = "/sablony?scene=" + encodeURIComponent(g.scenes[0].key) + "&tisk=1";
+    all.target = "_blank";
+    head.append(title, all);
+    const grid = el("div", "sheets");
+    for (const t of items) {
+      const a = el("a", "sheet-thumb");
+      a.href = t.template;
+      a.target = "_blank";
+      const img = el("img");
+      img.src = t.template;
+      img.alt = "";
+      img.loading = "lazy";
+      a.append(img, el("span", null, t.label));
+      grid.append(a);
+    }
+    wrap.append(head, grid);
+    box.append(wrap);
+  }
+}
+
+// --- QR a ukonceni --------------------------------------------------------------
+
+async function loadQr() {
+  try {
+    const r = await fetch("/api/qr?s=" + encodeURIComponent(station.s));
+    const kidUrl = r.headers.get("X-Upload-Url") || "";
+    $("qrUrl").textContent = kidUrl;
+    // sprava otevrena pres localhost: odkaz pro televizi musi mit adresu,
+    // na ktere server vidi i jine pristroje — tu zna server (stejne jako QR)
+    if (/^(localhost|127\.|\[::1\])/.test(location.hostname) && kidUrl)
+      $("tvLink").value = new URL(kidUrl).origin + station.tv;
+    const url = URL.createObjectURL(await r.blob());
+    $("qrImg").src = url;
+    $("printImg").src = url;
+  } catch (e) {
+    $("qrUrl").textContent = "QR kód se nepodařilo načíst.";
+  }
+}
+
+$("printQrBtn").addEventListener("click", () => {
+  const sc = sceneByKey(station.scene);
+  $("printTitle").textContent = sc ? sc.invite.title : "Přidej své zvíře";
+  $("printSub").textContent = sc ? sc.invite.sub : "";
+  window.print();
+});
+
+$("endBtn").addEventListener("click", () => {
+  $("endRow").classList.add("hidden");
+  $("endConfirm").classList.remove("hidden");
+});
+$("endNo").addEventListener("click", () => {
+  $("endConfirm").classList.add("hidden");
+  $("endRow").classList.remove("hidden");
+});
+$("endYes").addEventListener("click", async () => {
+  $("endYes").disabled = true;
+  const r = await api("/api/stations/" + encodeURIComponent(station.s), { method: "DELETE" });
+  if (r.ok) { location.href = "/"; return; }
+  $("endYes").disabled = false;
+  setStatus($("endStatus"), errorText(r, "Ukončit se nepodařilo."), "bad");
+});
+
+async function showStation() {
+  const r = await api("/api/stations");
+  if (r.status === 403) { show("loginView"); return; }
+  station = (r.ok ? r.data : []).find((st) => st.s === SID);
+  if (!station) { location.href = "/"; return; }
+  show("stationView");
+  $("openScene").href = station.tv;
+  $("tvLink").value = location.origin + station.tv;
+  paintStation();
+  loadQr();
+  loadCounts();
+  loadTemplates();
+  let countTimer = 0;
+  liveSocket("/ws?s=" + encodeURIComponent(station.s), (msg) => {
+    if (msg.type === "scene") { station.scene = msg.scene; paintStation(); loadTemplates(); }
+    else if (msg.type === "settings") { station.ambient = !!msg.ambient; paintStation(); }
+    else if (msg.type === "ended") location.href = "/";
+    else if (["add", "remove", "cleared"].includes(msg.type)) {
+      clearTimeout(countTimer);
+      countTimer = setTimeout(loadCounts, 300);
+    }
+  }, (live) => {
+    $("conn").textContent = live ? "živě" : "bez spojení";
+    $("conn").classList.toggle("live", live);
+  });
+}
+
+// --- Start --------------------------------------------------------------------
+
+async function start() {
+  scenes = await loadScenes();
+  const r = await api("/api/me");
+  if (!r.ok || !r.data.admin) { show("loginView"); $("loginCode").focus(); return; }
+  me = r.data;
+  if (SID) showStation();
+  else showList();
+}
+start();
+</script>
+</body>
+</html>

@@ -30,22 +30,12 @@
   }
   #hint b { display: block; font-size: 20px; margin-bottom: 4px; }
   #hint span { display: block; opacity: .78; font-size: 15px; }
-  /* rozcestnik: skutecne odkazy — scena obcas bezi i v okne s mysi a na TV
-     aspon rikaji, kam jit */
-  #hint .links { margin: 8px 0 0; font-size: 13px; line-height: 1.7; }
-  #hint .links a { color: #ffd98f; text-decoration: none; }
-  #hint .links a:hover { text-decoration: underline; }
-  /* mini stav: maly QR vpravo dole s odkazem na sablony pod nim — hlavni stav
+  /* mini stav: maly QR vpravo dole — hlavni stav
      prvnich 90 s po startu, nebo hned po prvnim add; pripominka se na chvili
      vrati k plnemu stavu */
   #hint.mini { flex-direction: column; gap: 5px; padding: 7px; border-radius: 12px; }
   #hint.mini img { width: 56px; height: 56px; }
   #hint.mini > div { display: none; }
-  #hint .mini-link { display: none; }
-  #hint.mini .mini-link {
-    display: block; font-size: 11px; letter-spacing: .01em; text-align: center;
-    color: rgba(255, 217, 143, .8); text-decoration: none; white-space: nowrap;
-  }
   #toast {
     position: fixed; left: 50%; top: 36px; transform: translateX(-50%) translateY(calc(-100% - 80px));
     padding: 16px 30px; border-radius: 999px; color: #06222c; background: #ffe9a8;
@@ -136,6 +126,21 @@
     padding: 10px; box-shadow: 0 14px 60px rgba(0,0,0,.55);
   }
   #sleep .note { opacity: .75; font-size: 18px; }
+  /* televize bez stanice: kod pro admina, krajina bezi v pozadi */
+  #pair {
+    position: fixed; inset: 0; z-index: 6; display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px; color: #dfe9f0; text-align: center; background: rgba(8, 12, 18, .55);
+    font: 500 22px/1.45 "Segoe UI", system-ui, sans-serif;
+  }
+  #pair.show { display: flex; }
+  #pair b { display: block; font-size: 40px; margin-bottom: 6px; }
+  #pair #pairurl { font-weight: 700; color: #ffd28a; }
+  #paircode {
+    font: 800 120px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: .18em;
+    padding: 18px 36px 18px 54px; border-radius: 24px; background: rgba(0,0,0,.45);
+  }
+  #pair .note { opacity: .75; font-size: 18px; }
 </style>
 </head>
 <body>
@@ -147,17 +152,20 @@
   <div>
     <b>Přidej svého dinosaura</b>
     <span>Naskenuj kód a vyfoť vybarvený obrázek</span>
-    <p class="links"><a href="/sablony">🖨 Šablony k tisku</a><br><a href="/rezim">⚙ Režim stanice</a></p>
   </div>
-  <a class="mini-link" href="/sablony">/sablony</a>
 </div>
 <div id="toast"></div>
 <div id="err"></div>
 <div id="idlebar"></div>
 <div id="sleep">
-  <div><b>Stanice spí 💤</b>Naskenuj kód a dinosauři se proberou</div>
+  <div><b>Stanice spí 💤</b>Naskenuj kód a zvířata se proberou</div>
   <img id="sleepqr" alt="">
   <div class="note">Nikdo nezmizel — všichni jen spí a čekají na tebe.</div>
+</div>
+<div id="pair">
+  <div><b>Připoj televizi</b>Ve správě na <span id="pairurl"></span> zadej u stanice kód</div>
+  <div id="paircode">····</div>
+  <div class="note">Kód platí 10 minut. Jen pro dospělé, kteří stanici spravují.</div>
 </div>
 <div id="roster">
   <div id="tally"></div>

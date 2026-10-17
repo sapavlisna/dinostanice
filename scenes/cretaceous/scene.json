@@ -1,0 +1,67 @@
+{
+  "label": "Křídová laguna",
+  "subtitle": "Slunečná pláž s lagunou, sopkou a jehličnatým pralesem.",
+  "order": 1,
+  "nouns": ["dinosaurus", "dinosauři", "dinosaurů"],
+  "accusative": "dinosaura",
+  "invite": {"title": "Přidej svého dinosaura", "sub": "Naskenuj kód a vyfoť vybarvený obrázek"},
+  "feedHint": "dinosauři na televizi se seběhnou",
+  "feedBusy": "Dinosauři ještě žvýkají — počkej chvilku, než hodíš další porci! 🦕",
+  "creatures": [
+    {
+      "key": "trex3d",
+      "label": "Tyrannosaurus",
+      "glb": "trex.glb",
+      "stride_rate": [0.11, 0.18]
+    },
+    {
+      "key": "velociraptor3d",
+      "label": "Velociraptor",
+      "glb": "velociraptor.glb",
+      "stride_rate": [0.3, 0.4]
+    },
+    {
+      "key": "triceratops3d",
+      "label": "Triceratops",
+      "glb": "triceratops.glb",
+      "stride_rate": [0.12, 0.18]
+    },
+    {
+      "key": "stegosaurus3d",
+      "label": "Stegosaurus",
+      "glb": "stegosaurus.glb",
+      "stride_rate": [0.12, 0.18]
+    },
+    {
+      "key": "parasaurolophus3d",
+      "label": "Parasaurolophus",
+      "glb": "parasaurolophus.glb",
+      "stride_rate": [0.14, 0.25]
+    },
+    {
+      "key": "apatosaurus3d",
+      "label": "Apatosaurus",
+      "glb": "apatosaurus.glb",
+      "stride_rate": [0.04, 0.06]
+    },
+    {
+      "key": "drak3d",
+      "label": "Drak",
+      "glb": "dragon.glb",
+      "motion": "fly",
+      "poses": ["Death"],
+      "anim": "Death",
+      "time": 0.37
+    },
+    {
+      "key": "pteranodon3d",
+      "label": "Pteranodon",
+      "glb": "pteranodon.glb",
+      "motion": "fly",
+      "axes": [0, 2, 1],
+      "flip": [1, -1, -1],
+      "eye_bias": {"centre_x": true, "down": 0.55},
+      "poses": ["Flying"]
+    }
+  ]
+}

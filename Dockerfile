@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY dinostanice/ dinostanice/
 COPY web/ web/
+COPY scenes/ scenes/
 COPY tools/ tools/
 COPY data/ data/
 COPY server.py .

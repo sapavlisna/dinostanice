@@ -10,9 +10,11 @@ import numpy as np
 
 from .shapes import SHEET_W_MM, SHEET_H_MM
 
-# 4X4_100 je nadmnozina 4X4_50 (prvnich 50 kodu je shodnych), takze uz
-# vytistene listy plati dal a pribylo misto pro dalsi tvory
-DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+# Mensi preddefinovane 4X4 slovniky jsou prefixem vetsich (prvnich 100 kodu
+# 4X4_1000 je shodnych s 4X4_100, hlida tests/test_catalogue.py), takze uz
+# vytistene listy plati dal. 1000 kodu = 250 tvoru po ctyrech rozich.
+DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_1000)
+MAX_CREATURE_INDEX = 1000 // 4 - 1
 MARKER_MM = 16.0
 MARGIN_MM = 9.0
 

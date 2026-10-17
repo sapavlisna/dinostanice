@@ -71,8 +71,9 @@ DEFAULT_SESSION = "tv"
 
 
 def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
-               markers=0, photo=None, session=DEFAULT_SESSION):
-    """`session` rika, ktere televizi ulovek patri."""
+               markers=0, photo=None, session=DEFAULT_SESSION, owner=""):
+    """`session` rika, ktere televizi ulovek patri, `owner` ktery mobil ho
+    poslal (nahodne id z localStorage; smi pak svuj ulovek smazat)."""
     meta = {
         "id": catch_id,
         "url": f"/catch/{catch_id}/",
@@ -85,6 +86,7 @@ def write_meta(catch_id, *, creature, label, motion, name="", coverage=0.0,
         "markers": int(markers),
         "photo": photo,
         "session": session,
+        "owner": owner,
     }
     with open(os.path.join(catch_dir(catch_id), "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=1)
