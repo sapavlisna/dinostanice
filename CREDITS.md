@@ -43,6 +43,25 @@ a nese jediný klip Swim.
 | `data/models_src/lionfish.glb` | Perutýn | [poly.pizza](https://poly.pizza/m/czsz9Baw86) |
 | `data/models_src/manta.glb` | Manta | [poly.pizza](https://poly.pizza/m/yzD8b7ZHZm) |
 
+## Les (testovací scéna)
+
+Pack **Ultimate Animated Animal Pack** ([quaternius.com](https://quaternius.com/packs/ultimateanimatedanimals.html),
+[poly.pizza bundle](https://poly.pizza/bundle/x-ILAPXeUYiS)), **CC0 1.0**. Společná
+armatura `AnimalArmature`, 12–13 klipů (Idle, Idle_2, Idle_Headlow, Eating, Walk,
+Gallop, Gallop_Jump, Jump_toIdle, Attack…, Idle_HitReact_Left/Right, Death).
+Z dvanácti zvířat se ve scéně používá sedm, zbytek (býk, kráva, osel, husky,
+bílý kůň) se do repozitáře nedostal.
+
+| soubor | tvor | zdroj |
+|---|---|---|
+| `data/models_src/alpaca.glb` | Alpaka | [poly.pizza](https://poly.pizza/m/bCVFD48i2l) |
+| `data/models_src/deer.glb` | Srnka | [poly.pizza](https://poly.pizza/m/T6Cs7tmMHJ) |
+| `data/models_src/fox.glb` | Liška | [poly.pizza](https://poly.pizza/m/Bc97C66HKi) |
+| `data/models_src/horse.glb` | Kůň | [poly.pizza](https://poly.pizza/m/qvTrSG9pZF) |
+| `data/models_src/shiba_inu.glb` | Pejsek (Shiba Inu) | [poly.pizza](https://poly.pizza/m/y4wdQpg767) |
+| `data/models_src/stag.glb` | Jelen | [poly.pizza](https://poly.pizza/m/tQdzbZ1Cmw) |
+| `data/models_src/wolf.glb` | Vlk | [poly.pizza](https://poly.pizza/m/P1gU3Qkr9r) |
+
 ## Ptakoještěr
 
 | soubor | tvor | autor | licence | zdroj |

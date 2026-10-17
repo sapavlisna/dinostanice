@@ -11,3 +11,5 @@ data/trash/
 dist/
 build/
 *.zip
+# zdrojové modely pro import — výsledek je v data/models_src/
+scenes/*/modely/

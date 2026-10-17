@@ -13,5 +13,17 @@
   "swordfish": 19,
   "lionfish": 20,
   "manta": 21,
-  "axolotl": 22
+  "axolotl": 22,
+  "alpaca": 23,
+  "bull": 24,
+  "cow": 25,
+  "deer": 26,
+  "donkey": 27,
+  "fox": 28,
+  "horse": 29,
+  "husky": 30,
+  "shiba_inu": 31,
+  "stag": 32,
+  "white_horse": 33,
+  "wolf": 34
 }

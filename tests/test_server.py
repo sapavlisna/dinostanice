@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 import helpers as H
 import server
-from dinostanice import auth, stations, store, synth
+from dinostanice import auth, scenes, stations, store, synth
 
 PPM = 6.0
 
@@ -690,7 +690,9 @@ def test_scene_render_served_only_for_registered_scenes(client):
 
 def test_templates_carry_scene_and_filter(client):
     everything = client.get("/api/templates").json()
-    assert {t["scene"] for t in everything} == {"cretaceous", "aquarium"}
+    owners = {s.catalogue for s in scenes.SCENES}
+    assert {"cretaceous", "aquarium"} <= owners
+    assert {t["scene"] for t in everything} == owners
     fish = client.get("/api/templates?scene=aquarium").json()
     assert fish and all(t["scene"] == "aquarium" for t in fish)
     night = client.get("/api/templates?scene=cretaceous_night").json()
@@ -703,7 +705,8 @@ def test_dino3d_scene_filter(client):
     aquarium = client.get("/api/dino3d?scene=aquarium").json()
     assert 0 < len(cretaceous) < len(everything)
     assert 0 < len(aquarium) < len(everything)
-    assert len(cretaceous) + len(aquarium) == len(everything)
+    assert sum(len(client.get(f"/api/dino3d?scene={k}").json())
+               for k in {s.catalogue for s in scenes.SCENES}) == len(everything)
     assert all(m["scene"] == "cretaceous" for m in cretaceous)
     assert all(m["scene"] == "aquarium" and m["motion"] == "swim" for m in aquarium)
     assert client.get("/api/dino3d?scene=neexistuje").json() == []

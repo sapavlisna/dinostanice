@@ -34,7 +34,20 @@ function angle(given, dflt) {
 
 // Chodidla se poznaji podle jmena kostry; podle nich se meri delka kroku.
 // Koncove kosti (_end) se vynechavaji, jsou to jen spicky bez vlastniho pohybu.
+// Kostra bez chodidel (zvirata od Quaternia konci nohu kosti LowerLeg) dostane
+// misto nich spicku nohy — koncovou kost retezu nohy, ta lezi na kopytu.
 const FOOT = /foot|toe|paw|hoof/i;
+const LEG_TIP = /leg[^/]*_end$/i;
+
+function feetOf(model) {
+  const feet = [], tips = [];
+  model.traverse((o) => {
+    if (FOOT.test(o.name) && !/_end$/.test(o.name)) feet.push(o);
+    else if (LEG_TIP.test(o.name)) tips.push(o);
+  });
+  return feet.length ? feet : tips;
+}
+
 const STRIDE_SAMPLES = 32;
 
 // Pohled k divakovi: toci se jen krk a hlava, ne telo. Textura je bokorys,
@@ -261,10 +274,7 @@ function strideOf(key, model, handle, clip, action = handle.action) {
      `walked()` z ní čte, kolik tvor ujde za konkrétní úsek cyklu. */
   if (strideCache.has(key)) return strideCache.get(key);
 
-  const feet = [];
-  model.traverse((o) => {
-    if (FOOT.test(o.name) && !/_end$/.test(o.name)) feet.push(o);
-  });
+  const feet = feetOf(model);
   const N = STRIDE_SAMPLES;
   let travel = 0;
   const cum = new Float64Array(N + 1);
@@ -353,6 +363,7 @@ export async function spawn(entry) {
     // jesterka.
     sizePx: Math.sqrt(length * height),
     mixer: new THREE.AnimationMixer(model),
+    feet: feetOf(model),             // pro mereni prokluzu (tools/gait_report.py)
     action: null,
     breaks: {},                      // pozy, do kterych se da prolnout
     breakDur: {},

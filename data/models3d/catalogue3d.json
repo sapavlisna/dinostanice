@@ -401,5 +401,247 @@
   },
   "pose": "Sheet",
   "size": 2.0
+ },
+ {
+  "key": "alpaca",
+  "label": "Alpaka",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/alpaca.glb",
+  "texture": "/models3d/alpaca_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 5.0,
+  "strideRate": [
+   0.3,
+   0.45
+  ]
+ },
+ {
+  "key": "deer",
+  "label": "Srnka",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/deer.glb",
+  "texture": "/models3d/deer_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 5.07,
+  "strideRate": [
+   0.3,
+   0.45
+  ]
+ },
+ {
+  "key": "fox",
+  "label": "Liška",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/fox.glb",
+  "texture": "/models3d/fox_texture.png",
+  "clips": {
+   "Attack": "Attack",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "HeadLow": "Idle_2_HeadLow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "ToIdle": "Jump_ToIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 5.6,
+  "strideRate": [
+   0.35,
+   0.5
+  ]
+ },
+ {
+  "key": "horse",
+  "label": "Kůň",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/horse.glb",
+  "texture": "/models3d/horse_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 5.99,
+  "strideRate": [
+   0.3,
+   0.45
+  ]
+ },
+ {
+  "key": "shiba_inu",
+  "label": "Pejsek",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/shiba_inu.glb",
+  "texture": "/models3d/shiba_inu_texture.png",
+  "clips": {
+   "Attack": "Attack",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "HeadLow": "Idle_2_HeadLow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "ToIdle": "Jump_ToIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 4.16,
+  "strideRate": [
+   0.35,
+   0.5
+  ]
+ },
+ {
+  "key": "stag",
+  "label": "Jelen",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/stag.glb",
+  "texture": "/models3d/stag_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 4.98,
+  "strideRate": [
+   0.3,
+   0.45
+  ]
+ },
+ {
+  "key": "wolf",
+  "label": "Vlk",
+  "motion": "walk",
+  "scene": "les",
+  "glb": "/models3d/wolf.glb",
+  "texture": "/models3d/wolf_texture.png",
+  "clips": {
+   "Attack": "Attack",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "HeadLow": "Idle_2_HeadLow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "ToIdle": "Jump_ToIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "lie": "Death"
+  },
+  "pose": "Walk",
+  "size": 5.28,
+  "strideRate": [
+   0.35,
+   0.5
+  ]
  }
 ]
