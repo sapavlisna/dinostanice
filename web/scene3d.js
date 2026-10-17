@@ -256,7 +256,7 @@ function trimTail(clip) {
   if (quiet < clip.duration && quiet >= clip.duration * 0.25) clip.duration = quiet;
 }
 
-function strideOf(key, model, handle, clip) {
+function strideOf(key, model, handle, clip, action = handle.action) {
   /* Dráha, kterou tvor ujde za jeden cyklus animace, odečtená z chodidel.
 
      Klipy šlapou na místě — kostra se nikam neposouvá, takže scéna nemá odkud
@@ -280,14 +280,18 @@ function strideOf(key, model, handle, clip) {
   const cum = new Float64Array(N + 1);
   if (feet.length && clip.duration > 0) {
     const z = feet.map(() => new Float64Array(N));
-    const keep = handle.action.time;
+    const keep = action.time;
+    // meri se jen tenhle klip: zastavky (vaha 0) a pripadne chuze se odstavi
+    const main = handle.action, solo = action !== main;
+    if (solo) { main.setEffectiveWeight(0); action.setEffectiveWeight(1); }
     for (let k = 0; k < N; k++) {
-      handle.action.time = k * clip.duration / N;
+      action.time = k * clip.duration / N;
       handle.mixer.update(0);                  // pozice kostí pro tenhle okamžik
       model.updateWorldMatrix(true, true);
       for (let i = 0; i < feet.length; i++) z[i][k] = feet[i].matrixWorld.elements[14];
     }
-    handle.action.time = keep;
+    action.time = keep;
+    if (solo) { action.setEffectiveWeight(0); main.setEffectiveWeight(1); }
 
     for (let k = 0; k < N; k++) {
       let back = 0;
@@ -363,6 +367,7 @@ export async function spawn(entry) {
     action: null,
     breaks: {},                      // pozy, do kterych se da prolnout
     breakDur: {},
+    breakStride: {},                 // krok klipu, ktery se taky chodi (run)
     look: null,
   };
 
@@ -404,6 +409,13 @@ export async function spawn(entry) {
     action.time = Math.random() * c.duration;
     handle.breaks[name] = action;
     handle.breakDur[name] = c.duration;
+    if ((entry.gaits || []).includes(name)) {
+      const st = strideOf(entry.glb + '|' + c.name, model, handle, c, action);
+      if (st.cum) {
+        handle.breakStride[name] = { bodies: st.travel * Math.abs(Math.sin(yaw)) / length,
+                                     cum: st.cum };
+      }
+    }
   }
 
   root.visible = false;                      // dokud scena nerekne kam
@@ -430,9 +442,28 @@ export function speed(handle, timeScale) {
    křivce klipu, ne průměrem. Čte action.time, ale neposouvá ho: mixer ho
    v render() posune o totéž dt. */
 export function walked(handle, dt) {
-  const a = handle.action;
-  if (!a || !handle.phaseCum) return null;
-  const cum = handle.phaseCum;
+  if (!handle.action || !handle.phaseCum) return null;
+  return travelled(handle.action, handle.phaseCum, handle.strideBodies, dt);
+}
+
+/* Totez pro zastavku, ktera se taky chodi (beh): po krivce jejiho klipu. */
+export function walkedBreak(handle, name, dt) {
+  const st = handle.breakStride[name];
+  if (!st || !handle.breaks[name]) return 0;
+  return travelled(handle.breaks[name], st.cum, st.bodies, dt);
+}
+
+/* Natural tempo klipu zastavky v delkach tela za sekundu (pri timeScale 1). */
+export function breakNatural(handle, name) {
+  const st = handle.breakStride[name];
+  return st ? st.bodies / handle.breakDur[name] : 0;
+}
+
+export function breakSpeed(handle, name, timeScale) {
+  if (handle.breaks[name]) handle.breaks[name].timeScale = timeScale;
+}
+
+function travelled(a, cum, bodies, dt) {
   const dur = a.getClip().duration;
   const adv = dt * a.timeScale;
   const f = (t) => {
@@ -442,7 +473,7 @@ export function walked(handle, dt) {
   };
   const t0 = a.time % dur, t1 = t0 + adv;
   const whole = Math.floor(t1 / dur);
-  return handle.strideBodies * (whole + f(t1 - whole * dur) - f(t0));
+  return bodies * (whole + f(t1 - whole * dur) - f(t0));
 }
 
 /* Vahy zastavenych poz najednou ({jmeno: vaha}); chuze dostane zbytek do
@@ -555,6 +586,12 @@ export function remove(handle) {
 /* Diagnostika GPU pameti (pocty textur/geometrii), pro testy a kiosk. */
 export function info() {
   return renderer ? { ...renderer.info.memory } : null;
+}
+
+/* Jen posun animaci bez vykresleni — zrychleny chod sceny pro testy
+   (DinoScene.fast) vola update + animate vickrat za snimek. */
+export function animate(dt) {
+  for (const a of actors) a.mixer.update(dt);
 }
 
 export function render(dt) {

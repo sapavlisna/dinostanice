@@ -329,8 +329,12 @@ python tools/shot_scene.py --demo      # navíc doplní celý katalog
 a regresně testovat, aniž by kdokoli něco vytiskl:
 
 ```powershell
-python -m pytest -q          # 179 testů
+python -m pytest -q                  # celá sada (spustí i testy v Node)
+node --test "tests/js/*.test.js"     # jen plánovač činností ve scéně
 ```
+
+Plánovač činností zvířat (`web/scenelogic.js`) je čistý JavaScript bez
+prohlížeče, takže jeho testy běží v Node 18+; bez Node se v pytestu přeskočí.
 
 Součástí je `tests/test_server.py` (36 testů) — end-to-end přes FastAPI
 TestClient: upload syntetické fotky, sessions, uspávání, mazání přes koš,

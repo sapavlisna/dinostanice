@@ -155,10 +155,16 @@ Vedle geometrie nese katalog i **vlastnosti druhu pro scénu**:
 `scene` říká, do které sady tvorů (krajiny) model patří — marker index
 zůstává globální, šablona identifikuje tvora, scéna jen říká, koho přijme.
 `stride_rate` je cílové tempo chůze v délkách těla za sekundu (paleo odhad
-per druh); `clip_for` mapuje role klipů (`move`/`stand`/`jump`) na jména
-v GLB, protože se model od modelu liší. Všechno se propíše do
-`data/models3d/catalogue3d.json` (`scene`, `strideRate`, `clipFor`, `clips`,
-`pose`, `size`), odkud si to bere scéna přes `GET /api/dino3d?scene=`.
+per druh); `clip_for` mapuje role klipů (`move`, `stand`, `jump`, `run`,
+`look`, `sit`, `lie`, `sleep`, `play`, `eat`, u plavců `fast`) na jména v GLB,
+protože se model od modelu liší; `null` roli vypne. Povinná je jen `move` —
+roli bez klipu export vypustí (`resolve_roles`) a scéna danou činnost
+nenabídne; lehnutí bez LieDown padá na Death. Sit, LieDown, Sleep
+a LookAround dopisuje dinosaurům `tools/blender_clips.py` do
+`data/models_src/<model>_clips.glb`. `activities` přepisuje nabídku činností
+scény pro druh. Všechno se propíše do `data/models3d/catalogue3d.json`
+(`scene`, `strideRate`, `clipFor`, `clips`, `activities`, `pose`, `size`),
+odkud si to bere scéna přes `GET /api/dino3d?scene=`.
 
 ### Kostra dopsaná ke geometrii (ptakoještěr, axolotl)
 
@@ -324,8 +330,12 @@ export default {
   pod rozestupem drah (typicky 0.125), aby se ryby nevrážely do sebe;
 - `chase` — jak rychle ryba mění hloubku za jídlem; při lovu se `dodge` krátí
   (faktor 0.6), aby se ryba ke jídlu mohla přiblížit bez vibrací;
-- `rest` — chodci ho mají (zastávka, skok, otočka), plavci ne: nemají klip
+- `rest` — chodci ho mají (zastávka, otočka na místě), plavci ne: nemají klip
   zastávky a hlavně nemají proč stát;
+- `activities` — nabídka plánovače činností chodce (váhy, délky, viz
+  „Činnosti, pásy, trasy" níž); druh ji přepisuje polem `activities` ve
+  `scene.json`;
+- `look` — strop (`max`) a prolnutí (`fade`) pohledu k dětem;
 - `paths` — volitelné trasy chodců (plavci nemají, ryby plavou volně).
 
 Pásy podporují `lanes` (explicitní seznam y-pozic drah nebo počet rovnoměrně
@@ -367,8 +377,12 @@ Scene3D.place(handle, {x, y, scale, face, depth})   // face -1..1, mezi tím se 
 Scene3D.speed(handle, timeScale)
 Scene3D.walked(handle, dt)                 // délky těla ušlé za dt — po fázové
                                            // křivce klipu, ne průměrem
-Scene3D.blend(handle, name, weight)        // prolnutí zastávky přes chůzi
-Scene3D.restart(handle, name)              // skok od začátku
+Scene3D.blendMix(handle, {jméno: váha})    // prolnutí póz zastávky přes chůzi
+Scene3D.restart(handle, name)              // smyčku/klip od začátku (skok)
+Scene3D.playClamped(handle, name, reverse) // jednou a podržet (sed, leh);
+                                           // reverse = týž klip pozpátku (vstávání)
+Scene3D.walkedBreak(handle, name, dt)      // totéž co walked pro klip Run
+Scene3D.look(handle, weight, opts)         // krk a hlava k divákovi
 Scene3D.remove(handle)
 Scene3D.render(dt)                         // dt bere od scény, ať pohyb a animace
                                            // po zaškubnutí nerozejdou
@@ -519,23 +533,42 @@ rozladí). `applyGait()` je jediné místo, kde se obojí do tvora dostane, tak�
 změna platí okamžitě i pro tvory, kteří už ve scéně jsou. Hodnoty drží
 `localStorage`.
 
-#### Zastávky, pásy, trasy
+#### Činnosti, pásy, trasy
 
-Aby scéna nebyla přehlídka (všichni pořád vpřed, nikdo nikdy nestojí), chodec
-si během chůze dělá **zastávky** — konfigurace `rest` v definici scény:
+Chodec má **plánovač činností** (`web/scenelogic.js`, čistá logika bez DOM
+a three.js, testy `node --test tests/js/*.test.js`, v pytestu je hlídá
+`tests/test_scenelogic_js.py`). Většinu času jde; po `walk.dur` sekundách
+chůze si podle vah vybere, co dál: jít dál, postát, podívat se na děti
+(krk a hlava, `Scene3D.look`), rozhlédnout se (klip LookAround), sednout si
+nebo lehnout (až po delší chůzi, `after`), z lehu případně usnout (Sleep,
+nad tvorem „Zzz"), vyskočit, dupnout si (Attack jako hra), krátce si zaběhnout
+(Run, tempo dopočítané z kroku klipu, takže i při běhu drží chodidla na zemi)
+nebo se popást (Eating, má-li ho druh). Nový úlovek od dětí se krátce
+zastaví pozdravit, jakmile je celý v obraze.
 
-- **stání** (klip `Idle` z katalogu) na 3–9 s, každých 11–34 s chůze,
-- **skok** (klip `Jump`) místo stání s šancí 35 %, na jednu délku klipu,
-- **otočka** po stání s šancí 45 %: `face` přejde z −1 na 1, tvor se na místě
-  přehoupne čelem k divákovi na druhou stranu a jde zpátky.
+Vnější důvody stát zůstávají a plánovač do nich jen vybere činnost: kolizní
+fronta (stojí, po chvíli se rozhlíží, po `wait.bored` s si i sedne), zastávka
+trasy (jen co se vejde do `dwell`), krmení (`eat`). Váhy a délky jsou data
+(`motions.walk.activities` v `render.js`, popis polí v hlavičce
+`scenes/cretaceous/render.js`), druh je smí přepsat. Činnost, ke které druh
+nemá klip (role chybí v `clipFor` katalogu), se nenabízí; **bez klipu stání se
+chodec nezastaví nikdy** (ani ve frontě — otočí se), jinak by zamrzl v půlce
+kroku. Druhy činností: `move` (walk, run), `still` (stand, look, eat, greet),
+`clip` (lookaround, jump, play — dohraje se), `pose` (sit, lie: klip jednou
+dolů a podržet, vstávání = týž klip pozpátku; spánek jen z lehu, s prolnutím
+0,8 s, protože konec LieDown není začátek Sleep). Přerušení (odchod, jídlo)
+nechá ležícího nejdřív vstát.
 
-Zastávka se **prolíná**, nepřehazuje: obě pózy běží pořád, mění se jen jejich
-váhy (`Scene3D.blend`). Nemusí se tak řešit, ve které fázi kroku se tvor
+Zastávka se **prolíná**, nepřehazuje: všechny pózy běží pořád, mění se jen jejich
+váhy (`Scene3D.blendMix`). Nemusí se tak řešit, ve které fázi kroku se tvor
 zastavil. Podíl zastavené pózy (`mix`) krátí stejným dílem rychlost po scéně
 i tempo animace, takže při zpomalování chodidla drží na zemi zrovna tak jako za
 chůze. Dokud se tvor otáčí, `mix` zůstává na jedničce — otáčí se na místě, ne
-v pohybu. Prolínaná póza se drží, dokud se nedomixuje; jinak by skákající tvor
-cuknul do stojací pózy ve chvíli, kdy skok skončí.
+v pohybu. Uvnitř stání se pózy (stání, sed, leh, spánek…) prolínají vlastními
+váhami (`blendToward`); prolínaná póza se drží, dokud se nedomixuje.
+
+Otočky: chodec bez trasy se občas otočí na místě (`TURN_EVERY`), jinak by
+dráhy zdegenerovaly na průvod jedním směrem.
 
 Chodec se navíc `drift`em sune po pásu břehu dopředu a dozadu (podíl vodorovné
 rychlosti), na kraji pásu se odrazí. Bez toho jdou všichni po jedné lince zleva
@@ -551,18 +584,18 @@ hloučku; takhle si rozestupy drží napořád, protože každý chodí jinak ry
 Část chodců (`ROUTE_CHANCE`, 50 %) dostane při příchodu **trasu** — lomenou
 čáru z pole `paths` v definici scény (`loop` dokola / ping-pong, `species`
 omezí na druh, body s `do: 'walk' | 'stop' | 'turn'` a `dwell`). Trasa je
-autorita nad pásy: žádné obcházení okraje, žádný swapBand, žádný náhodný rest —
-zastávky a otočky určují waypointy, odchod a návrat řeší body za okrajem,
+autorita nad pásy: žádné obcházení okraje, žádný swapBand — zastávky a otočky
+určují waypointy (činnosti za chůze běží dál), odchod a návrat řeší body za okrajem,
 které si autor nakreslil sám. Nový tvor se na trasu zavěsí v nejbližším místě
 (`snapRoute`), ať se všichni nesesypou na start; vzdálenost po čáře se měří
 izotropně (y škálované poměrem stran), aby svislý kus nebyl „zadarmo". Trasy
-se kreslí editorem v ladicím panelu (`d` → sekce Trasy, `Tune.pathsFor`);
-„kopírovat JSON" vysype pole k vložení do definice scény, rozpracovaná verze
-žije v `localStorage`.
+se píšou rovnou do definice scény (editor byl zrušen).
 
 Pro ladění vystavuje `window.DinoScene`: `where()` (kdo je kde, včetně pásu,
-trasy a tempa), `add()`, `feed()`, `gpu()`, `switchScene()` a debug vstupy do
-spacího UI — používá je `tools/shot_scene.py`, `tools/gait_report.py`
+trasy, tempa a činnosti), `stats()` (kolikrát která činnost začala),
+`debugAct(i, činnost)`, `debugLook(i, úhel)`, `fast(k)` (k kroků simulace na
+snímek pro dlouhé testy), `add()`, `feed()`, `gpu()`, `switchScene()` a debug
+vstupy do spacího UI — používá je `tools/shot_scene.py`, `tools/gait_report.py`
 i Playwright testy.
 
 #### Plavání ryb: diskrétní dráhy a uhýbání

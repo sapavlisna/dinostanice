@@ -10,6 +10,7 @@
   "creatures": [
     {
       "key": "alpaca",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
       "label": "Alpaka",
       "glb": "alpaca.glb",
       "motion": "walk",
@@ -17,6 +18,7 @@
     },
     {
       "key": "deer",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
       "label": "Srnka",
       "glb": "deer.glb",
       "motion": "walk",
@@ -24,6 +26,7 @@
     },
     {
       "key": "fox",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Attack", "lie": null},
       "label": "Liška",
       "glb": "fox.glb",
       "motion": "walk",
@@ -31,6 +34,7 @@
     },
     {
       "key": "horse",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
       "label": "Kůň",
       "glb": "horse.glb",
       "motion": "walk",
@@ -38,6 +42,7 @@
     },
     {
       "key": "shiba_inu",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Attack", "lie": null},
       "label": "Pejsek",
       "glb": "shiba_inu.glb",
       "motion": "walk",
@@ -45,6 +50,7 @@
     },
     {
       "key": "stag",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
       "label": "Jelen",
       "glb": "stag.glb",
       "motion": "walk",
@@ -53,6 +59,7 @@
     },
     {
       "key": "wolf",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Attack", "lie": null},
       "label": "Vlk",
       "glb": "wolf.glb",
       "motion": "walk",

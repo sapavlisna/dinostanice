@@ -11,8 +11,8 @@ a světové X jejich zadních chodidel a spočítá:
     (jediný zdroj pravdy, plní ho tools/model_export3d.py z creatures3d.py),
     s tolerancí ±10 % na okrajích intervalu.
 
-Zastávky a otočky měření nekazí: počítá se jen přes snímky, kdy tvor
-skutečně jde (timeScale ~ plné tempo). Čas se měří ve scénickém čase
+Zastávky, otočky a záběhy (činnost run) měření nekazí: počítá se jen přes
+snímky, kdy tvor skutečně jde (timeScale ~ plné tempo, žádný záběh). Čas se měří ve scénickém čase
 (DinoScene.time) — frame() klampuje dt, takže při pomalém headless renderu
 by wall-clock tempo vyšlo falešně nízko. Zadní pás má rateScale < 1 (bod 1),
 tak se každý naměřený úsek normalizuje na přední dráhu — tempo se dělí
@@ -53,7 +53,7 @@ window.__probe = () => window.DinoScene.actors
   .filter(a => a.m3 && a.motion === 'walk').map(a => {
     const feet = a.m3.feet || [];
     return { key: a.key, dir: a.dir, x: a.xFrac,
-             rate: a.rate, ts: a.m3.action.timeScale,
+             rate: a.rate, ts: a.m3.action.timeScale, run: a.runK || 0,
              rs: a.band.rateScale || 1,
              bodyPx: a.m3.length * a.m3.root.scale.x,
              feet: feet.map(f => ({ n: f.name, x: f.matrixWorld.elements[12] })) };
@@ -106,6 +106,9 @@ def analyze(log, where):
             # jen snímky, kdy tvor opravdu jde: plné tempo, žádná otočka,
             # žádný přeskok přes okraj obrazovky
             if q["ts"] < 0.9 * q["rate"] or p["ts"] < 0.9 * p["rate"]:
+                continue
+            # zaber (cinnost run) ma jine tempo nez cil chuze, meri se zvlast
+            if q.get("run", 0) > 0.01 or p.get("run", 0) > 0.01:
                 continue
             if p["dir"] != q["dir"]:
                 continue

@@ -17,12 +17,18 @@ from . import scenes
 
 # Ktery klip z `clips` hraje kterou roli ve scene. Default per motion; model,
 # ktery ma klipy pojmenovane jinak, si roli prepise pres `clip_for`.
-# `lie` = lehnuti pri cekani (Death prehrany jednou a podrzeny, vstavani
-# pozpatku). Death maji vsichni chodci katalogu — apatosaurus ho nese pod
-# cizim jmenem "Armature|Stegosaurus_Death", ale kanaly miri na jeho vlastni
-# kostru a model si opravdu lehne (overeno pres gltf.Model.posed).
+# Chodci: `move` chuze, `stand` stani, ostatni role nesou cinnosti planovace
+# ve scene (web/scenelogic.js): `run` zaber, `look` rozhlednuti, `sit`/`lie`
+# prehrane jednou a podrzene (vstavani = tyz klip pozpatku), `sleep` smycka
+# vlezle, `play` dupnuti/hra. Sit, LieDown, Sleep a LookAround dopisuje
+# tools/blender_clips.py, `eat` jsou klipy pastvy z balicku zvirat. Povinna je
+# jen `move`; roli, jejiz klip model nema, export z katalogu vypusti a scena
+# cinnost nenabidne (resolve_roles). `clip_for: {"lie": null}` roli vypne
+# i tam, kde by jinak padla na nahradni klip.
 CLIP_FOR_DEFAULT = {
-    "walk": {"move": "Walk", "stand": "Idle", "jump": "Jump", "lie": "Death"},
+    "walk": {"move": "Walk", "stand": "Idle", "jump": "Jump", "run": "Run",
+             "look": "LookAround", "sit": "Sit", "lie": "LieDown",
+             "sleep": "Sleep", "play": "Attack", "eat": "Eating"},
     "fly": {"move": "Flying"},
     # Plavci: `move` je klidne plavani, `fast` sprint. Kdo `fast` nema (manta
     # nese jediny klip), prepise si ho zpatky na `move` — scena tak nemusi
@@ -30,6 +36,39 @@ CLIP_FOR_DEFAULT = {
     "swim": {"move": "Swim", "fast": "Fast"},
     "sail": {"move": "Sail"},
 }
+
+REQUIRED_ROLES = {"move"}
+
+# Nahradni klip, kdyz model hlavni nema. Lehnuti puvodne hral Death (prehrany
+# jednou a podrzeny) — maji ho vsichni chodci katalogu; apatosaurus ho nese
+# pod cizim jmenem "Armature|Stegosaurus_Death", ale kanaly miri na jeho
+# vlastni kostru a model si opravdu lehne (overeno pres gltf.Model.posed).
+ROLE_FALLBACK = {"lie": ["Death"]}
+
+
+def resolve_roles(roles: dict, shorts) -> tuple[dict, list]:
+    """Role, ktere model opravdu unese, a seznam chybejicich volitelnych rolí.
+
+    Povinna role zustava i bez klipu (at kontrola nahlas spadne). Spanek
+    navazuje na konec LieDown — po nahradnim Death by se tvor pri usnuti
+    prevalil, takze s nahradnim lehnutim spanek odpada."""
+    shorts = set(shorts)
+    out, missing = {}, []
+    for role, name in roles.items():
+        if name is None:
+            continue
+        if name in shorts or role in REQUIRED_ROLES:
+            out[role] = name
+            continue
+        alt = next((a for a in ROLE_FALLBACK.get(role, []) if a in shorts), None)
+        if alt:
+            out[role] = alt
+        else:
+            missing.append(role)
+    if out.get("lie") in ROLE_FALLBACK["lie"] and "sleep" in out:
+        del out["sleep"]
+        missing.append("sleep")
+    return out, missing
 
 
 @dataclass
@@ -63,6 +102,9 @@ class Model3D:
     poses: tuple = ("Walk",)
     anim: str | None = None      # natvrdo zvolena animace, jinak se vybira
     time: float | None = None    # natvrdo zvoleny cas, jinak se vybira
+    # Prepis nabidky cinnosti planovace pro tento druh (vahy, delky), sloucene
+    # pres motions.<typ>.activities z render.js sceny — viz web/scenelogic.js.
+    activities: dict = field(default_factory=dict)
 
     def candidates(self, model) -> list:
         names = [self.anim] if self.anim else list(self.poses)

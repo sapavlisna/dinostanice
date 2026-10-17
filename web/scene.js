@@ -8,6 +8,7 @@
 import * as Scene3D from './scene3d.js';
 import * as Tune from './tune.js';
 import * as Roster from './roster.js';
+import * as Logic from './scenelogic.js';
 
 /* Stanice: tajny odkaz /tv/<token> ze spravy. Holé /tv vezme odkaz, ke
    kteremu byla televize naposled pripojena (localStorage), jinak ukaze
@@ -291,14 +292,12 @@ function followRoute(a, go) {
       else if (r.path.loop) { r.seg = n - 1; r.s = 1; }
       else { r.dir = 1; r.s = 0; }
     }
-    if (pt.do === 'stop' && !a.pause) {
+    if (pt.do === 'stop' && !a.hold && canStop(a)) {
       const R = motionCfg(a.motion).rest;
-      if (R && a.m3.action) {
-        a.pause = 'stand';
-        a.fade = R.fade;
-        a.restUntil = sceneTime + span(pt.dwell || R.stand);
-        break;   // zbytek kroku propadne, tvor zastavuje
-      }
+      a.hold = 'route';
+      a.fade = R.fade;
+      a.holdUntil = sceneTime + span(pt.dwell || R.stand);
+      break;   // zbytek kroku propadne, tvor zastavuje
     }
   }
 }
@@ -365,13 +364,14 @@ function addActor(what, opts) {
     swayPh: Math.random() * Math.PI * 2,
     swayRate: span(cfg.swayRate || [0.05, 0.12]) * Math.PI * 2,
     waveRate: span(cfg.waveRate || [1, 1.6]) * Math.PI * 2,
-    restUntil: 0,
-    pause: '',
-    fun: null,
-    funAt: 0,
-    looking: null,
-    lookRolled: false,
-    // ulovek od deti se na ne podiva vzdy, jakmile poprve zastavi
+    hold: '',          // vnejsi duvod stat: 'queue' | 'route' | 'food'
+    holdUntil: 0,
+    plan: null,        // planovac cinnosti (setupPlan), jen kdo ma nabidku
+    acts: null,
+    poseW: { stand: 1 },
+    runK: 0,
+    looking: false,
+    // ulovek od deti se zastavi pozdravit, jakmile je cely v obraze
     lookFirst: !silent,
     turnAt: te ? sceneTime + span(te) : Infinity,
     shown: '',
@@ -406,6 +406,7 @@ function addActor(what, opts) {
     actor.autoRate = pace * Math.pow(sc, cfg.beatSize || 0);
   }
   dropOnBand(actor, band);
+  setupPlan(actor, what.activities);
   actor.route = pickRoute(actor);
   if (actor.route) {
     routePos(actor);
@@ -467,9 +468,10 @@ function beginExit(a) {
   a.exitWatch = { x: a.xFrac, at: sceneTime };   // hlidac „nehybe se"
   a.route = null;
   a.feed = null;
-  a.pause = '';
+  a.hold = '';
   a.blocked = false;
-  a.restUntil = 0;
+  a.holdUntil = 0;
+  a.debugLook = false;
   a.drift = 0;
   a.dir = a.xFrac >= 0.5 ? 1 : -1;
 }
@@ -570,128 +572,127 @@ function toward(value, goal, step) {
   return value + Math.max(-step, Math.min(step, goal - value));
 }
 
-/* Zastavky a otocky.
+/* Zastavky, otocky a cinnosti.
 
-   Tvor jde, dokud nema duvod stat: kolizni fronta (holdStill), dwell na
-   trase, krmeni. Nahodne zastavky "jen tak" zmizely — chodec bez trasy si
-   misto nich obcas strihne otocku na miste (viz TURN_EVERY v update).
+   Chodec ma planovac cinnosti (web/scenelogic.js): vetsinu casu jde, obcas
+   se zastavi a podiva na deti, rozhledne se, sedne si, lehne (a z lehu
+   usne), vyskoci, dupne si nebo si kratce zabehne. Nabidka s vahami
+   a delkami je v datech sceny (`motions.walk.activities`), druh ji smi
+   prepsat (`activities` ve scene.json); co druh nema v klipech, se
+   nenabizi. Vnejsi duvody stat zustavaji: kolizni fronta (holdStill),
+   zastavka trasy, jidlo — planovac do nich jen vybere, co tvor na miste
+   dela. Novy ulovek od deti se zastavi pozdravit, jakmile je cely v obraze.
 
    `mix` je podil zastavene pozy: rychlost po scene i tempo animace se jim krati
    stejne, takze pri zpomalovani chodidla drzi na zemi zrovna tak jako za chuze.
-   Zastavit se muze jen ten, kdo ma do ceho prolnout — letec ne, ten by spadl.
+   Zastavit se muze jen ten, kdo ma do ceho prolnout (klip stani) — letec ne,
+   ten by spadl, a chodec bez Idle by zamrzl v pulce kroku.
 
    Otoceni: tvor se prehoupne celem k divakovi na druhou stranu; dokud se
    otaci (face != dir), drzi se `mix` na jednicce, aby se tocil na miste. */
+const RUN_FADE = 0.5;       // prolnuti chuze <-> behu (s)
+const IDLE_FADE = 0.3;      // prolnuti poz uvnitr stani bez cinnosti
 
-/* Cekani = zabava. Kdo stoji, protoze CEKA — v kolizni fronte za pomalejsim
-   (blocked) nebo na stop bodu trasy — nestoji celou dobu v Idle: kazdych par
-   sekund si bud skoci (jump), nebo, kdyz ma model Death klip (role `lie`),
-   si LEHNE: Death se prehraje jednou a podrzi (LoopOnce + clamp), chvili
-   lezi, pak VSTANE — tyz klip pozpatku. Rozehrana sekvence vzdy dobehne,
-   i kdyz cekani mezitim skonci: mix drzi na jednicce, takze tvor nevykroci
-   z lehu (zadne cuknuti). Krmeni se netyka — tvor u jidla "ji", nenudi se. */
-let FUN_EVERY = [3, 7];     // odstup zabavnich vlozek behem cekani (s)
-let LIE_HOLD = [2, 5];      // jak dlouho zustane lezet (s)
-const FUN_FADE = 0.3;       // prolnuti stani <-> zabavne pozy
-
-function waiting(a) {
-  return a.pause === 'stand' && a.mix >= 0.99 && !a.exiting && !a.leaving
-      && (a.blocked || !!a.route);
+function canStop(a) {
+  return !!(motionCfg(a.motion).rest && a.m3.action && a.m3.breaks.stand);
 }
 
-function entertain(a, dt) {
-  const f = a.fun;
-  if (!f) {
-    if (!waiting(a)) { a.funAt = 0; return; }
-    if (!a.funAt) { a.funAt = sceneTime + span(FUN_EVERY); return; }
-    if (sceneTime < a.funAt || a.looking) return;
-    const canLie = a.m3.breakDur.lie, canJump = a.m3.breakDur.jump;
-    if (!canLie && !canJump) return;
-    // pul na pul skok/lehnuti; tvor bez Death klipu jen skace
-    if (canLie && (!canJump || Math.random() < 0.5)) {
-      Scene3D.playClamped(a.m3, 'lie');
-      a.fun = { pose: 'lie', phase: 'down', k: 0, until: sceneTime + canLie };
-    } else {
-      Scene3D.restart(a.m3, 'jump');
-      a.fun = { pose: 'jump', phase: 'jump', k: 0, until: sceneTime + canJump };
-    }
-    return;
-  }
-  f.k = toward(f.k, f.phase === 'out' ? 0 : 1, dt / FUN_FADE);
-  if (f.phase === 'out') {
-    if (f.k <= 0) { a.fun = null; a.funAt = sceneTime + span(FUN_EVERY); }
-    return;
-  }
-  if (sceneTime < f.until) return;
-  if (f.phase === 'down') {
-    f.phase = 'hold';
-    f.until = sceneTime + span(LIE_HOLD);
-  } else if (f.phase === 'hold') {
-    Scene3D.playClamped(a.m3, 'lie', true);   // vstavani: Death pozpatku
-    f.phase = 'up';
-    f.until = sceneTime + a.m3.breakDur.lie;
-  } else {
-    f.phase = 'out';                          // dobehly 'up' nebo 'jump'
-  }
+/* Nabidka cinnosti a schopnosti tvora (klipy, hlava) — jednou pri prichodu. */
+function setupPlan(a, speciesActs) {
+  const cfg = motionCfg(a.motion);
+  if (!cfg.activities || !a.m3.action) return;
+  const clips = {};
+  for (const [role, d] of Object.entries(a.m3.breakDur)) if (d > 0) clips[role] = d;
+  // beh se pocita jen s klipem, jehoz krok jde zmerit (jinak by klouzal)
+  if (!a.m3.breakStride.run) delete clips.run;
+  const table = Logic.mergeTable(cfg.activities, speciesActs);
+  const cp = Logic.caps({ clips, head: !!a.m3.look });
+  a.acts = { table, caps: cp, names: Logic.offered(table, cp) };
+  a.plan = {
+    act: null, born: sceneTime, restEnd: null, greet: a.lookFirst,
+    // tvorove, co uz ve scene "byli", se nerozhoduji vsichni naraz
+    walkUntil: sceneTime + Logic.span((table.walk || {}).dur || [10, 20]) * Math.random(),
+  };
 }
 
-/* Pohled k detem: kdo stoji (fronta, zastavka trasy, jidlo), ten si jednou
-   za zastaveni hodi kostkou (`motions.<typ>.look.chance`) a pripadne na
-   `hold` sekund otoci krk a hlavu k divakovi. Pri rozchodu, otocce nebo
-   zabave se hlava hned vraci (prolnuti obstara Scene3D). */
-function lookAround(a) {
-  const L = motionCfg(a.motion).look;
-  if (!L || !a.m3.look) return;
-  const standing = a.pause === 'stand' && a.mix >= 0.99 && !a.fun
-                && a.face === a.dir && !a.exiting && !a.leaving;
-  if (a.looking) {
-    if (a.looking.debug) return;
-    if (!standing || sceneTime > a.looking.until) {
-      a.looking = null;
-      Scene3D.look(a.m3, 0);
-    }
-    return;
+function inView(a) {
+  const half = bodyFrac(a) / 2;
+  return a.xFrac - half > 0.04 && a.xFrac + half < 0.96;
+}
+
+const actStats = {};
+
+function planStep(a, spinning) {
+  const p = a.plan;
+  const before = p.act;
+  const view = inView(a);
+  const cmds = Logic.plan(p, {
+    now: sceneTime,
+    stopped: a.mix >= 0.99 && !spinning,
+    hold: a.hold,
+    holdLeft: a.hold === 'queue' ? Infinity : a.holdUntil - sceneTime,
+    canDecide: !a.exiting && !a.leaving && !a.feed && a.face === a.dir,
+    onScreen: view, greetReady: view,
+    exiting: !!(a.exiting || a.leaving),
+  }, a.acts.table, a.acts.caps, a.acts.names);
+  if (p.act && p.act !== before) actStats[p.act.name] = (actStats[p.act.name] || 0) + 1;
+  for (const c of cmds) {
+    if (c.do === 'play') Scene3D.playClamped(a.m3, c.clip, c.reverse);
+    else if (c.do === 'restart') Scene3D.restart(a.m3, c.clip);
+    else if (c.do === 'look') setLook(a, c.on);
   }
-  if (!standing) { a.lookRolled = false; return; }
-  if (a.lookRolled) return;
-  a.lookRolled = true;
-  const hold = L.hold || [1.5, 3];
-  // zastavka, ktera za chvili konci, by z pohledu udelala jen cuknuti hlavou
-  // (kolizni fronta konec dopredu nezna, tam se riskuje)
-  if (!a.blocked && a.restUntil - sceneTime < hold[0]) return;
-  if (!a.lookFirst && Math.random() >= (L.chance || 0)) return;
-  a.lookFirst = false;
-  a.looking = { until: sceneTime + span(hold) };
-  Scene3D.look(a.m3, 1, L);
+  if (a.looking && !a.debugLook && !(p.act && p.act.phase === 'hold')) setLook(a, false);
+  const asleep = !!(p.act && /^sleep/.test(p.act.phase));
+  if (asleep && !a.slept) actStats.sleep = (actStats.sleep || 0) + 1;
+  a.slept = asleep;
+}
+
+function setLook(a, on) {
+  if (!a.m3.look || a.looking === on) return;
+  a.looking = on;
+  Scene3D.look(a.m3, on ? 1 : 0, motionCfg(a.motion).look);
 }
 
 function rest(a, dt) {
   const cfg = motionCfg(a.motion);
   const R = cfg.rest;
-  // uvolneni zastavky (kolizni fronta si restUntil prodluzuje kazdy snimek);
-  // rozehrana zabava drzi mix na jednicce jeste po uvolneni, viz entertain
-  if (R && a.pause && sceneTime > a.restUntil) {
+  // uvolneni vnejsiho duvodu stat (kolizni fronta si holdUntil prodluzuje
+  // kazdy snimek); rozehrana cinnost drzi mix na jednicce i po uvolneni
+  if (a.hold && sceneTime > a.holdUntil) {
     a.blocked = false;
-    a.pause = '';
+    a.hold = '';
   }
-  entertain(a, dt);
-  lookAround(a);
-
-  // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
-  // se tvor rozejde, cuknul by do stojaci pozy.
-  if (!a.mix) a.shown = a.pause;
   a.face = toward(a.face, a.dir, dt / (cfg.spin || (R && R.spin) || 0.5));
   // Chodec se otaci na miste (drzi `mix` na jednicce, dokud se neprehoupne),
   // plavec v pohybu (`turnMoving`) — ten se otacenim nesmi zastavit, jinak by
-  // ryba viset ve vode. Posun v otocce resi `face` v update().
-  const spinning = a.face !== a.dir && !cfg.turnMoving;
-  const target = (a.pause || a.fun || spinning) ? 1 : 0;
-  a.mix = toward(a.mix, target, dt / a.fade);
-  Scene3D.speed(a.m3, a.rate * (1 - a.mix));
-  // uvnitr zastavene vahy (mix) se stani a zabavna poza prolinaji pres k
-  const k = a.fun ? a.fun.k : 0;
-  const w = { [a.shown || 'stand']: a.mix * (1 - k) };
-  if (a.fun) w[a.fun.pose] = a.mix * k;
+  // ryba viset ve vode. Chodec bez klipu stani se otaci v chuzi ze stejneho
+  // duvodu. Posun v otocce resi `face` v update().
+  const stops = canStop(a);
+  const spinning = a.face !== a.dir && !cfg.turnMoving && stops;
+  if (a.plan) planStep(a, spinning);
+  const act = a.plan && a.plan.act;
+  const still = a.plan ? Logic.wantsStill(a.plan) : !!a.hold;
+  a.mix = toward(a.mix, stops && (still || spinning) ? 1 : 0, dt / a.fade);
+  a.runK = toward(a.runK, act && act.name === 'run' && act.phase === 'go' ? 1 : 0,
+                  dt / RUN_FADE);
+  Scene3D.speed(a.m3, Logic.walkTimeScale(a.rate, a.mix));
+  if (a.m3.breakStride.run && a.natural) {
+    // beh je o `speed` rychlejsi nez chuze, ale tempo klipu se drzi v mezich,
+    // at Run nevypada jako zrychleny nebo zpomaleny film
+    const spec = (a.acts && a.acts.table.run) || {};
+    const nat = Scene3D.breakNatural(a.m3, 'run');
+    const want = a.natural * a.rate * (spec.speed || 1.8);
+    a.runRate = nat ? Math.max(0.5, Math.min(1.4, want / nat)) : 1;
+    Scene3D.breakSpeed(a.m3, 'run', a.runRate * (1 - a.mix));
+  }
+  // Prolinana poza se drzi, dokud se nedomixuje: kdyby se prepnula hned, jak
+  // se tvor rozejde, cuknul by do stojaci pozy.
+  const posing = act && act.kind !== 'move';
+  a.poseW = Logic.blendToward(a.poseW, posing ? act.pose : { stand: 1 },
+                              dt / (posing ? act.fade : IDLE_FADE));
+  const w = {};
+  for (const [k, v] of Object.entries(a.poseW)) w[k] = a.mix * v;
+  if (a.runK > 0) w.run = (w.run || 0) + (1 - a.mix) * a.runK;
   // kdo zabere za jidlem, prepne do rychleho klipu, kdyz ho katalog ma
   if (a.feed && a.m3.breaks.fast) w.fast = 1 - a.mix;
   Scene3D.blendMix(a.m3, w);
@@ -722,6 +723,12 @@ function bodyLenFrac(a) {
   return bodyFrac(a);
 }
 
+/* Rozehrana cinnost, kterou nejde prerusit otockou (klip, sed, leh). */
+function busy(a) {
+  const act = a.plan && a.plan.act;
+  return !!(act && (act.kind === 'clip' || act.kind === 'pose'));
+}
+
 /* Ma tvor na sve drahe nekoho tehoz pohybu tak blizko, ze by se s nim
    prekryval? (Jen pri usazovani noveho tvora — plavci se za behu klidne
    miji.) */
@@ -733,18 +740,24 @@ function crowded(a) {
 }
 
 /* Plynule zastaveni pres rest masinerii; drzi se, dokud to traffic() kazdy
-   snimek prodluzuje. Kratke restUntil po uvolneni samo dobehne a tvor jde. */
+   snimek prodluzuje. Kratke holdUntil po uvolneni samo dobehne a tvor jde. */
 function holdStill(a) {
-  const R = motionCfg(a.motion).rest;
-  if (!R || !a.m3.action) return;
-  if (!a.pause) {
-    a.pause = 'stand';
-    a.fade = R.fade;
-    a.restUntil = sceneTime + 0.8;
-  } else if (a.pause === 'stand') {
-    a.restUntil = Math.max(a.restUntil, sceneTime + 0.8);
+  if (!canStop(a)) {
+    // bez klipu stani by zastaveni zmrazilo krok — radsi se otoci
+    if (sceneTime > (a.meetCd || 0) && a.face === a.dir) {
+      a.meetCd = sceneTime + MEET_CD_S;
+      if (a.route) a.route.dir = -a.route.dir; else a.dir = -a.dir;
+    }
+    return;
   }
-  a.blocked = true;   // delsi cekani obstara zabava (entertain), ne skok tady
+  if (a.hold !== 'queue') {
+    a.hold = 'queue';
+    a.fade = motionCfg(a.motion).rest.fade;
+    a.holdUntil = sceneTime + 0.8;
+  } else {
+    a.holdUntil = Math.max(a.holdUntil, sceneTime + 0.8);
+  }
+  a.blocked = true;   // co dela pri delsim cekani, vybira planovac (wait)
 }
 
 function traffic() {
@@ -768,10 +781,12 @@ function traffic() {
         // podel trasy (route.dir), odchazejici se nechava dojit ven.
         // Tvor v rozpracovane otocce (face != dir) nebo v cooldownu se
         // nevybira — viz MEET_CD_S.
-        // tvor v rozehrane zabave (lezi/skace) se neotaci — pirueta vleze
-        const pick = [a, b].filter(x => !x.exiting && !x.fun && x.face === x.dir
+        // tvor v rozehrane cinnosti (lezi, sedi, skace) se neotaci —
+        // pirueta vleze; stojici se otoci, jen kdyz druhy nemuze
+        const pick = [a, b].filter(x => !x.exiting && !busy(x) && x.face === x.dir
                                      && sceneTime > (x.meetCd || 0))
-          .sort((x, y) => (x.route ? 1 : 0) - (y.route ? 1 : 0)
+          .sort((x, y) => (x.plan && x.plan.act ? 1 : 0) - (y.plan && y.plan.act ? 1 : 0)
+                       || (x.route ? 1 : 0) - (y.route ? 1 : 0)
                        || bodyLenFrac(x) - bodyLenFrac(y))[0];
         if (!pick) continue;
         pick.meetCd = sceneTime + MEET_CD_S;
@@ -896,14 +911,19 @@ function update(dt) {
       // klesajici jidlo (akvarium) se dohani i do hloubky, lezici staci v x
       const got = Math.abs(a.xFrac - f.x) < FEED_REACH
                && (!f.sink || Math.abs(a.yFrac - f.y) < FEED_REACH * 1.6);
+      const busyHere = a.plan && a.plan.act && a.plan.act.kind !== 'move'
+                    && a.plan.act.name !== 'eat';
       if (f.gone) {
         a.feed = null;
+      } else if (busyHere) {
+        // kdo sedi nebo lezi, nejdriv vstane; za jidlem se otoci az pak
+        if (!a.plan.act.cut) Logic.interrupt(a.plan.act);
       } else if (got) {
         const R = motionCfg(a.motion).rest;
-        if (R && a.m3.action && !a.pause) {
-          a.pause = 'stand';
+        if (canStop(a) && !a.hold) {
+          a.hold = 'food';
           a.fade = R.fade;
-          a.restUntil = sceneTime + span(R.stand);
+          a.holdUntil = sceneTime + span(R.stand);
         }
         // plavec u jidla nezastavuje, jen si kousne; po par kousnutich je jidlo
         // snezene a ostatni se vraci do svych hloubek
@@ -917,7 +937,7 @@ function update(dt) {
     // smeru mimo kolize, u plavce to, proc neplave po pravitku od okraje
     // k okraji. Kdo se prave otaci, novou otocku nezacina.
     const every = turnEvery(a.motion);
-    if (every && !a.route && !a.exiting && !a.pause && !a.fun && !a.feed
+    if (every && !a.route && !a.exiting && !a.hold && !(a.plan && a.plan.act) && !a.feed
         && a.face === a.dir && sceneTime > a.turnAt) {
       a.dir = -a.dir;
       a.meetCd = sceneTime + MEET_CD_S;
@@ -935,8 +955,9 @@ function update(dt) {
     const stepBodies = a.natural ? Scene3D.walked(a.m3, dt) : null;
     // zaber za jidlem (`dash`): plavec za vlockami vyrazi, nesune se k nim
     const dash = a.feed && cfg.dash ? cfg.dash : 1;
+    const runStep = a.runK > 0 ? Scene3D.walkedBreak(a.m3, 'run', dt) : 0;
     const go = stepBodies !== null
-      ? stepBodies * bodyFrac(a) * a.speedMul
+      ? Logic.travel(stepBodies, runStep, a.runK) * bodyFrac(a) * a.speedMul
       : a.speed * (1 - a.mix) * dt * dash;
     if (a.route && a.route.path.points.length >= 2) {
       // Trasa je autorita: zadne obchazeni okraje ani swapBand — odchod a
@@ -948,7 +969,7 @@ function update(dt) {
     // Plavec se otaci v pohybu: posouva se podle `face`, ne `dir`, takze do
     // otocky zpomali, projde celem k divakovi a zabere na druhou stranu —
     // misto aby klouzal pozadu, dokud se hlava nedotoci.
-    a.xFrac += (cfg.turnMoving ? a.face : a.dir) * go;
+    a.xFrac += (cfg.turnMoving || !canStop(a) ? a.face : a.dir) * go;
     // Za okrajem tvor obejde scenu dokola, misto aby se odrazil. Odraz vypadal
     // prirozene, ale vsichni se odrazeji od tehoz mista a casem se sesypou do
     // jednoho hloucku; takhle si rozestupy drzi napovad, protoze kazdy chodi
@@ -1154,6 +1175,39 @@ function drawTags() {
   }
 }
 
+/* "Zzz" nad spicim tvorem: tri pismenka stoupaji a mizi, kresleno do fx
+   vrstvy jako jmenovky. Spanek z boku jinak od lehu odlisi jen hlava. */
+function drawZzz() {
+  for (const a of actors) {
+    const act = a.plan && a.plan.act;
+    if (!act || !/^sleep/.test(act.phase) || a.leaving) continue;
+    const scale = depthScale(a.yFrac);
+    const s = W * sizeFrac(a) * scale / a.m3.sizePx;
+    const len = a.m3.length * s;
+    const base = act.phase === 'sleepIn' ? 1 - Math.max(0, act.until - sceneTime) / act.fade
+               : act.phase === 'sleepOut' ? Math.max(0, act.until - sceneTime) / act.fade : 1;
+    const x0 = a.xFrac * W + a.face * len * 0.3;
+    const y0 = a.yFrac * H - a.m3.height * s * 0.45;
+    const fs = Math.max(12, Math.round(24 * scale));
+    fxCtx.save();
+    fxCtx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    fxCtx.textAlign = 'center';
+    fxCtx.textBaseline = 'middle';
+    for (let i = 0; i < 3; i++) {
+      const t = ((sceneTime / 2.4) + i / 3) % 1;
+      fxCtx.globalAlpha = base * Math.sin(Math.PI * t) * 0.85;
+      fxCtx.fillStyle = '#f4f8ff';
+      fxCtx.strokeStyle = 'rgba(20, 30, 60, 0.55)';
+      fxCtx.lineWidth = Math.max(2, fs * 0.14);
+      const x = x0 + a.face * t * fs * 1.6, y = y0 - t * fs * 2.6;
+      fxCtx.font = `700 ${Math.round(fs * (0.7 + 0.5 * t))}px "Segoe UI", system-ui, sans-serif`;
+      fxCtx.strokeText('z', x, y);
+      fxCtx.fillText('z', x, y);
+    }
+    fxCtx.restore();
+  }
+}
+
 let fatal = false;
 
 function note(msg) {
@@ -1226,9 +1280,11 @@ function draw(dt) {
   if (backdrop && backdrop.drawFront) backdrop.drawFront(fxCtx, W, H, sceneTime);
   drawFoods();
   drawTags();
+  drawZzz();
 }
 
 let frameErrors = 0;
+let fastSteps = 1;
 
 function frame(now) {
   // preplanovat driv, nez muze cokoli spadnout — jedna vyjimka nesmi scenu
@@ -1237,6 +1293,13 @@ function frame(now) {
   try {
     const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0;
     lastFrame = now;
+    // zrychleny chod (DinoScene.fast, jen pro testy): vic kroku simulace na
+    // snimek, kazdy s posunem animaci, at krok a chodidla drzi spolu
+    for (let i = 1; i < fastSteps; i++) {
+      sceneTime += dt;
+      update(dt);
+      Scene3D.animate(dt);
+    }
     sceneTime += dt;
     update(dt);
     draw(dt);
@@ -1262,21 +1325,22 @@ async function loadModel(item, opts) {
   // role klipu (pohyb, stani, skok) rika katalog — jmena se nehadaji ve scene
   const cf = spec.clipFor || {};
   const clip = spec.clips[cf.move] || spec.pose;
-  const breaks = cf.stand || cf.jump || cf.lie || cf.fast
-    ? { stand: spec.clips[cf.stand], jump: spec.clips[cf.jump],
-        lie: spec.clips[cf.lie], fast: spec.clips[cf.fast] }
-    : undefined;
+  const breaks = {};
+  for (const [role, short] of Object.entries(cf)) {
+    if (role !== 'move' && spec.clips[short]) breaks[role] = spec.clips[short];
+  }
   // natoceni k divakovi patri ke vzhledu krajiny, ne k 3D vrstve — bere se
   // z definice sceny presne pro tenhle pohyb (bez fallbacku na walk, aby
   // letec nedostal uhel chodce); kdyz ho scena nema, plati default 3D vrstvy
   const mo = ((sceneDef && sceneDef.motions) || {})[spec.motion] || {};
   const m3 = await Scene3D.spawn({
-    id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks,
+    id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks, gaits: ['run'],
     turn: mo.turn, bank: mo.bank,
     texture: item.texture || (item.url || `/catch/${item.id}/`) + 'texture.png',
   });
   return addActor({ m3, id: item.id, key: spec.key, strideRate: spec.strideRate,
-                    motion: spec.motion, label: spec.label }, opts);
+                    motion: spec.motion, label: spec.label,
+                    activities: spec.activities }, opts);
 }
 
 function arrive(item, opts) {
@@ -1637,15 +1701,18 @@ window.DinoScene = {
   },
   gpu: () => Scene3D.info(),
   where: () => actors.map(a => ({
-    label: a.label, key: a.key, motion: a.motion,
+    id: a.id, label: a.label, key: a.key, motion: a.motion,
     band: a.band.name, lane: a.band.lane || null,
     laneY: a.laneY != null ? +a.laneY.toFixed(3) : null,
     rateScale: a.band.rateScale || 1,
     blocked: !!a.blocked,
-    pause: a.pause || null,
+    hold: a.hold || null,
+    act: a.plan && a.plan.act ? a.plan.act.name : null,
+    phase: a.plan && a.plan.act ? a.plan.act.phase : null,
+    offered: a.acts ? a.acts.names : [],
     mix: +a.mix.toFixed(2),
+    run: +a.runK.toFixed(2),
     turning: a.face !== a.dir,
-    fun: a.fun ? a.fun.pose + ':' + a.fun.phase : null,
     looking: !!a.looking,
     route: a.route ? a.route.path.name || '' : null,
     ambient: a.ambient,
@@ -1663,9 +1730,20 @@ window.DinoScene = {
   // pri pomalem renderu (headless SwiftShader) bezi sceneTime pomaleji nez
   // wall-clock — tempo se musi merit proti nemu, viz tools/gait_report.py
   time: () => sceneTime,
-  // ladeni zabavy pri cekani (Playwright): kratsi intervaly bez editace zdroju
-  funTune: (every, hold) => { if (every) FUN_EVERY = every;
-                              if (hold) LIE_HOLD = hold; },
+  // planovac cinnosti: kolikrat ktera cinnost zacala (od nacteni stranky)
+  stats: () => ({ ...actStats }),
+  // zrychleny chod sceny pro dlouhe testy (k kroku simulace na snimek)
+  fast: (k = 1) => { fastSteps = Math.max(1, Math.min(20, Math.round(k))); },
+  // vynutit cinnost tvoru i (Playwright/screenshoty); `dur` prebije delku
+  debugAct: (i, name, dur) => {
+    const a = actors[i];
+    if (!a || !a.plan) return false;
+    if (a.plan.act) Logic.interrupt(a.plan.act);
+    a.plan.act = Logic.begin(name, a.acts.table, a.acts.caps, sceneTime, Math.random,
+                             dur != null ? { dur } : {});
+    actStats[name] = (actStats[name] || 0) + 1;
+    return true;
+  },
   ambient: () => ambientEnabled,   // pro ladeni a testy bodu c)
   session: () => SID,
   scene: () => sceneDef && sceneDef.key,   // aktivni krajina (bod 8)
@@ -1679,17 +1757,20 @@ window.DinoScene = {
   // stoji, dokud se nezavola debugLook(i, null)
   debugLook: (i, deg = 35) => {
     const a = actors[i];
-    if (!a || !a.m3.look) return false;
+    if (!a || !a.m3.look || !a.plan) return false;
     if (deg == null) {
-      a.looking = null;
-      a.restUntil = 0;
+      a.debugLook = false;
+      if (a.plan.act) Logic.interrupt(a.plan.act);
+      a.looking = false;
       Scene3D.look(a.m3, 0, motionCfg(a.motion).look);
       return true;
     }
-    a.pause = 'stand';
-    a.restUntil = Infinity;
     a.dir = a.face = Math.sign(a.face) || 1;
-    a.looking = { until: Infinity, debug: true };
+    if (a.plan.act) Logic.interrupt(a.plan.act);
+    a.plan.act = Logic.begin('stand', a.acts.table, a.acts.caps, sceneTime, Math.random,
+                             { dur: Infinity });
+    a.debugLook = true;
+    a.looking = true;
     return Scene3D.look(a.m3, deg > 0 ? 1 : 0, { max: deg * Math.PI / 180 });
   },
 };
