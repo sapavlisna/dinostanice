@@ -1188,7 +1188,7 @@ function drawZzz() {
                : act.phase === 'sleepOut' ? Math.max(0, act.until - sceneTime) / act.fade : 1;
     const x0 = a.xFrac * W + a.face * len * 0.3;
     const y0 = a.yFrac * H - a.m3.height * s * 0.45;
-    const fs = Math.max(11, Math.round(20 * scale));
+    const fs = Math.max(12, Math.round(24 * scale));
     fxCtx.save();
     fxCtx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
     fxCtx.textAlign = 'center';
