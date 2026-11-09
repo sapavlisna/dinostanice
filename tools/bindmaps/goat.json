@@ -1,0 +1,303 @@
+{
+ "template": "data/models_src/deer.glb",
+ "source": "data/models_src/goat_tvar.glb",
+ "name": "Koza",
+ "faces": 2400,
+ "keep_parts": 0,
+ "scale_by": [
+  "Back",
+  "Torso3"
+ ],
+ "fit": [
+  "Neck2",
+  "Neck3",
+  "Head",
+  "Ear",
+  "Tail"
+ ],
+ "aim": [
+  "Ear1"
+ ],
+ "legs": [
+  {
+   "root": "FrontUpperLeg.L",
+   "end": "FrontLowerLeg.L_end",
+   "ik": "IKFrontLeg.L"
+  },
+  {
+   "root": "BackLeg.L",
+   "end": "BackLowerLeg.L_end",
+   "ik": "IKBackLeg.L"
+  }
+ ],
+ "chains": [
+  [
+   "Back",
+   "Torso",
+   "Torso2",
+   "Torso3",
+   "Neck1",
+   "Neck2",
+   "Neck3",
+   "Head"
+  ],
+  [
+   "Back",
+   "Tail1",
+   "Tail2",
+   "Tail3"
+  ],
+  [
+   "Head",
+   "Ear1.L",
+   "Ear2.L",
+   "Ear3.L",
+   "Ear4.L",
+   "Ear4.L_end"
+  ],
+  [
+   "FrontUpperLeg.L",
+   "FrontLowerLeg.L",
+   "IKFrontLeg.L",
+   "FF.L",
+   "FF.L_end"
+  ],
+  [
+   "BackLeg.L",
+   "BackUpperLeg.L",
+   "BackLowerLeg.L",
+   "IKBackLeg.L",
+   "FFB.L",
+   "FFB.L_end"
+  ]
+ ],
+ "landmarks": {
+  "Back": {
+   "at": [
+    0,
+    0.52,
+    -0.34
+   ]
+  },
+  "Torso": {
+   "at": [
+    0,
+    0.54,
+    -0.22
+   ]
+  },
+  "Torso2": {
+   "at": [
+    0,
+    0.55,
+    -0.06
+   ]
+  },
+  "Torso3": {
+   "at": [
+    0,
+    0.54,
+    0.08
+   ]
+  },
+  "Neck1": {
+   "at": [
+    0,
+    0.57,
+    0.14
+   ]
+  },
+  "Neck2": {
+   "at": [
+    0,
+    0.68,
+    0.19
+   ]
+  },
+  "Neck3": {
+   "at": [
+    0,
+    0.79,
+    0.24
+   ]
+  },
+  "Head": {
+   "at": [
+    0,
+    0.87,
+    0.29
+   ]
+  },
+  "Tail3": {
+   "at": [
+    0,
+    0.62,
+    -0.5
+   ]
+  },
+  "Ear1.L": {
+   "at": [
+    0.05,
+    0.84,
+    0.29
+   ]
+  },
+  "Ear4.L_end": {
+   "at": [
+    0.19,
+    0.83,
+    0.3
+   ]
+  },
+  "FrontUpperLeg.L": {
+   "at": [
+    0.09,
+    0.45,
+    0.11
+   ]
+  },
+  "FrontLowerLeg.L": {
+   "at": [
+    0.09,
+    0.24,
+    0.14
+   ]
+  },
+  "IKFrontLeg.L": {
+   "at": [
+    0.09,
+    0.06,
+    0.16
+   ]
+  },
+  "FF.L": {
+   "at": [
+    0.09,
+    0.03,
+    0.18
+   ]
+  },
+  "FF.L_end": {
+   "at": [
+    0.09,
+    0.012,
+    0.21
+   ]
+  },
+  "BackLeg.L": {
+   "at": [
+    0.095,
+    0.5,
+    -0.34
+   ]
+  },
+  "BackUpperLeg.L": {
+   "at": [
+    0.095,
+    0.33,
+    -0.28
+   ]
+  },
+  "BackLowerLeg.L": {
+   "at": [
+    0.095,
+    0.255,
+    -0.36
+   ]
+  },
+  "IKBackLeg.L": {
+   "at": [
+    0.095,
+    0.06,
+    -0.32
+   ]
+  },
+  "FFB.L": {
+   "at": [
+    0.095,
+    0.03,
+    -0.3
+   ]
+  },
+  "FFB.L_end": {
+   "at": [
+    0.095,
+    0.012,
+    -0.27
+   ]
+  }
+ },
+ "parts": [
+  [
+   "Usi",
+   [
+    "Ear"
+   ]
+  ],
+  [
+   "Hlava",
+   [
+    "Head"
+   ]
+  ],
+  [
+   "Ocas",
+   [
+    "Tail"
+   ]
+  ],
+  [
+   "PredniNohy",
+   [
+    "FrontLowerLeg",
+    "IKFrontLeg",
+    "FF."
+   ]
+  ],
+  [
+   "ZadniNohy",
+   [
+    "BackLowerLeg",
+    "IKBackLeg",
+    "FFB"
+   ]
+  ],
+  [
+   "Telo",
+   []
+  ]
+ ],
+ "smooth_parts": 8,
+ "colors": {
+  "Usi": [
+   0.86,
+   0.84,
+   0.8
+  ],
+  "Hlava": [
+   0.88,
+   0.86,
+   0.82
+  ],
+  "Ocas": [
+   0.84,
+   0.82,
+   0.78
+  ],
+  "PredniNohy": [
+   0.5,
+   0.46,
+   0.42
+  ],
+  "ZadniNohy": [
+   0.5,
+   0.46,
+   0.42
+  ],
+  "Telo": [
+   0.88,
+   0.86,
+   0.82
+  ]
+ }
+}

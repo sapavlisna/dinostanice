@@ -112,6 +112,67 @@ Prompt byl čistě textový, žádný cizí obrázek. Surový výstup Rodinu (1,
 s texturami) se necommituje; `tools/bindmaps/zajic_tvar.json` popisuje, jak
 z něj vznikl `zajic_tvar.glb` (řez vousů, decimace).
 
+## Mikulášská (Mikuláš, anděl, čert) — vlastní modely
+
+| soubor | tvor | původ | licence |
+|---|---|---|---|
+| `data/models_src/mik_mikulas.glb` | Mikuláš | `tools/make_mikulas.py` | vlastní tvorba (MIT jako kód) |
+| `data/models_src/mik_andel.glb` | Anděl | `tools/make_mikulas.py` | vlastní tvorba (MIT jako kód) |
+| `data/models_src/mik_cert.glb` | Čert | `tools/make_mikulas.py` | vlastní tvorba (MIT jako kód) |
+
+Žádný cizí materiál. Volné rigované humanoidy (Quaternius, Poly Pizza, Sketchfab)
+mají jemné povrchy, stovky malých ploch a z bokorysu by byla šmouha, na kterou
+se nedá vybarvovat; navíc potřebují hůl, vidle, křídla a ocas, které by se
+stejně musely dodělat. Proto jsou postavy nízkopolygonové a staví se
+z elips a trubic (`tools/humanoid.py`) i s kostrou a klipy Walk, Run, Idle,
+LookAround, Wave a Jump — stejně jako ptáček v `tools/make_bird.py`.
+
+## Betlém (scéna `betlem`)
+
+Osel a vůl jsou z téhož packu jako zvířata v lese (Quaternius *Ultimate Animated
+Animal Pack*, **CC0 1.0**), kostra i klipy původní:
+
+| soubor | tvor | zdroj |
+|---|---|---|
+| `data/models_src/donkey.glb` | Osel | [poly.pizza](https://poly.pizza/m/qmX6nhnvp7) |
+| `data/models_src/bull.glb` | Vůl (býk) | [poly.pizza](https://poly.pizza/m/a8PIIYwF7r) |
+
+Ovce, velbloud a koza v packu nejsou. Tvar každé z nich vygeneroval **Hyper3D
+Rodin** (Deemos Corp.) 2026-10-17 z čistě textového promptu přes Blender MCP addon
+(free-trial klíč, režim MAIN_SITE) a `tools/blender_bind.py` ho navlékl na kostru a
+klipy zvířete z packu. Licenční podmínky Rodinu jsou stejné jako u zajíce
+(viz výš: výstup se „neomezuje“, komerční šíření by chtělo ověřit podle tarifu).
+Surové výstupy se necommitují, `tools/bindmaps/*_tvar.json` popisují úklid.
+
+| soubor | co to je | původ |
+|---|---|---|
+| `data/models_src/sheep_tvar.glb` | vyčištěný low-poly tvar ovce (≈2 000 trojúhelníků) | Hyper3D Rodin |
+| `data/models_src/camel_tvar.glb` | velbloud s jedním hrbem (≈2 000 trojúhelníků) | Hyper3D Rodin |
+| `data/models_src/goat_tvar.glb` | kozel s rohy a bradkou (≈2 000 trojúhelníků) | Hyper3D Rodin |
+| `data/models_src/sheep.glb`, `camel.glb` | tvar navlečený na kostru a klipy alpaky | `tools/bindmaps/sheep.json`, `camel.json`; kostra a klipy Quaternius, CC0 |
+| `data/models_src/goat.glb` | tvar navlečený na kostru a klipy jelena (srnky) | `tools/bindmaps/goat.json`; kostra a klipy Quaternius, CC0 |
+
+Promptem byl vždy jediný anglický popis zvířete (např. „a stylised low-poly dromedary
+camel, full body, clearly visible single hump on the back, long curved neck, four
+separate long thin legs with gaps between them…“), žádný cizí obrázek.
+
+## Scéna Louka (broučci)
+
+Surové GLB z poly.pizza leží v `scenes/louka/zdroje/` (viz tamní `ZDROJE.md`). Tvary
+se vyhlazují (slití vrcholů, subdivision) a rigují v Blenderu skriptem
+`tools/make_louka_bugs.py`; beruška je vlastní model z `tools/make_ladybug.py`
+(podle fotek sedmitečné berušky z Wikimedia Commons, použité jen jako předloha tvaru).
+
+| soubor | tvor | autor modelu | licence |
+|---|---|---|---|
+| `bumblebee.glb` | čmelák | Poly by Google | CC-BY 3.0 |
+| `ant.glb` | mravenec | Poly by Google | CC-BY 3.0 |
+| `grasshopper.glb` | kobylka | Poly by Google | CC-BY 3.0 |
+| `caterpillar.glb` | housenka | Poly by Google | CC-BY 3.0 |
+| `snail.glb` | šnek | Poly by Google | CC-BY 3.0 |
+| `snake.glb` | had (kostra a klipy původní) | Quaternius | CC0 |
+| `ladybug.glb` | beruška | vlastní | — |
+
 ## Knihovny
 
 `web/vendor/GLTFLoader.js`, `BufferGeometryUtils.js`, `OrbitControls.js`,

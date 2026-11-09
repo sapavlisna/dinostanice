@@ -25,6 +25,12 @@ const MOTION = {
   fly: { turn: 0.95, bank: -0.42, anchor: 'centre' },
   swim: { turn: 0.34, bank: 0, anchor: 'centre' },
   sail: { turn: 0.20, bank: 0, anchor: 'centre' },
+  bird: { turn: 0.34, bank: 0, anchor: 'ground' },
+  // motyl se kresli zepredu (kridla v rovine x-y), turn pi/2 = vzdy celem k divakovi
+  butterfly: { turn: Math.PI / 2, bank: 0, anchor: 'centre' },
+  // vznasejici se doplnky: postava (lehce otocena) a hvezda (zepredu)
+  hover: { turn: 0.45, bank: 0, anchor: 'centre' },
+  twinkle: { turn: Math.PI / 2, bank: 0, anchor: 'centre' },
 };
 
 // nula je platne natoceni (cisty profil), takze `||` by ji snedlo
@@ -140,7 +146,7 @@ export function resize(W, H) {
   camera.updateProjectionMatrix();
 }
 
-function texture(url) {
+function texture(url, data = false) {
   let e = texCache.get(url);
   if (!e) {
     const tex = textureLoader.load(url, undefined, undefined, () => {
@@ -156,7 +162,7 @@ function texture(url) {
       notify('textura se nenačetla: ' + url);
     });
     tex.flipY = false;                       // glTF ma pocatek UV vlevo nahore
-    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.colorSpace = data ? THREE.NoColorSpace : THREE.SRGBColorSpace;
     tex.anisotropy = 8;
     // katalogove textury sdili vsichni ambientni tvori a drzi se trvale;
     // textura ulovku zije jen dokud je jeji tvor ve scene (refcount)
@@ -319,9 +325,15 @@ export async function spawn(entry) {
   const model = cloneSkinned(gltf.scene);
 
   const tex = texture(entry.texture);
+  // povrch druhu (katalog): lesk a vyska, ktera sedi na kazde zvire druhu, i vybarvene ditetem
+  const surface = entry.material || {};
+  const bump = entry.bump ? texture(entry.bump, true) : null;
   model.traverse((o) => {
     if (!o.isMesh) return;
-    o.material = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.88, metalness: 0 });
+    o.material = new THREE.MeshStandardMaterial({
+      map: tex, roughness: angle(surface.roughness, 0.88), metalness: 0,
+      ...(bump ? { bumpMap: bump, bumpScale: angle(surface.bump, 1) } : {}),
+    });
     o.frustumCulled = false;                 // skinning vytahuje vrcholy z bind bboxu
   });
 
@@ -338,15 +350,21 @@ export async function spawn(entry) {
   const anchor = new THREE.Vector3(centre.x, grounded ? 0 : centre.y, centre.z);
   model.position.sub(anchor);
 
+  // Letec z listu je kresleny shora (hlava +Y, hrbet +Z, rozpeti X). `side` ho
+  // prehodi do konvence chodce — hlava +Z, hrbet +Y — takze letí bokem, ne hlavou nahoru.
+  const orient = new THREE.Group();
+  if (entry.side) orient.quaternion.set(0, Math.SQRT1_2, Math.SQRT1_2, 0);
+  orient.add(model);
   const spin = new THREE.Group();
-  spin.add(model);
+  spin.add(orient);
   const root = new THREE.Group();
   root.add(spin);
 
-  // stejne poradi jako v hierarchii nize: root naklani, spin otaci
+  // stejne poradi jako v hierarchii nize: root naklani, spin otaci, orient prehazuje osy
   const q = new THREE.Quaternion()
     .setFromAxisAngle(new THREE.Vector3(0, 0, 1), bank)
-    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw));
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw))
+    .multiply(orient.quaternion);
   const shifted = box.clone().translate(anchor.clone().negate());
   const onScreen = screenBox(shifted, q);
 
@@ -428,10 +446,13 @@ export function place(handle, at) {
   const s = at.scale;
   handle.root.position.set(at.x, -at.y, at.depth);
   handle.root.scale.setScalar(s);
-  handle.root.rotation.z = handle.bank * (at.face < 0 ? -1 : 1);
+  const bank = typeof at.bank === 'number' ? at.bank : handle.bank;
+  handle.root.rotation.z = bank * (at.face < 0 ? -1 : 1);
   // face je -1..1: mezi tim se tvor otaci na miste a prochazi celem k divakovi
-  handle.spin.rotation.y = at.face * handle.yaw;
-  handle.root.visible = true;
+  // `turn` (volitelne) prebije natoceni z nacteni: scena tim tvora stoci po smeru chuze
+  const yaw = typeof at.turn === 'number' ? FORWARD_YAW - at.turn : handle.yaw;
+  handle.spin.rotation.y = at.face * yaw;
+  handle.root.visible = !at.hidden;
 }
 
 export function speed(handle, timeScale) {

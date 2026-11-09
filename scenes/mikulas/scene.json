@@ -1,0 +1,301 @@
+{
+  "label": "Mikulášská",
+  "subtitle": "Zasněžená náves o Mikuláši — Mikuláš, anděl a čert.",
+  "order": 6,
+  "nouns": ["postavička", "postavičky", "postaviček"],
+  "accusative": "postavičku",
+  "invite": {"title": "Přidej svou postavičku", "sub": "Naskenuj kód a vyfoť vybarvený obrázek"},
+  "feedHint": "Mikuláš rozdává dobroty — postavičky se seběhnou",
+  "feedBusy": "Mikuláš ještě rozdává dobroty z minula — počkej chvilku, než pošleš další! 🎁",
+  "creatures": [
+    {
+      "key": "mik_mikulas",
+      "label": "Mikuláš",
+      "glb": "mik_mikulas.glb",
+      "motion": "walk",
+      "clip_for": {
+        "play": "Wave",
+        "jump": null,
+        "eat": null,
+        "sit": null,
+        "lie": null,
+        "sleep": null
+      },
+      "stride_rate": [0.5, 0.65],
+      "paint": {
+        "base": [190, 32, 40],
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.0, 0.28, 0.03, 1.0]
+          },
+          {
+            "type": "stripes",
+            "color": [150, 108, 66],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.69, 1.0, 0.36, 0.69]
+          },
+          {
+            "type": "stripes",
+            "color": [246, 244, 238],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.27, 0.93, 0.835, 0.91]
+          },
+          {
+            "type": "stripes",
+            "color": [70, 44, 30],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.28, 0.92, 0.915, 1.0]
+          },
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.35, 0.8, 0.6, 0.65]
+          },
+          {
+            "type": "stripes",
+            "color": [246, 244, 238],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.3, 0.4, 0.66, 0.835]
+          },
+          {
+            "type": "stripes",
+            "color": [190, 32, 40],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.45, 0.71, 0.0, 0.215]
+          },
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.45, 0.71, 0.215, 0.265]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 190, 160],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.43, 0.7, 0.265, 0.38]
+          },
+          {
+            "type": "stripes",
+            "color": [246, 244, 238],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.58, 0.73, 0.265, 0.36]
+          },
+          {
+            "type": "stripes",
+            "color": [246, 244, 238],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.43, 0.62, 0.335, 0.455]
+          },
+          {
+            "type": "stripes",
+            "color": [246, 244, 238],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.26, 0.33, 0.47, 0.575]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 190, 160],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.18, 0.27, 0.475, 0.55]
+          }
+        ]
+      },
+      "anim": "Walk",
+      "time": 0.287,
+      "activities": {
+        "run": {"weight": 0},
+        "play": {"weight": 1.8},
+        "jump": {"weight": 0}
+      }
+    },
+    {
+      "key": "mik_andel",
+      "label": "Anděl",
+      "glb": "mik_andel.glb",
+      "motion": "walk",
+      "clip_for": {"play": "Wave", "eat": null, "sit": null, "lie": null, "sleep": null},
+      "stride_rate": [0.55, 0.7],
+      "paint": {
+        "base": [250, 250, 252],
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [226, 234, 252],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.0, 0.5, 0.03, 0.48]
+          },
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.52, 0.78, 0.0, 0.17]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 200, 90],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.48, 0.82, 0.13, 0.42]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 190, 160],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.64, 0.835, 0.185, 0.33]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 190, 160],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.66, 0.8, 0.33, 0.37]
+          },
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.37, 0.95, 0.545, 0.605]
+          },
+          {
+            "type": "stripes",
+            "color": [232, 184, 56],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.3, 1.0, 0.885, 0.95]
+          },
+          {
+            "type": "stripes",
+            "color": [240, 190, 160],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.88, 1.0, 0.5, 0.64]
+          },
+          {
+            "type": "stripes",
+            "color": [200, 150, 60],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.35, 1.0, 0.915, 1.0]
+          }
+        ]
+      },
+      "anim": "Walk",
+      "time": 0.3,
+      "activities": {
+        "play": {"weight": 1.4},
+        "jump": {"weight": 0.5},
+        "run": {"weight": 0.2}
+      }
+    },
+    {
+      "key": "mik_cert",
+      "label": "Čert",
+      "glb": "mik_cert.glb",
+      "motion": "walk",
+      "clip_for": {"play": "Wave", "eat": null, "sit": null, "lie": null, "sleep": null},
+      "stride_rate": [0.9, 1.2],
+      "paint": {
+        "base": [46, 34, 34],
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [120, 64, 46],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.33, 0.62, 0.56, 0.73]
+          },
+          {
+            "type": "stripes",
+            "color": [20, 18, 18],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.1, 0.8, 0.83, 1.0]
+          },
+          {
+            "type": "stripes",
+            "color": [230, 222, 196],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.46, 0.64, 0.03, 0.23]
+          },
+          {
+            "type": "stripes",
+            "color": [150, 100, 86],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.62, 0.78, 0.255, 0.335]
+          },
+          {
+            "type": "stripes",
+            "color": [20, 18, 18],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.73, 0.79, 0.265, 0.31]
+          },
+          {
+            "type": "stripes",
+            "color": [220, 36, 48],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.67, 0.83, 0.31, 0.41]
+          },
+          {
+            "type": "stripes",
+            "color": [220, 36, 48],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.0, 0.13, 0.26, 0.38]
+          },
+          {
+            "type": "stripes",
+            "color": [170, 174, 182],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.74, 1.0, 0.0, 0.215]
+          },
+          {
+            "type": "stripes",
+            "color": [130, 88, 52],
+            "period_mm": 100,
+            "width_mm": 100,
+            "region": [0.79, 0.9, 0.205, 1.0]
+          }
+        ]
+      },
+      "anim": "Walk",
+      "time": 0.225,
+      "activities": {
+        "run": {
+          "weight": 3,
+          "dur": [2, 4]
+        },
+        "jump": {"weight": 1.2},
+        "play": {"weight": 1.5},
+        "stand": {"weight": 0.5},
+        "lookaround": {"weight": 1}
+      }
+    }
+  ]
+}

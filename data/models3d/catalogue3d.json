@@ -403,44 +403,6 @@
   "size": 2.0
  },
  {
-  "key": "alpaca",
-  "label": "Alpaka",
-  "motion": "walk",
-  "scene": "les",
-  "glb": "/models3d/alpaca.glb",
-  "texture": "/models3d/alpaca_texture.png",
-  "clips": {
-   "Headbutt": "Attack_Headbutt",
-   "Kick": "Attack_Kick",
-   "Death": "Death",
-   "Eating": "Eating",
-   "Gallop": "Gallop",
-   "Jump": "Gallop_Jump",
-   "Idle": "Idle",
-   "2": "Idle_2",
-   "Headlow": "Idle_Headlow",
-   "Left": "Idle_HitReact_Left",
-   "Right": "Idle_HitReact_Right",
-   "toIdle": "Jump_toIdle",
-   "Walk": "Walk"
-  },
-  "clipFor": {
-   "move": "Walk",
-   "stand": "Idle",
-   "jump": "Jump",
-   "run": "Gallop",
-   "look": "2",
-   "play": "Headbutt",
-   "eat": "Eating"
-  },
-  "pose": "Walk",
-  "size": 5.0,
-  "strideRate": [
-   0.3,
-   0.45
-  ]
- },
- {
   "key": "deer",
   "label": "Srnka",
   "motion": "walk",
@@ -704,6 +666,587 @@
   "strideRate": [
    0.35,
    0.5
+  ]
+ },
+ {
+  "key": "bird",
+  "label": "Ptáček",
+  "motion": "bird",
+  "scene": "les",
+  "glb": "/models3d/bird.glb",
+  "texture": "/models3d/bird_texture.png",
+  "clips": {
+   "Fly": "Fly",
+   "Perch": "Perch"
+  },
+  "clipFor": {
+   "move": "Fly",
+   "stand": "Perch"
+  },
+  "pose": "Perch",
+  "size": 1.34,
+  "extra": true
+ },
+ {
+  "key": "butterfly",
+  "label": "Motýlek",
+  "motion": "butterfly",
+  "scene": "les",
+  "glb": "/models3d/butterfly.glb",
+  "texture": "/models3d/butterfly_texture.png",
+  "clips": {
+   "Fly": "Fly",
+   "Rest": "Rest"
+  },
+  "clipFor": {
+   "move": "Fly",
+   "stand": "Rest"
+  },
+  "pose": "Fly",
+  "size": 0.13,
+  "extra": true
+ },
+ {
+  "key": "sheep",
+  "label": "Ovečka",
+  "motion": "walk",
+  "scene": "betlem",
+  "glb": "/models3d/sheep.glb",
+  "texture": "/models3d/sheep_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Headbutt",
+   "eat": "Eating"
+  },
+  "pose": "Idle",
+  "size": 3.83,
+  "strideRate": [
+   0.35,
+   0.5
+  ]
+ },
+ {
+  "key": "donkey",
+  "label": "Oslík",
+  "motion": "walk",
+  "scene": "betlem",
+  "glb": "/models3d/donkey.glb",
+  "texture": "/models3d/donkey_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Headbutt",
+   "eat": "Eating"
+  },
+  "pose": "Walk",
+  "size": 5.22,
+  "strideRate": [
+   0.3,
+   0.45
+  ]
+ },
+ {
+  "key": "bull",
+  "label": "Vůl",
+  "motion": "walk",
+  "scene": "betlem",
+  "glb": "/models3d/bull.glb",
+  "texture": "/models3d/bull_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Headbutt",
+   "eat": "Eating"
+  },
+  "pose": "Walk",
+  "size": 8.08,
+  "strideRate": [
+   0.25,
+   0.4
+  ]
+ },
+ {
+  "key": "camel",
+  "label": "Velbloud",
+  "motion": "walk",
+  "scene": "betlem",
+  "glb": "/models3d/camel.glb",
+  "texture": "/models3d/camel_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Headbutt",
+   "eat": "Eating"
+  },
+  "pose": "Idle",
+  "size": 4.95,
+  "strideRate": [
+   0.25,
+   0.4
+  ]
+ },
+ {
+  "key": "goat",
+  "label": "Kozel",
+  "motion": "walk",
+  "scene": "betlem",
+  "glb": "/models3d/goat.glb",
+  "texture": "/models3d/goat_texture.png",
+  "clips": {
+   "Headbutt": "Attack_Headbutt",
+   "Kick": "Attack_Kick",
+   "Death": "Death",
+   "Eating": "Eating",
+   "Gallop": "Gallop",
+   "Jump": "Gallop_Jump",
+   "Idle": "Idle",
+   "2": "Idle_2",
+   "Headlow": "Idle_Headlow",
+   "Left": "Idle_HitReact_Left",
+   "Right": "Idle_HitReact_Right",
+   "toIdle": "Jump_toIdle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Gallop",
+   "look": "2",
+   "play": "Headbutt",
+   "eat": "Eating"
+  },
+  "pose": "Idle",
+  "size": 4.55,
+  "strideRate": [
+   0.35,
+   0.5
+  ]
+ },
+ {
+  "key": "betlem_andel",
+  "label": "Anděl",
+  "motion": "hover",
+  "scene": "betlem",
+  "glb": "/models3d/betlem_andel.glb",
+  "texture": "/models3d/betlem_andel_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Jump": "Jump",
+   "LookAround": "LookAround",
+   "Run": "Run",
+   "Walk": "Walk",
+   "Wave": "Wave"
+  },
+  "clipFor": {
+   "move": "Idle"
+  },
+  "pose": "Walk",
+  "size": 1.14,
+  "extra": true
+ },
+ {
+  "key": "star",
+  "label": "Hvězda",
+  "motion": "twinkle",
+  "scene": "betlem",
+  "glb": "/models3d/star.glb",
+  "texture": "/models3d/star_texture.png",
+  "clips": {
+   "Twinkle": "Twinkle"
+  },
+  "clipFor": {
+   "move": "Twinkle"
+  },
+  "pose": "Twinkle",
+  "size": 0.29,
+  "extra": true
+ },
+ {
+  "key": "mik_mikulas",
+  "label": "Mikuláš",
+  "motion": "walk",
+  "scene": "mikulas",
+  "glb": "/models3d/mik_mikulas.glb",
+  "texture": "/models3d/mik_mikulas_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "LookAround": "LookAround",
+   "Run": "Run",
+   "Walk": "Walk",
+   "Wave": "Wave"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "run": "Run",
+   "look": "LookAround",
+   "play": "Wave"
+  },
+  "pose": "Walk",
+  "size": 1.49,
+  "activities": {
+   "run": {
+    "weight": 0
+   },
+   "play": {
+    "weight": 1.8
+   },
+   "jump": {
+    "weight": 0
+   }
+  },
+  "strideRate": [
+   0.5,
+   0.65
+  ]
+ },
+ {
+  "key": "mik_andel",
+  "label": "Anděl",
+  "motion": "walk",
+  "scene": "mikulas",
+  "glb": "/models3d/mik_andel.glb",
+  "texture": "/models3d/mik_andel_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Jump": "Jump",
+   "LookAround": "LookAround",
+   "Run": "Run",
+   "Walk": "Walk",
+   "Wave": "Wave"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Run",
+   "look": "LookAround",
+   "play": "Wave"
+  },
+  "pose": "Walk",
+  "size": 1.14,
+  "activities": {
+   "play": {
+    "weight": 1.4
+   },
+   "jump": {
+    "weight": 0.5
+   },
+   "run": {
+    "weight": 0.2
+   }
+  },
+  "strideRate": [
+   0.55,
+   0.7
+  ]
+ },
+ {
+  "key": "mik_cert",
+  "label": "Čert",
+  "motion": "walk",
+  "scene": "mikulas",
+  "glb": "/models3d/mik_cert.glb",
+  "texture": "/models3d/mik_cert_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Jump": "Jump",
+   "LookAround": "LookAround",
+   "Run": "Run",
+   "Walk": "Walk",
+   "Wave": "Wave"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "run": "Run",
+   "look": "LookAround",
+   "play": "Wave"
+  },
+  "pose": "Walk",
+  "size": 1.39,
+  "activities": {
+   "run": {
+    "weight": 3,
+    "dur": [
+     2,
+     4
+    ]
+   },
+   "jump": {
+    "weight": 1.2
+   },
+   "play": {
+    "weight": 1.5
+   },
+   "stand": {
+    "weight": 0.5
+   },
+   "lookaround": {
+    "weight": 1
+   }
+  },
+  "strideRate": [
+   0.9,
+   1.2
+  ]
+ },
+ {
+  "key": "ladybug",
+  "label": "Beruška",
+  "motion": "butterfly",
+  "scene": "louka",
+  "glb": "/models3d/ladybug.glb",
+  "texture": "/models3d/ladybug_texture.png",
+  "clips": {
+   "Fly": "Fly",
+   "Rest": "Rest"
+  },
+  "clipFor": {
+   "move": "Fly",
+   "stand": "Rest"
+  },
+  "pose": "Rest",
+  "size": 0.46,
+  "material": {
+   "roughness": 0.2
+  }
+ },
+ {
+  "key": "bumblebee",
+  "label": "Čmelák",
+  "motion": "butterfly",
+  "scene": "louka",
+  "glb": "/models3d/bumblebee.glb",
+  "texture": "/models3d/bumblebee_texture.png",
+  "clips": {
+   "Fly": "Fly",
+   "Rest": "Rest"
+  },
+  "clipFor": {
+   "move": "Fly",
+   "stand": "Rest"
+  },
+  "pose": "Rest",
+  "size": 0.38,
+  "bump": "/models3d/bumblebee_bump.png",
+  "material": {
+   "roughness": 0.85,
+   "bump": 0.7
+  }
+ },
+ {
+  "key": "ant",
+  "label": "Mravenec",
+  "motion": "walk",
+  "scene": "louka",
+  "glb": "/models3d/ant.glb",
+  "texture": "/models3d/ant_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle"
+  },
+  "pose": "Walk",
+  "size": 1.0,
+  "bump": "/models3d/ant_bump.png",
+  "material": {
+   "roughness": 0.3,
+   "bump": 0.8
+  },
+  "strideRate": [
+   0.18,
+   0.32
+  ]
+ },
+ {
+  "key": "grasshopper",
+  "label": "Kobylka",
+  "motion": "walk",
+  "scene": "louka",
+  "glb": "/models3d/grasshopper.glb",
+  "texture": "/models3d/grasshopper_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle"
+  },
+  "pose": "Walk",
+  "size": 1.0,
+  "bump": "/models3d/grasshopper_bump.png",
+  "material": {
+   "roughness": 0.38,
+   "bump": 0.8
+  },
+  "strideRate": [
+   0.12,
+   0.24
+  ]
+ },
+ {
+  "key": "caterpillar",
+  "label": "Housenka",
+  "motion": "walk",
+  "scene": "louka",
+  "glb": "/models3d/caterpillar.glb",
+  "texture": "/models3d/caterpillar_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle"
+  },
+  "pose": "Walk",
+  "size": 0.94,
+  "bump": "/models3d/caterpillar_bump.png",
+  "material": {
+   "roughness": 0.6,
+   "bump": 1.0
+  },
+  "strideRate": [
+   0.04,
+   0.09
+  ]
+ },
+ {
+  "key": "snail",
+  "label": "Šnek",
+  "motion": "walk",
+  "scene": "louka",
+  "glb": "/models3d/snail.glb",
+  "texture": "/models3d/snail_texture.png",
+  "clips": {
+   "Idle": "Idle",
+   "Walk": "Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle"
+  },
+  "pose": "Walk",
+  "size": 0.99,
+  "bump": "/models3d/snail_bump.png",
+  "material": {
+   "roughness": 0.22,
+   "bump": 1.0
+  },
+  "strideRate": [
+   0.025,
+   0.05
+  ]
+ },
+ {
+  "key": "snake",
+  "label": "Had",
+  "motion": "walk",
+  "scene": "louka",
+  "glb": "/models3d/snake.glb",
+  "texture": "/models3d/snake_texture.png",
+  "clips": {
+   "Attack": "SnakeArmature|Snake_Attack",
+   "Idle": "SnakeArmature|Snake_Idle",
+   "Jump": "SnakeArmature|Snake_Jump",
+   "Walk": "SnakeArmature|Snake_Walk"
+  },
+  "clipFor": {
+   "move": "Walk",
+   "stand": "Idle",
+   "jump": "Jump",
+   "play": "Attack"
+  },
+  "pose": "SnakeArmature|Snake_Walk",
+  "size": 3.01,
+  "bump": "/models3d/snake_bump.png",
+  "material": {
+   "roughness": 0.45,
+   "bump": 1.4
+  },
+  "strideRate": [
+   0.1,
+   0.18
   ]
  }
 ]

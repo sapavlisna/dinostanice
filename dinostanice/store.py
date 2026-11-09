@@ -166,6 +166,113 @@ def purge_deleted():
     return left
 
 
+# Archiv: ulovky deti, ktere uz na zadne televizi nebezi (stanice skoncila,
+# byla vyprazdnena, dite zvire z televize odebralo). Mobil je odtud muze
+# poslat znovu. Lezi uvnitr CATCH_ROOT, aby je drzel stejny bind mount
+# a servirovalo /catch; list_catches ho nevidi, `_archiv` neodpovida ID_RE.
+def archive_root():
+    return os.path.join(CATCH_ROOT, "_archiv")
+
+
+def _write_meta(path, meta):
+    with open(os.path.join(path, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=1)
+
+
+def origin_of(meta):
+    """Kopie poslana znovu nese id puvodniho ulovku — je to porad tentyz obrazek."""
+    return meta.get("origin") or meta["id"]
+
+
+def find_catch(catch_id):
+    """(meta, archived) pro ulovek na televizi i v archivu; (None, False) kdyz neni."""
+    catch_dir(catch_id)
+    meta = read_meta(catch_id)
+    if meta:
+        return meta, False
+    path = os.path.join(archive_root(), catch_id, "meta.json")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f), True
+    return None, False
+
+
+def list_archive(owner=None):
+    if not os.path.isdir(archive_root()):
+        return []
+    out = []
+    for entry in os.scandir(archive_root()):
+        if not entry.is_dir() or not ID_RE.match(entry.name):
+            continue
+        try:
+            with open(os.path.join(entry.path, "meta.json"), encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if owner is not None and meta.get("owner") != owner:
+            continue
+        meta["url"] = f"/catch/_archiv/{entry.name}/"
+        meta["archived"] = True
+        out.append(meta)
+    out.sort(key=lambda m: (m.get("created", ""), m["id"]))
+    return out
+
+
+def _to_trash(path, name):
+    os.makedirs(TRASH_ROOT, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    shutil.move(path, os.path.join(TRASH_ROOT, f"{name}-{stamp}"))
+
+
+def archive_catch(catch_id):
+    """Sundá úlovek z televize do archivu. Starší archivní kopie téhož obrázku
+    jdou do koše, ať v knihovně mobilu nestraší dvakrát."""
+    src = catch_dir(catch_id)
+    meta = read_meta(catch_id)
+    if not meta or not os.path.isdir(src):
+        return False
+    os.makedirs(archive_root(), exist_ok=True)
+    origin = origin_of(meta)
+    for old in list_archive(owner=meta.get("owner")):
+        if origin_of(old) == origin:
+            _to_trash(os.path.join(archive_root(), old["id"]), old["id"])
+    shutil.move(src, os.path.join(archive_root(), catch_id))
+    return True
+
+
+def trash_archived(catch_id):
+    path = os.path.join(archive_root(), catch_id)
+    catch_dir(catch_id)
+    if not os.path.isdir(path):
+        return False
+    _to_trash(path, catch_id)
+    return True
+
+
+def resend_catch(catch_id, session):
+    """Pošle úlovek na televizi `session`. Z archivu se přesune zpátky,
+    z jiné běžící stanice se zkopíruje pod novým id (tam má zůstat)."""
+    meta, archived = find_catch(catch_id)
+    if meta is None:
+        return None
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    if archived:
+        new_id, dst = catch_id, catch_dir(catch_id)
+        if os.path.exists(dst):
+            return None
+        shutil.move(os.path.join(archive_root(), catch_id), dst)
+    else:
+        new_id, dst = new_catch(meta["creature"])
+        for entry in os.scandir(catch_dir(catch_id)):
+            if entry.is_file() and entry.name != "meta.json":
+                shutil.copy2(entry.path, os.path.join(dst, entry.name))
+    meta.pop("archived", None)
+    meta.update(id=new_id, url=f"/catch/{new_id}/", session=session, created=now,
+                origin=origin_of(meta))
+    _write_meta(dst, meta)
+    return meta
+
+
 def save_rejected(data, reason):
     """Odmítnuté fotky jsou nejcennější testovací materiál — pár posledních se schová."""
     os.makedirs(REJECTED_ROOT, exist_ok=True)

@@ -26,5 +26,22 @@
   "stag": 32,
   "white_horse": 33,
   "wolf": 34,
-  "zajic": 35
+  "zajic": 35,
+  "bird": 36,
+  "butterfly": 37,
+  "camel": 38,
+  "goat": 39,
+  "sheep": 40,
+  "mik_mikulas": 41,
+  "mik_andel": 42,
+  "mik_cert": 43,
+  "betlem_andel": 44,
+  "star": 45,
+  "ladybug": 46,
+  "ant": 47,
+  "bumblebee": 48,
+  "grasshopper": 49,
+  "caterpillar": 50,
+  "snail": 51,
+  "snake": 52
 }

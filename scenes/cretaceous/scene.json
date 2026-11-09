@@ -12,37 +12,134 @@
       "key": "trex3d",
       "label": "Tyrannosaurus",
       "glb": "trex_clips.glb",
-      "stride_rate": [0.11, 0.18]
+      "stride_rate": [0.11, 0.18],
+      "paint": {
+        "base": [92, 128, 70],
+        "back": [58, 88, 50],
+        "back_to": 0.4,
+        "belly": [208, 196, 132],
+        "belly_at": 0.64,
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [52, 80, 46],
+            "period_mm": 13,
+            "width_mm": 4.5,
+            "tilt": 0.5,
+            "region": [0.0, 0.8, 0.0, 0.5]
+          }
+        ]
+      }
     },
     {
       "key": "velociraptor3d",
       "label": "Velociraptor",
       "glb": "velociraptor_clips.glb",
-      "stride_rate": [0.3, 0.4]
+      "stride_rate": [0.3, 0.4],
+      "paint": {
+        "base": [168, 128, 62],
+        "back": [112, 82, 42],
+        "back_to": 0.4,
+        "belly": [230, 210, 150],
+        "belly_at": 0.64,
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [84, 56, 30],
+            "period_mm": 11,
+            "width_mm": 3.5,
+            "tilt": 0.6,
+            "region": [0.0, 0.95, 0.0, 0.55]
+          }
+        ]
+      }
     },
     {
       "key": "triceratops3d",
       "label": "Triceratops",
       "glb": "triceratops_clips.glb",
-      "stride_rate": [0.12, 0.18]
+      "stride_rate": [0.12, 0.18],
+      "paint": {
+        "base": [118, 150, 96],
+        "back": [86, 120, 76],
+        "back_to": 0.4,
+        "belly": [226, 214, 150],
+        "belly_at": 0.5,
+        "marks": [
+          {
+            "type": "spots",
+            "color": [214, 120, 70],
+            "n": 18,
+            "r": [2, 3.5],
+            "region": [0.55, 0.95, 0.1, 0.5]
+          }
+        ]
+      }
     },
     {
       "key": "stegosaurus3d",
       "label": "Stegosaurus",
       "glb": "stegosaurus_clips.glb",
-      "stride_rate": [0.12, 0.18]
+      "stride_rate": [0.12, 0.18],
+      "paint": {
+        "base": [112, 144, 72],
+        "back": [232, 122, 44],
+        "back_to": 0.32,
+        "belly": [214, 204, 134],
+        "belly_at": 0.55,
+        "marks": [
+          {
+            "type": "spots",
+            "color": [80, 112, 56],
+            "n": 24,
+            "r": [2, 4],
+            "region": [0.1, 0.9, 0.35, 0.8]
+          }
+        ]
+      }
     },
     {
       "key": "parasaurolophus3d",
       "label": "Parasaurolophus",
       "glb": "parasaurolophus_clips.glb",
-      "stride_rate": [0.14, 0.25]
+      "stride_rate": [0.14, 0.25],
+      "paint": {
+        "base": [86, 156, 162],
+        "back": [48, 104, 124],
+        "back_to": 0.4,
+        "belly": [232, 226, 174],
+        "belly_at": 0.64,
+        "marks": [
+          {
+            "type": "stripes",
+            "color": [38, 88, 112],
+            "period_mm": 12,
+            "width_mm": 4,
+            "tilt": 0.5,
+            "region": [0.0, 0.8, 0.0, 0.5]
+          }
+        ]
+      }
     },
     {
       "key": "apatosaurus3d",
       "label": "Apatosaurus",
       "glb": "apatosaurus_clips.glb",
-      "stride_rate": [0.04, 0.06]
+      "stride_rate": [0.04, 0.06],
+      "paint": {
+        "base": [156, 144, 104],
+        "belly": [218, 208, 164],
+        "belly_at": 0.5,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [112, 100, 70],
+            "size_mm": 14,
+            "threshold": 0.4,
+            "alpha": 0.85
+          }
+        ]
+      }
     },
     {
       "key": "drak3d",
@@ -51,7 +148,27 @@
       "motion": "fly",
       "poses": ["Death"],
       "anim": "Death",
-      "time": 0.37
+      "time": 0.37,
+      "paint": {
+        "base": [196, 52, 52],
+        "belly": [250, 196, 70],
+        "belly_at": 0.6,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [146, 30, 44],
+            "size_mm": 12,
+            "threshold": 0.3,
+            "alpha": 0.8
+          },
+          {
+            "type": "spots",
+            "color": [252, 200, 70],
+            "n": 28,
+            "r": [1.5, 2.8]
+          }
+        ]
+      }
     },
     {
       "key": "pteranodon3d",
@@ -61,7 +178,21 @@
       "axes": [0, 2, 1],
       "flip": [1, -1, -1],
       "eye_bias": {"centre_x": true, "down": 0.55},
-      "poses": ["Flying"]
+      "poses": ["Flying"],
+      "paint": {
+        "base": [208, 126, 94],
+        "tail_tip": [250, 230, 150],
+        "tail_len": 0.1,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [150, 78, 62],
+            "size_mm": 16,
+            "threshold": 0.3,
+            "alpha": 0.8
+          }
+        ]
+      }
     }
   ]
 }

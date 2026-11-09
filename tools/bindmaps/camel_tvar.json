@@ -1,0 +1,8 @@
+{
+ "source": "tmp/betlem/rodin/camel_rodin.glb",
+ "rotate_y": 0,
+ "faces": 2400,
+ "dissolve": 5,
+ "keep_parts": 0.02,
+ "landmarks": {}
+}

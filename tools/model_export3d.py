@@ -21,6 +21,7 @@ from dinostanice import modelsheet as ms
 from dinostanice.creatures3d import BY_KEY, CATALOGUE, resolve_roles
 from dinostanice.glbexport import write_with_uv
 from dinostanice.gltf import Model
+from dinostanice.paint import paint_relief
 from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -37,9 +38,14 @@ def export(spec, index_only=False) -> dict:
         uv = np.stack([mm[:, 0] / SHEET_W_MM, mm[:, 1] / SHEET_H_MM], axis=1)
         write_with_uv(model, uv, OUT / f"{spec.key}.glb")
 
-        sheet = demo.paint_sheet(shape)
+        sheet = demo.paint_sheet(shape, spec.paint, spec.key,
+                                 side_view=tuple(spec.axes) == (2, 1, 0), lines=not spec.paint)
         cv2.imwrite(str(OUT / f"{spec.key}_texture.png"),
-                    ms.to_texture(sheet, shape, demo.PPM))
+                    ms.to_texture(sheet, shape, demo.PPM, remove_ink=not spec.paint))
+        if spec.paint.get("relief"):
+            relief = paint_relief(shape, spec.paint, demo.PPM, sheet.shape[:2], spec.key)
+            cv2.imwrite(str(OUT / f"{spec.key}_bump.png"),
+                        ms.to_texture(relief, shape, demo.PPM, remove_ink=False))
 
     clips = {name.split("|")[-1].split("_")[-1]: name
              for name in sorted(model.animations)}
@@ -62,8 +68,14 @@ def export(spec, index_only=False) -> dict:
         "pose": shape.anim,
         "size": round(float(np.ptp(verts[:, 2])), 2),
     }
+    if spec.paint.get("relief"):
+        entry["bump"] = f"/models3d/{spec.key}_bump.png"
+    if spec.material:
+        entry["material"] = spec.material
     if spec.activities:
         entry["activities"] = spec.activities
+    if spec.extra:
+        entry["extra"] = True
     if spec.stride_rate:
         entry["strideRate"] = list(spec.stride_rate)
     return entry

@@ -30,6 +30,13 @@ CLIP_FOR_DEFAULT = {
              "look": "LookAround", "sit": "Sit", "lie": "LieDown",
              "sleep": "Sleep", "play": "Attack", "eat": "Eating"},
     "fly": {"move": "Flying"},
+    # Pták: `move` let, `stand` sedí na větvi (viz updateBird ve web/scene.js)
+    "bird": {"move": "Fly", "stand": "Perch"},
+    # Motýl: let a odpočinek na květu (web/scene.js, updateButterfly)
+    "butterfly": {"move": "Fly", "stand": "Rest"},
+    # Vznasejici se doplnek nad scenou (andel nad chlevem, hvezda): web/scene.js, updateHover
+    "hover": {"move": "Idle"},
+    "twinkle": {"move": "Twinkle"},
     # Plavci: `move` je klidne plavani, `fast` sprint. Kdo `fast` nema (manta
     # nese jediny klip), prepise si ho zpatky na `move` — scena tak nemusi
     # hadat, jestli role existuje.
@@ -105,6 +112,14 @@ class Model3D:
     # Prepis nabidky cinnosti planovace pro tento druh (vahy, delky), sloucene
     # pres motions.<typ>.activities z render.js sceny — viz web/scenelogic.js.
     activities: dict = field(default_factory=dict)
+    # Vychozi zbarveni ukazkove textury, viz dinostanice/paint.py.
+    paint: dict = field(default_factory=dict)
+    # Povrch druhu pro 3D vrstvu: `roughness`, `bump` (sila vysky z `paint.relief`).
+    material: dict = field(default_factory=dict)
+    # Doplnek (ptacek, motylek): nema vlastni list, jeho okenko lezi v rohu listu
+    # kazdeho jineho tvora sceny (tools/model_sheet.py) a ulozi se, jen kdyz je
+    # vybarvene. Do sablon, nahledu a ambientu se nenabizi.
+    extra: bool = False
 
     def candidates(self, model) -> list:
         names = [self.anim] if self.anim else list(self.poses)

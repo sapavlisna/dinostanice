@@ -9,7 +9,7 @@ tam ma na modelu svoje UV. Zadna hloubka se z kresby nehada.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 import cv2
@@ -77,6 +77,9 @@ class SheetShape:
     placement: Placement
     anim: str
     time: float
+    # Okenka doplnku (ptacek, motylek) v rohu listu, viz place_extras:
+    # [{"key", "rect": [x, y, w, h], "scale", "offset": [ox, oy]}, ...]
+    extras: list = field(default_factory=list)
 
 
 def _fit(lo: np.ndarray, hi: np.ndarray) -> tuple[float, float, float]:
@@ -364,6 +367,89 @@ def build(
     return SheetShape(key, label, outline, regions, eye, place, anim or "", time)
 
 
+# --- doplnky v rohu listu ----------------------------------------------------
+
+EXTRA_PAD_MM = 3.0           # okraj okenka kolem miniatury
+EXTRA_CAPTION_MM = 4.5       # popisek nad miniaturou
+EXTRA_LONG_MM = 50.0         # pozadovana delsi strana miniatury
+EXTRA_MIN_LONG_MM = 30.0     # mensi uz se vybarvovat nedá
+EXTRA_KEEP_OUT_MM = 5.0      # odstup od obrysu zvirete
+EXTRA_TEXT_MM = 12.0         # pas dole, kde je popisek listu
+
+
+def shape_bbox(shape: SheetShape) -> tuple[np.ndarray, np.ndarray]:
+    pts = np.vstack([p for p in shape.outline])
+    return pts.min(axis=0), pts.max(axis=0)
+
+
+def extra_polys(shape: SheetShape, slot: dict) -> list:
+    """Obrys a vnitrni linky doplnku, prepocitane do souradnic hostitelskeho listu."""
+    f, off = slot["scale"], np.asarray(slot["offset"], float)
+    return [p * f + off for p in shape.outline], [p * f + off for p in shape.regions]
+
+
+def place_extras(host: SheetShape, extras: list) -> list:
+    """Najde na listu volna okenka pro doplnky, aniz by se dotkla zvirete.
+
+    Okenka jdou do spodnich rohu (prvni vlevo, druhy vpravo); kdyz se nevejde
+    pozadovana velikost, miniatura se zmensuje az k EXTRA_MIN_LONG_MM, a kdyz
+    ani tak, doplnek se na tomhle listu vynecha."""
+    res = 1.0                                   # 1 px = 1 mm
+    w_px, h_px = int(round(SHEET_W_MM)), int(round(SHEET_H_MM))
+    blocked = np.zeros((h_px, w_px), np.uint8)
+    for poly in host.outline:
+        cv2.fillPoly(blocked, [np.round(poly * res).astype(np.int32)], 1)
+    k = int(2 * EXTRA_KEEP_OUT_MM) | 1
+    blocked = cv2.dilate(blocked, np.ones((k, k), np.uint8))
+    for ox, oy in CORNER_ORIGINS:
+        m = int(MARKER_MM + 8)
+        blocked[max(0, int(oy) - 4):int(oy) + m, max(0, int(ox) - 4):int(ox) + m] = 1
+    blocked[:6, :] = 1
+    blocked[:, :6] = 1
+    blocked[:, w_px - 6:] = 1
+    blocked[h_px - int(EXTRA_TEXT_MM):, :] = 1
+
+    slots = []
+    for idx, ex in enumerate(extras):
+        lo, hi = shape_bbox(ex)
+        span = hi - lo
+        long_mm = EXTRA_LONG_MM
+        placed = None
+        while long_mm >= EXTRA_MIN_LONG_MM and placed is None:
+            f = long_mm / float(span.max())
+            bw = float(span[0]) * f + 2 * EXTRA_PAD_MM
+            bh = float(span[1]) * f + 2 * EXTRA_PAD_MM + EXTRA_CAPTION_MM
+            bw_i, bh_i = int(np.ceil(bw)), int(np.ceil(bh))
+            integral = cv2.integral(blocked)
+            best, best_score = None, None
+            for y in range(6, h_px - bh_i, 2):
+                for x in range(6, w_px - bw_i, 2):
+                    tot = (integral[y + bh_i, x + bw_i] - integral[y, x + bw_i]
+                           - integral[y + bh_i, x] + integral[y, x])
+                    if tot:
+                        continue
+                    # dole a do rohu: prvni doplnek vlevo, druhy vpravo
+                    side = (w_px - (x + bw_i)) if idx % 2 == 0 else x
+                    score = (y + bh_i) * 3.0 - side
+                    if best_score is None or score > best_score:
+                        best, best_score = (x, y), score
+            if best is None:
+                long_mm *= 0.92
+                continue
+            x, y = best
+            ax = x + (bw - float(span[0]) * f) / 2
+            ay = y + EXTRA_CAPTION_MM + EXTRA_PAD_MM
+            placed = {"key": ex.key, "rect": [x, y, round(bw, 2), round(bh, 2)],
+                      "scale": round(f, 5),
+                      "offset": [round(ax - float(lo[0]) * f, 3), round(ay - float(lo[1]) * f, 3)]}
+        if placed is None:
+            continue
+        x, y, bw, bh = placed["rect"]
+        blocked[y:y + int(np.ceil(bh)) + 2, x:x + int(np.ceil(bw)) + 2] = 1
+        slots.append(placed)
+    return slots
+
+
 def save(shape: SheetShape, path: str | Path) -> None:
     d = asdict(shape)
     d["outline"] = [np.round(p, 3).tolist() for p in shape.outline]
@@ -377,10 +463,14 @@ def load(path: str | Path) -> SheetShape:
     d["outline"] = [np.asarray(p, float) for p in d["outline"]]
     d["regions"] = [np.asarray(p, float) for p in d["regions"]]
     d["eye"] = tuple(d["eye"]) if d["eye"] else None
+    d.setdefault("extras", [])
     return SheetShape(**d)
 
 
-def to_texture(sheet: np.ndarray, shape: SheetShape, ppm: float) -> np.ndarray:
+def to_texture(sheet: np.ndarray, shape: SheetShape, ppm: float,
+               remove_ink: bool = True, ink_grow: int = 3, inpaint_r: int = 4,
+               grow_mm: float = 2.0, ink_max: int = 110,
+               ink_lines_mm: float = 0.0, erode_mm: float = 0.0) -> np.ndarray:
     """Z vybarveneho listu udela texturu: linky zamaluje okolni barvou a barvu
     rozlije kousek za obrys. Bez toho se cerny obrys pri otoceni modelu
     protahne pres hrbet — obrys patri na papir, ne na kuzi."""
@@ -388,17 +478,39 @@ def to_texture(sheet: np.ndarray, shape: SheetShape, ppm: float) -> np.ndarray:
     for poly in shape.outline:
         cv2.fillPoly(body, [np.round(poly * ppm).astype(np.int32)], 255)
 
-    dark = (sheet.max(axis=2) < 110).astype(np.uint8)
-    ink = cv2.dilate(dark, np.ones((3, 3), np.uint8)) & (body > 0)
-    tex = cv2.inpaint(sheet, ink, 4, cv2.INPAINT_TELEA)
+    if remove_ink:
+        dark = (sheet.max(axis=2) < ink_max).astype(np.uint8)
+        ink = cv2.dilate(dark, np.ones((ink_grow, ink_grow), np.uint8)) & (body > 0)
+        if ink_lines_mm:
+            # kde jsou tistene linky, vime presne: zvetsena miniatura je rozmaze
+            # tak, ze je barevny prah nezachyti cele
+            lines = np.zeros_like(body)
+            for poly in list(shape.regions) + list(shape.outline):
+                cv2.polylines(lines, [np.round(poly * ppm).astype(np.int32)], True, 1,
+                              max(1, int(ink_lines_mm * ppm)))
+            ink = ink | (lines & (body > 0))
+        tex = cv2.inpaint(sheet, ink, inpaint_r, cv2.INPAINT_TELEA)
+    else:
+        tex = sheet
 
-    grown = cv2.dilate(body, np.ones((int(2 * ppm) | 1, int(2 * ppm) | 1), np.uint8))
-    fill = cv2.inpaint(tex, ((grown > 0) & (body == 0)).astype(np.uint8), 6, cv2.INPAINT_TELEA)
+    g = int(grow_mm * ppm) | 1
+    grown = cv2.dilate(body, np.ones((g, g), np.uint8))
+    core = body
+    if erode_mm:
+        # okraj je zasazeny do rozmazane linky: jako zname se bere az to, co je od ni dal
+        e = int(2 * erode_mm * ppm) | 1
+        core = cv2.erode(body, np.ones((e, e), np.uint8))
+    fill = cv2.inpaint(tex, ((grown > 0) & (core == 0)).astype(np.uint8), max(6, inpaint_r),
+                       cv2.INPAINT_TELEA)
     return np.where((grown > 0)[..., None], fill, tex)
 
 
+EXTRA_LINE_MM = 0.7          # miniatura ma tencí linky nez zvire
+EXTRA_DETAIL_MM = 0.4
+
+
 def rasterise(shape: SheetShape, marker_index: int | None = None,
-              ppm: float = 6.0) -> np.ndarray:
+              ppm: float = 6.0, extras_shapes: dict | None = None) -> np.ndarray:
     """Vytištěná předloha jako bitmapa: obrys, vnitřní linky, oko a značky.
 
     Tiskne se z SVG (tools/model_sheet.py), tohle je tentýž list pro náhledy
@@ -415,6 +527,17 @@ def rasterise(shape: SheetShape, marker_index: int | None = None,
         x, y, r = shape.eye
         cv2.circle(img, (int(x * ppm), int(y * ppm)), int(r * ppm), (17, 17, 17),
                    max(1, int(round(LINE_MM * ppm))), cv2.LINE_AA)
+    for slot in shape.extras:
+        ex = extras_shapes.get(slot["key"]) if extras_shapes else None
+        x, y, bw, bh = slot["rect"]
+        cv2.rectangle(img, (int(x * ppm), int(y * ppm)), (int((x + bw) * ppm), int((y + bh) * ppm)),
+                      (150, 150, 150), 1, cv2.LINE_AA)
+        if ex is not None:
+            outline, regions = extra_polys(ex, slot)
+            for polys, width in ((regions, EXTRA_DETAIL_MM), (outline, EXTRA_LINE_MM)):
+                for poly in polys:
+                    cv2.polylines(img, [np.round(poly * ppm).astype(np.int32)], True,
+                                  (17, 17, 17), max(1, int(round(width * ppm))), cv2.LINE_AA)
     if marker_index is not None:
         for corner, mid in enumerate(marker_ids(marker_index)):
             ox, oy = CORNER_ORIGINS[corner]

@@ -28,6 +28,7 @@
   .tile.active .mark { color: var(--accent); }
   .tile.active:disabled { opacity: 1; }
   .tile .btn { padding: 8px 10px; font-size: 13px; }
+  .tile a.open { color: inherit; text-decoration: none; }
 
   .switch-row { display: flex; align-items: center; gap: 14px; }
   .switch-row + .switch-row { margin-top: 14px; }
@@ -118,6 +119,7 @@
   <section>
     <h2>Stanice</h2>
     <div class="tiles" id="stationList"></div>
+    <div class="status" id="listStatus"></div>
     <p class="hint" id="noStations">Zatím žádná — založ první.</p>
   </section>
 
@@ -322,17 +324,39 @@ async function loadStations() {
   $("noStations").classList.toggle("hidden", list.length > 0);
   for (const st of list) {
     const sc = sceneByKey(st.scene);
-    const a = el("a", "tile");
-    a.href = "/?s=" + encodeURIComponent(st.s);
-    const info = el("div", "info");
+    const row = el("div", "tile");
+    const info = el("a", "info open");
+    info.href = "/?s=" + encodeURIComponent(st.s);
     const parts = [sc ? sc.label : st.scene, st.catches + " " + plural(st.catches, CATCH),
                    st.screens ? "televize připojená" : "televize nepřipojená"];
     if (st.sleeping) parts.push("spí");
     if (st.ownerName && st.owner !== me.id) parts.push("správce: " + st.ownerName);
     info.append(el("div", "name", stationName(st)), el("div", "small", parts.join(" · ")));
-    a.append(info, el("div", "mark", "Otevřít ›"));
-    box.append(a);
+    row.append(info);
+    if (!st.home) row.append(endButton(st));
+    box.append(row);
   }
+}
+
+function endButton(st) {
+  const del = el("button", "btn danger", "Ukončit");
+  del.type = "button";
+  del.title = "Odkaz pro televizi i QR přestanou platit, zvířata půjdou do koše stanice (30 dní).";
+  del.addEventListener("click", async () => {
+    if (del.dataset.sure !== "1") { del.dataset.sure = "1"; del.textContent = "Opravdu?"; return; }
+    del.disabled = true;
+    const r = await api("/api/stations/" + encodeURIComponent(st.s), { method: "DELETE" });
+    if (!r.ok) {
+      del.disabled = false;
+      setStatus($("listStatus"), errorText(r, "Ukončit se nepodařilo."), "bad");
+      return;
+    }
+    setStatus($("listStatus"), stationName(st) + ": ukončeno, " + r.data.deleted + " " +
+      plural(r.data.deleted, CATCH) + " do koše.", "ok");
+    loadStations();
+    if (me.main) loadAdmins();
+  });
+  return del;
 }
 
 $("create").addEventListener("click", async () => {

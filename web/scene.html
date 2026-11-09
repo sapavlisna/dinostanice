@@ -170,6 +170,70 @@
   <div id="tally"></div>
   <div id="feed"></div>
 </div>
+<script>
+/* Diagnostika pro prohlizece televizi: zamerne ES5 a mimo moduly, aby bezela
+   i tam, kde scena sama nenastartuje. Vysledky jdou do logu serveru. */
+(function () {
+  var t0 = Date.now(), frames = 0, errs = [];
+  function send(kind, data) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('POST', '/api/clientlog', true);
+      x.setRequestHeader('Content-Type', 'text/plain');
+      x.send(kind + ' t=' + ((Date.now() - t0) / 1000).toFixed(1) + 's ' + JSON.stringify(data));
+    } catch (e) {}
+  }
+  function show(msg) {
+    if (!/[?&]diag/.test(location.search)) return;
+    var d = document.getElementById('diagbox');
+    if (!d) {
+      d = document.createElement('pre');
+      d.id = 'diagbox';
+      d.style.cssText = 'position:fixed;left:0;bottom:0;z-index:99;max-width:100%;'
+        + 'margin:0;padding:8px;background:rgba(0,0,0,.8);color:#ff8;font:14px monospace;'
+        + 'white-space:pre-wrap';
+      document.body.appendChild(d);
+    }
+    d.textContent += msg + '\n';
+  }
+  window.addEventListener('error', function (e) {
+    var m = (e.message || 'resource error') + ' @' + (e.filename || (e.target && e.target.src) || '')
+      + ':' + (e.lineno || '');
+    errs.push(m); send('error', m); show('ERR ' + m);
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var m = 'rejection: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason);
+    errs.push(m); send('error', m); show('ERR ' + m);
+  });
+  function gpu() {
+    try {
+      var c = document.createElement('canvas');
+      var g = c.getContext('webgl2') ? 'webgl2' : (c.getContext('webgl') ? 'webgl1' : 'none');
+      var gl = c.getContext(g === 'none' ? 'webgl' : g);
+      var ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      return g + ' ' + (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : '?');
+    } catch (e) { return 'err ' + e; }
+  }
+  var info = {
+    screen: screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1),
+    importmap: !!(HTMLScriptElement.supports && HTMLScriptElement.supports('importmap')),
+    module: 'noModule' in document.createElement('script'),
+    gpu: gpu()
+  };
+  send('start', info); show('UA ' + navigator.userAgent + '\n' + JSON.stringify(info));
+  (function tick() { frames++; requestAnimationFrame(tick); })();
+  var last = 0, lastT = Date.now();
+  [5, 15, 30, 60, 120].forEach(function (s) {
+    setTimeout(function () {
+      var now = Date.now(), fps = (frames - last) * 1000 / (now - lastT);
+      last = frames; lastT = now;
+      var m = { fps: +fps.toFixed(1), errors: errs.length,
+                ready: !!window.__ready };
+      send('fps', m); show('fps ' + JSON.stringify(m));
+    }, s * 1000);
+  });
+})();
+</script>
 <script type="importmap">
 { "imports": { "three": "/web/vendor/three.module.min.js" } }
 </script>

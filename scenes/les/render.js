@@ -1,4 +1,8 @@
-/* Definice scény „Křídová laguna" — scéna jako data.
+/* Definice scény „Les" — scéna jako data. Hlavička vysvětluje pole stejně
+   jako scenes/cretaceous/render.js; zvlášť pro les je `motions.walk.scale`
+   (poměr velikostí druhů) a krajina z web/backdrops/forest.js.
+
+   Původní popis polí:
 
    scene.js nezná žádné zóny ani konstanty krajiny; všechno čte odsud.
    Jméno, sada tvorů (`catalogue`) a texty pro děti jsou ve vedlejším
@@ -49,8 +53,12 @@
    Trasy jsou prostě napsané tady v datech (editor byl zrušen); trasa vedená
    po y některé dráhy se počítá i do kolizí na té dráze. */
 
+import { trailX } from '/web/backdrops/forest.js';
+
+const TRAIL = (y) => ({ x: +trailX(y).toFixed(3), y, do: 'walk' });
+
 export default {
-  backdrop: async () => (await import('/web/backdrops/cretaceous.js')).create('day'),
+  backdrop: async () => (await import('/web/backdrops/forest.js')).create(),
   lighting: {
     hemi: { sky: 0xcfe2ff, ground: 0x5c5b3a, intensity: 1.05 },
     // slunce je na malovane obloze vpravo nahore, at stiny sedi
@@ -59,15 +67,15 @@ export default {
   },
   bands: [
     { name: 'sky', y0: 0.06, y1: 0.38, motions: ['fly'] },
-    // pruh pisku mezi lesem a lagunou, aby chodci mohli i za vodou; lezi mezi
-    // 0,516 a 0,570 a 3D tvor stoji nohama presne na yFrac, musi se tam vejit.
-    // Dve drahy: uzky pas vic linek neunese, tvor je i zmenseny vysoky desitky
-    // px a linky by splyvaly. Zadni breh jde na ~3/4 tempa (je dal, bod 1).
+    // vybarveni ptaci pouzivaji jen pasovou praci scene (pozice dava updateBird)
+    { name: 'birds', y0: 0.05, y1: 0.50, motions: ['bird'] },
+    { name: 'butterflies', y0: 0.46, y1: 0.86, motions: ['butterfly'] },
+    // zadni louka pod lesem; lezi mezi 0,525 a 0,565 a 3D tvor stoji nohama
+    // presne na yFrac, musi se tam vejit. Dve drahy: uzky pas vic linek
+    // neunese. Zadni louka jde na ~3/4 tempa (je dal, bod 1).
     { name: 'shoreFar', y0: 0.525, y1: 0.565, motions: ['walk'], lane: 'far',
       lanes: [0.532, 0.558], rateScale: 0.75 },
-    { name: 'water', y0: 0.645, y1: 0.755, motions: ['swim'] },
-    { name: 'surface', y0: 0.645, y1: 0.745, motions: ['sail'] },
-    // tri drahy predniho brehu: rozestup 0.065 vysky (~58 px na FHD) drzi
+    // tri drahy predni louky: rozestup 0.065 vysky (~58 px na FHD) drzi
     // linky chodidel zretelne oddelene, telesny prekryv resi z-order podle y
     { name: 'shore', y0: 0.80, y1: 0.95, motions: ['walk'], lane: 'near',
       lanes: [0.815, 0.88, 0.945] },
@@ -82,6 +90,15 @@ export default {
       turn: 0.524,
       strideRate: [0.12, 0.22],
       farChance: 0.35,
+      // Poměr velikostí druhů: `sizePx` je odmocnina z plochy siluety, takže
+      // bez mapy by zajíc vyšel stejně velký jako kůň. Hodnoty jsou přibližná
+      // délka těla vůči koni (1,0), mírně přiblížená k sobě, aby zajíc
+      // a liška na dětské obrazovce pořád šli rozeznat.
+      scale: {
+        horse: 1.0, stag: 0.92, alpaca: 0.80, deer: 0.66,
+        wolf: 0.60, shiba_inu: 0.50, fox: 0.46, zajic: 0.36,
+      },
+      scaleDefault: 0.7,
       rest: { stand: [3, 9], fade: 0.7, spin: 0.5 },
       // planovac cinnosti: vetsinu casu chuze, zastaveni ma duvod (podivat
       // se na deti, rozhlednout se, odpocinout si az po delsi chuzi);
@@ -103,16 +120,59 @@ export default {
       },
     },
     // letec je vysoko, kde je perspektivni zmenseni nejvetsi, tak dostava vic
+    // ptak sedi na vetvi blizko diveka a letu je malicky: sizeFraction je
+    // zamerne vetsi nez u chodcu, aby z nej mel vybarvovatel radost
+    bird: { sizeFraction: 0.24, baseSpeed: 0.03, turn: 0.45 },
+    // motylek se kresli zepredu (turn pi/2), rozpeti je zhruba sizeFraction
+    butterfly: { sizeFraction: 0.12, baseSpeed: 0.07, turn: 1.5708 },
     fly: { sizeFraction: 0.334, baseSpeed: 0.055, bob: true },
     swim: { baseSpeed: 0.030 },
     sail: { baseSpeed: 0.018 },
   },
   paths: [
-    // ukázka: rovná procházka po prostřední dráze předního břehu (y 0.88)
-    // s jednou zastávkou — vede po dráze, takže nekříží ostatní linky a
-    // vodorovný průběh drží prokluz chodidel na nule
+    // Trasy vedou po louce a hlavně po cestičce z forest.js (trailX), takže
+    // zvířata nechodí jen sem a tam po vodorovných dráhách. Okraje za obrazovkou
+    // (x −0,2 / 1,2) dovolí zvířeti odejít z obrazu a vrátit se.
     {
-      name: 'přední břeh', loop: false, species: null,
+      // po cestičce z dálky k divákovi, uprostřed postojí a rozhlédne se
+      name: 'cestička', loop: false, species: null,
+      points: [
+        TRAIL(0.56), TRAIL(0.64),
+        { ...TRAIL(0.74), do: 'stop', dwell: [3, 8] },
+        TRAIL(0.84), TRAIL(0.925),
+      ],
+    },
+    {
+      // z lesa vpravo šikmo přes louku na cestičku a pryč doleva dole
+      name: 'z lesa na louku', loop: false, species: null,
+      points: [
+        { x: 1.20, y: 0.548, do: 'walk' },
+        { x: 0.82, y: 0.568, do: 'walk' },
+        { ...TRAIL(0.68), do: 'stop', dwell: [3, 6] },
+        { x: 0.36, y: 0.86, do: 'walk' },
+        { x: -0.20, y: 0.92, do: 'walk' },
+      ],
+    },
+    {
+      // mezi kmeny: zastávka pod každým stromem, na který sedají ptáci
+      name: 'ke kmenům', loop: false, species: null,
+      points: [
+        { x: 0.25, y: 0.85, do: 'stop', dwell: [5, 10] },
+        { x: 0.55, y: 0.83, do: 'walk' },
+        { x: 0.85, y: 0.85, do: 'stop', dwell: [5, 10] },
+      ],
+    },
+    {
+      // zadní louka pod lesem, uprostřed postojí
+      name: 'zadní louka', loop: false, species: null,
+      points: [
+        { x: -0.20, y: 0.545, do: 'walk' },
+        { x: 0.50, y: 0.545, do: 'stop', dwell: [4, 9] },
+        { x: 1.20, y: 0.545, do: 'walk' },
+      ],
+    },
+    {
+      name: 'přední louka', loop: false, species: null,
       points: [
         { x: -0.20, y: 0.88, do: 'walk' },
         { x: 0.46, y: 0.88, do: 'stop', dwell: [3, 8] },
@@ -120,5 +180,7 @@ export default {
       ],
     },
   ],
+  // co spadne zvirecim z mobilu: jablka / seno / cukrovi; kazde zvire si vezme jedno soust
+  food: { look: 'apples', bites: 4 },
   ambientMin: 6,
 };

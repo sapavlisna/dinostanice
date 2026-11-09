@@ -22,6 +22,10 @@ from .store import write_image
 from .shapes import SHEET_H_MM, SHEET_W_MM
 
 TEXTURE_PPM = 6.0        # jemnejsi nez WARP_PPM uz nema z ceho brat detail
+# Doplnek (ptacek, motylek) se ulozi, jen kdyz je jeho okenko opravdu vybarvene:
+# podil barevnych bodu uvnitr miniatury (bez tistenych linek).
+EXTRA_MIN_COVERAGE = 0.12
+EXTRA_ERODE_MM = 1.5
 
 SHAPES3D_DIR = Path(paths.resource_root()) / "data" / "shapes3d"
 
@@ -44,7 +48,10 @@ def sheet_mask(shape: SheetShape, ppm: float) -> np.ndarray:
     return mask
 
 
-def build_texture(warped: np.ndarray, shape: SheetShape) -> np.ndarray:
+def build_texture(warped: np.ndarray, shape: SheetShape, flatten: bool = True,
+                  ink_grow: int = 3, inpaint_r: int = 4, grow_mm: float = 2.0,
+                  ink_max: int = 110, ink_lines_mm: float = 0.0,
+                  erode_mm: float = 0.0) -> np.ndarray:
     """Srovnany list -> textura pro model.
 
     Osvetleni se narovna jen uvnitr kresby (venku je papir a znacky, ktere by
@@ -56,10 +63,13 @@ def build_texture(warped: np.ndarray, shape: SheetShape) -> np.ndarray:
     size = (int(round(SHEET_W_MM * ppm)), int(round(SHEET_H_MM * ppm)))
     sheet = cv2.resize(warped, size, interpolation=cv2.INTER_AREA)
 
-    mask = sheet_mask(shape, ppm)
-    flat = capture.flatten_lighting(sheet, mask)
-    sheet = np.where(mask[..., None] > 0, flat, sheet)
-    return to_texture(sheet, shape, ppm)
+    if flatten:
+        mask = sheet_mask(shape, ppm)
+        flat = capture.flatten_lighting(sheet, mask)
+        sheet = np.where(mask[..., None] > 0, flat, sheet)
+    return to_texture(sheet, shape, ppm, ink_grow=ink_grow, inpaint_r=inpaint_r,
+                      grow_mm=grow_mm, ink_max=ink_max, ink_lines_mm=ink_lines_mm,
+                      erode_mm=erode_mm)
 
 
 def save_catch(out_dir: str | Path, warped: np.ndarray, shape: SheetShape,
@@ -78,6 +88,63 @@ def save_catch(out_dir: str | Path, warped: np.ndarray, shape: SheetShape,
         "glb": f"/models3d/{spec.key}.glb",
         "texture": "texture.png",
     }
+    (out / "model.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return doc
+
+
+def extra_sheets(warped: np.ndarray, shape: SheetShape) -> list:
+    """Okenka doplnku z jednoho listu: pro kazde jeho vlastni "virtualni list".
+
+    Miniatura v rohu je zmensena kopie predlohy doplnku, takze se okenko
+    zvetsi zpatky (afinne, podle `scale` a `offset` z tvaru listu) na list
+    doplnku, a dal uz to je obycejna textura. Svetlo se narovnava na cele
+    fotce najednou, mimo zvire i okenka (barevna okenka by odhad zkreslila).
+    Vraci [{key, shape, coverage, sheet}]."""
+    if not shape.extras:
+        return []
+    ppm = capture.WARP_PPM
+    host = sheet_mask(shape, ppm)
+    boxes = np.zeros_like(host)
+    for slot in shape.extras:
+        x, y, w, h = slot["rect"]
+        cv2.rectangle(boxes, (int(x * ppm) - 6, int(y * ppm) - 6),
+                      (int((x + w) * ppm) + 6, int((y + h) * ppm) + 6), 255, -1)
+    flat = capture.flatten_lighting(warped, np.maximum(host, boxes))
+
+    out = []
+    for slot in shape.extras:
+        ex = load_shape(slot["key"])
+        f, (ox, oy) = slot["scale"], slot["offset"]
+        outline, _ = modelsheet.extra_polys(ex, slot)
+        mask = np.zeros(host.shape, np.uint8)
+        for poly in outline:
+            cv2.fillPoly(mask, [np.round(poly * ppm).astype(np.int32)], 255)
+        k = int(2 * EXTRA_ERODE_MM * ppm) | 1
+        inner = cv2.erode(mask, np.ones((k, k), np.uint8)) > 0
+        if not inner.any():
+            continue
+        hsv = cv2.cvtColor(flat, cv2.COLOR_BGR2HSV)
+        coloured = (hsv[..., 1] > 60) | (hsv[..., 2] < 110)
+        coverage = float((coloured & inner).sum()) / float(inner.sum())
+        m = np.array([[1 / f, 0, -ox * ppm / f], [0, 1 / f, -oy * ppm / f]], np.float32)
+        sheet = cv2.warpAffine(flat, m, (flat.shape[1], flat.shape[0]),
+                               flags=cv2.INTER_CUBIC, borderValue=(255, 255, 255))
+        out.append({"key": slot["key"], "shape": ex, "coverage": coverage, "sheet": sheet})
+    return out
+
+
+def save_extra_catch(out_dir: str | Path, sheet: np.ndarray, shape: SheetShape,
+                     spec, name: str) -> dict:
+    """Jako save_catch, jen svetlo uz je narovnane z celeho listu."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    # miniatura se zvetsuje, takze i tistene linky jsou siroke a rozmazane
+    write_image(out / "texture.png", build_texture(sheet, shape, flatten=False,
+                                                  ink_grow=13, inpaint_r=7, grow_mm=4.5,
+                                                  ink_max=150, ink_lines_mm=4.5,
+                                                  erode_mm=3.0))
+    doc = {"key": spec.key, "label": spec.label, "motion": spec.motion, "name": name,
+           "glb": f"/models3d/{spec.key}.glb", "texture": "texture.png"}
     (out / "model.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     return doc
 

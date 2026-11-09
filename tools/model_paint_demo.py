@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dinostanice import modelsheet as ms
 from dinostanice import orthoview as ov
+from dinostanice.paint import paint_body
 from dinostanice.gltf import Model
 from dinostanice.shapes import SHEET_H_MM, SHEET_W_MM
 
@@ -20,36 +21,43 @@ ROOT = Path(__file__).resolve().parent.parent
 PPM = 6.0
 
 
-def paint_sheet(shape: ms.SheetShape) -> np.ndarray:
-    """Syntetycky vybarveny list — to, co by odevzdalo dite."""
+def paint_sheet(shape: ms.SheetShape, paint: dict | None = None, key: str = "",
+                side_view: bool = True, lines: bool = True) -> np.ndarray:
+    """Vybarveny list — to, co by odevzdalo dite. Bez `paint` pruhy a tecky,
+    s `paint` zbarveni druhu (dinostanice/paint.py)."""
     W, H = int(SHEET_W_MM * PPM), int(SHEET_H_MM * PPM)
-    img = np.full((H, W, 3), 255, np.uint8)
     body = np.zeros((H, W), np.uint8)
     for poly in shape.outline:
         cv2.fillPoly(body, [np.round(poly * PPM).astype(np.int32)], 1)
 
-    ys, xs = np.mgrid[0:H, 0:W]
-    stripes = ((xs // int(9 * PPM)) % 2).astype(bool)
-    base = np.where(stripes[..., None], np.array([70, 170, 90]), np.array([40, 120, 200]))
-    img[body > 0] = base[body > 0]
+    if paint:
+        img = paint_body(shape, paint, PPM, (H, W), side_view, key)
+    else:
+        img = np.full((H, W, 3), 255, np.uint8)
+        ys, xs = np.mgrid[0:H, 0:W]
+        stripes = ((xs // int(9 * PPM)) % 2).astype(bool)
+        base = np.where(stripes[..., None], np.array([70, 170, 90]), np.array([40, 120, 200]))
+        img[body > 0] = base[body > 0]
 
-    rng = np.random.default_rng(7)
-    for _ in range(60):
-        cx, cy = rng.integers(0, W), rng.integers(0, H)
-        if body[cy, cx]:
-            cv2.circle(img, (int(cx), int(cy)), int(rng.integers(2, 5) * PPM),
-                       (40, 230, 250), -1, cv2.LINE_AA)
-    img[body == 0] = 255
+        rng = np.random.default_rng(7)
+        for _ in range(60):
+            cx, cy = rng.integers(0, W), rng.integers(0, H)
+            if body[cy, cx]:
+                cv2.circle(img, (int(cx), int(cy)), int(rng.integers(2, 5) * PPM),
+                           (40, 230, 250), -1, cv2.LINE_AA)
+        img[body == 0] = 255
 
-    for poly in shape.regions:
-        cv2.polylines(img, [np.round(poly * PPM).astype(np.int32)], True, (30, 30, 30), 2, cv2.LINE_AA)
-    for poly in shape.outline:
-        cv2.polylines(img, [np.round(poly * PPM).astype(np.int32)], True, (20, 20, 20), 3, cv2.LINE_AA)
+    if lines:
+        for poly in shape.regions:
+            cv2.polylines(img, [np.round(poly * PPM).astype(np.int32)], True, (30, 30, 30), 2, cv2.LINE_AA)
+        for poly in shape.outline:
+            cv2.polylines(img, [np.round(poly * PPM).astype(np.int32)], True, (20, 20, 20), 3, cv2.LINE_AA)
     if shape.eye:
         x, y, r = shape.eye
         cv2.circle(img, (int(x * PPM), int(y * PPM)), int(r * PPM), (255, 255, 255), -1, cv2.LINE_AA)
-        cv2.circle(img, (int(x * PPM), int(y * PPM)), int(r * PPM * 0.5), (20, 20, 20), -1, cv2.LINE_AA)
-        cv2.circle(img, (int(x * PPM), int(y * PPM)), int(r * PPM), (20, 20, 20), 2, cv2.LINE_AA)
+        if lines:
+            cv2.circle(img, (int(x * PPM), int(y * PPM)), int(r * PPM * 0.5), (20, 20, 20), -1, cv2.LINE_AA)
+            cv2.circle(img, (int(x * PPM), int(y * PPM)), int(r * PPM), (20, 20, 20), 2, cv2.LINE_AA)
     return img
 
 

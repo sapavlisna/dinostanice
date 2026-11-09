@@ -58,7 +58,7 @@ const TAG_S = 6;
 // chodce lakas do vzdalenosti FEED_RADIUS, u jidla je od FEED_REACH.
 const FEED_FALL_S = 1.0;
 const FEED_LIFE_S = 15;
-const FEED_RADIUS = 0.3;
+const FEED_RADIUS = 0.5;
 const FEED_REACH = 0.04;
 
 /* Scena jako data (bod 8): vsechno, co je vlastnost krajiny — pasy, chovani
@@ -104,17 +104,18 @@ window.addEventListener('resize', resize);
 /* Pasy aktivni sceny, ktere umi dany pohyb. Chodec nikdy nespadne do vody,
    protoze zadny walk pas ji neobsahuje. Kdyz scena pro pohyb zadny pas nema
    (definice se nenacetla), plati nouzovy pas uprostred, at nic nespadne. */
-function bandsFor(motion) {
+function bandsFor(motion, key) {
   const all = (sceneDef && sceneDef.bands) || [];
-  const fit = all.filter(b => (b.motions || []).includes(motion));
+  const fit = all.filter(b => (b.motions || []).includes(motion)
+    && !(b.except || []).includes(key));
   return fit.length ? fit
                     : [{ name: 'nouze', y0: 0.55, y1: 0.85, motions: [motion] }];
 }
 
 /* Novy tvor padne s sanci farChance na nekterou vedlejsi lane (vzdaleny breh),
    at ma scena hloubku; jinak jde hlavni (blizkou) lane. */
-function pickBand(motion) {
-  const fit = bandsFor(motion);
+function pickBand(motion, key) {
+  const fit = bandsFor(motion, key);
   if (fit.length === 1) return fit[0];
   const near = fit.find(b => b.lane !== 'far') || fit[0];
   const rest = fit.filter(b => b !== near);
@@ -216,6 +217,7 @@ function span([lo, hi]) {
    jsou podíly obrazovky; vzdálenost po čáře se měří izotropně (y škálované
    poměrem stran), aby svislý kus úsečky nebyl "zadarmo". Trasa je autorita
    nad pásy: autor ji kreslí po břehu, scéna ji tvrdě neclampuje. */
+const ROUTE_GAP = 0.14;     // nejmenší odstup dvou chodců téže trasy (podíl šířky)
 const ROUTE_CHANCE = 0.5;   // jen část chodců, ať scéna není vláček po lince
 
 function aspect() {
@@ -308,7 +310,8 @@ function followRoute(a, go) {
 function pickRoute(a) {
   if (a.motion !== 'walk' || !sceneDef || Math.random() >= ROUTE_CHANCE) return null;
   const fit = (sceneDef.paths || []).filter(p =>
-    (!p.species || p.species === a.key) && p.points.length >= 2);
+    (!p.species || p.species === a.key) && !(p.except || []).includes(a.key)
+    && p.points.length >= 2);
   if (!fit.length) return null;
   const path = fit[Math.floor(Math.random() * fit.length)];
   // kapacita: trasa vedena po draze je magnet — bez limitu se na jeji lince
@@ -316,6 +319,11 @@ function pickRoute(a) {
   if (laneCount(path.points[0].y, a) >= 2) return null;
   const { seg, s } = snapRoute(path, a.xFrac, a.yFrac);
   const [p0, p1] = segAt(path, seg);
+  // dva tvory na jednom kousku trasy by splynuli v jednoho: kdo by se zavěsil
+  // těsně za/před jiného chodce té trasy, bloumá po pásu
+  const sx = p0.x + (p1.x - p0.x) * s, sy = p0.y + (p1.y - p0.y) * s;
+  if (actors.some(b => b !== a && b.route && b.route.path === path
+      && Math.hypot(b.xFrac - sx, (b.yFrac - sy) * aspect()) < ROUTE_GAP)) return null;
   // po trase se vydá směrem, kterým už byl otočený, pokud to segment dovolí
   const dir = (p1.x - p0.x) * a.dir >= 0 ? 1 : -1;
   return { path, seg, s, dir };
@@ -338,7 +346,7 @@ function addActor(what, opts) {
   }
   const motion = what.motion || 'walk';
   const cfg = motionCfg(motion);
-  const band = pickBand(motion);
+  const band = pickBand(motion, what.key);
   // Novy ulovek (ne-silent) ma ohlaseny vstup: vzdy zleva, at dite vi, kam
   // koukat (teamLab vzor) — mobil po uploadu rika „sleduj levy kraj".
   const silent = !!(opts && opts.silent);
@@ -383,6 +391,7 @@ function addActor(what, opts) {
     label: what.label || 'tvor',
     who: (opts && opts.who) || '',
     ambient: !!(opts && opts.ambient),
+    keep: !!(opts && opts.keep),     // stalý doplněk sceny, do ambientMin se nepočítá
     // jmenovka nad novym ulovkem: jen kdyz fotka nese jmeno a vstup se ohlasuje
     tagUntil: !silent && opts && opts.who ? sceneTime + TAG_S : 0,
   };
@@ -411,7 +420,7 @@ function addActor(what, opts) {
   if (actor.route) {
     routePos(actor);
     // trasa urcuje drahu: pas (a jeho rateScale) se prevezme podle y trasy
-    const on = bandsFor('walk').find(b =>
+    const on = bandsFor('walk', actor.key).find(b =>
       actor.yFrac >= b.y0 - 0.02 && actor.yFrac <= b.y1 + 0.02);
     if (on) { actor.band = on; setWalkRate(actor); }
     actor.face = actor.dir;
@@ -446,7 +455,7 @@ function addActor(what, opts) {
     const i = actors.findIndex(a => a.exiting || a.leaving);
     dropActor(i >= 0 ? i : 0);
   }
-  Roster.cast(actors);
+  Roster.cast(actors.filter(a => !a.keep));
   return actor;
 }
 
@@ -455,7 +464,7 @@ function addActor(what, opts) {
    az do dropActor). */
 function liveCount() {
   let n = 0;
-  for (const a of actors) if (!a.exiting && !a.leaving) n++;
+  for (const a of actors) if (!a.exiting && !a.leaving && !a.keep) n++;
   return n;
 }
 
@@ -516,12 +525,13 @@ function dropActor(i) {
   const [gone] = actors.splice(i, 1);
   if (!gone) return;
   Scene3D.remove(gone.m3);
-  Roster.cast(actors);
+  Roster.cast(actors.filter(a => !a.keep));
 }
 
 function nextAmbient() {
   if (!ambientQueue.length) {
-    ambientQueue = [...byKey.values()].sort(() => Math.random() - 0.5);
+    ambientQueue = [...byKey.values()].filter(e => !e.extra)
+      .sort(() => Math.random() - 0.5);
   }
   return ambientQueue.shift();
 }
@@ -533,6 +543,18 @@ async function topUp() {
   if (topping || switching || !has3D || !byKey.size || !ambientEnabled) return;
   topping = true;
   try {
+    // vznasejici se doplnky sceny (andel, hvezda) tu jsou vzdycky aspon jeden
+    for (const key of (sceneDef && sceneDef.ambientExtras) || []) {
+      const spec = byKey.get(key);
+      if (!spec || actors.some(a => a.key === key && !a.exiting && !a.leaving)) continue;
+      try {
+        await loadModel({ creature: key, texture: spec.texture, id: `katalog-${key}-${ambientSeq++}` },
+                        { silent: true, ambient: true, keep: true });
+      } catch (e) {
+        note('katalog: ' + e.message);
+        return;
+      }
+    }
     while (liveCount() < ((sceneDef && sceneDef.ambientMin) || 0)) {
       const spec = nextAmbient();
       try {
@@ -552,7 +574,7 @@ async function topUp() {
 function makeRoom() {
   // ulovek ma prednost pred tvorem z katalogu; ten odejde, at scena nezhoustne
   if (liveCount() <= ((sceneDef && sceneDef.ambientMin) || 0)) return;
-  beginExit(actors.find(a => a.ambient && !a.exiting && !a.leaving));
+  beginExit(actors.find(a => a.ambient && !a.keep && !a.exiting && !a.leaving));
 }
 
 /* Po obchuzi scény přejde tvor na další lane téhož pohybu: kdo šel vzadu,
@@ -560,7 +582,7 @@ function makeRoom() {
    nemá pořád stejné obsazení popředí. Pohyb s jedinou lane žádný přeskok nemá;
    přeskok padne za okraj obrazovky, takže ho není vidět. */
 function swapBand(a) {
-  const fit = bandsFor(a.motion);
+  const fit = bandsFor(a.motion, a.key);
   // i na jedinem pasu se za okrajem prehodi draha, at se sestava linek meni;
   // dropOnBand zaroven prepocita tempo podle rateScale noveho pasu (bod 1)
   const next = fit.length < 2 ? a.band
@@ -653,6 +675,55 @@ function setLook(a, on) {
   Scene3D.look(a.m3, on ? 1 : 0, motionCfg(a.motion).look);
 }
 
+/* Skok na list (`motions.walk.perch`): kobylka z cesty vyskočí na list stébla
+   (`backdrop.perches`, druh 'leaf'), chvíli na něm sedí a seskočí zpátky na místo,
+   odkud vyrazila — cesta pak pokračuje, jako by se nic nestalo. Pozici nepřepisuje,
+   jen k ní přičítá `perch.dx/dy` a svisle zvedá `perch.lift`; po dobu skoku drží
+   tvora na místě stejný `hold` jako fronta nebo jídlo. */
+function updatePerch(a, dt) {
+  const P = motionCfg(a.motion).perch;
+  if (!P || !P.species.includes(a.key)) return;
+  const s = a.perch || (a.perch = { phase: 'idle', t: 0, at: sceneTime + span(P.every) * Math.random(),
+                                    dx: 0, dy: 0, lift: 0, spot: null });
+  const end = () => {
+    if (s.spot != null) backdrop.claim(s.spot, 0);
+    Object.assign(s, { phase: 'idle', t: 0, dx: 0, dy: 0, lift: 0, spot: null, at: sceneTime + span(P.every) });
+    a.hold = '';
+  };
+  s.t += dt;
+  if (s.phase === 'idle') {
+    if (sceneTime < s.at || a.exiting || a.leaving || a.feed || a.hold || a.face !== a.dir
+        || (a.plan && a.plan.act)) return;
+    const fx = a.xFrac + (a.xOff || 0), fy = a.yFrac + (a.yOff || 0);
+    const sp = freeSpot(a, 'leaf', { x: fx, y: fy, dx: P.reach.x, dy: P.reach.y });
+    if (!sp) { s.at = sceneTime + 3; return; }
+    backdrop.claim(sp.i, sceneTime + 60);
+    Object.assign(s, { phase: 'crouch', t: 0, spot: sp.i, to: { dx: sp.x - fx, dy: sp.y - fy, lift: sp.lift } });
+    a.dir = sp.x > fx ? 1 : -1;
+  }
+  if (a.exiting || a.leaving) { end(); return; }
+  a.hold = 'perch';
+  a.holdUntil = sceneTime + 1;
+  if (s.phase === 'crouch') {
+    if (s.t > 0.3 && a.mix >= 0.97 && a.face === a.dir) { s.phase = 'up'; s.t = 0; }
+    return;
+  }
+  if (s.phase === 'sit') {
+    if (s.t >= s.sitFor) { s.phase = 'down'; s.t = 0; }
+    return;
+  }
+  const e = Math.min(1, s.t / P.hop);
+  const k = (s.phase === 'up' ? e : 1 - e);
+  const ease = k * k * (3 - 2 * k);
+  s.dx = s.to.dx * ease;
+  s.dy = s.to.dy * ease;
+  s.lift = s.to.lift * ease + P.arc * Math.sin(Math.PI * e);
+  if (e >= 1) {
+    if (s.phase === 'up') { s.phase = 'sit'; s.t = 0; s.sitFor = span(P.sit); }
+    else end();
+  }
+}
+
 function rest(a, dt) {
   const cfg = motionCfg(a.motion);
   const R = cfg.rest;
@@ -719,8 +790,59 @@ const MEET_CD_S = 4;        // po otocce ze setkani chvili neotacet znovu —
 // postavani — vraci scene pestrost; tvor s trasou se toci podle trasy.
 const TURN_EVERY = [20, 45];
 
+/* Míjení bez otáčení. Dva chodci, kteří by se na obrazovce překrývali
+   (v podélné ose blíž než půl součtu délek těl, ve svislé blíž než SEP_Y),
+   se od sebe oba odsunou o půl chybějící vzdálenosti: tvory jdoucí vodorovně
+   to rozdělí do hloubky (jeden jde blíž k divákovi, druhý dál), tvory jdoucí
+   svisle (cestička) do stran. Odsun je posun navrch k dráze či trase
+   (`xOff`/`yOff`), plynulý a po minutí zmizí — chůze se nezastavuje a nikdo
+   se kvůli tomu neotáčí. Zastavení zbývá jen u dojíždění zezadu (traffic). */
+const SEP_Y = 0.05;         // minimální svislý odstup nohou (podíl výšky)
+const SEP_X = 1.1;          // ...a vodorovný, v násobcích půl součtu délek těl
+const OFF_RATE_Y = 0.09;    // podíl výšky za sekundu
+const OFF_RATE_X = 0.12;    // podíl šířky za sekundu
+const OFF_MAX_X = 0.2;
+
 function bodyLenFrac(a) {
   return bodyFrac(a);
+}
+
+/* Kde tvor skutečně stojí: dráha/trasa plus odsun. */
+function footX(a) {
+  return a.xFrac + (a.xOff || 0) + (a.perch ? a.perch.dx : 0);
+}
+function footY(a) {
+  return a.yFrac + (a.yOff || 0) + (a.perch ? a.perch.dy : 0);
+}
+
+function separate(walkers) {
+  for (const a of walkers) { a.gx = 0; a.gy = 0; }
+  for (let i = 0; i < walkers.length; i++) {
+    for (let j = i + 1; j < walkers.length; j++) {
+      const a = walkers[i], b = walkers[j];
+      const sx = (bodyLenFrac(a) + bodyLenFrac(b)) / 2 * SEP_X;
+      const dx = b.xFrac - a.xFrac, dy = b.yFrac - a.yFrac;
+      if (Math.abs(dx) >= sx || Math.abs(dy) >= SEP_Y) continue;
+      const vertical = Math.abs(a.vy || 0) + Math.abs(b.vy || 0)
+                     > Math.abs(a.vx || 0) + Math.abs(b.vx || 0);
+      // znamenko: a se vzdaluje od b; pri shode rozhodne poradi, ne nahoda
+      const tie = a.id < b.id ? 1 : -1;
+      if (vertical) {
+        const need = (sx - Math.abs(dx)) / 2;
+        const sg = Math.abs(dx) < 1e-3 ? tie : (dx > 0 ? -1 : 1);
+        a.gx += sg * need; b.gx -= sg * need;
+      } else {
+        const need = (SEP_Y - Math.abs(dy)) / 2;
+        const sg = Math.abs(dy) < 1e-3 ? tie : (dy > 0 ? -1 : 1);
+        a.gy += sg * need; b.gy -= sg * need;
+      }
+    }
+  }
+  for (const a of walkers) {
+    a.gx = Math.max(-OFF_MAX_X, Math.min(OFF_MAX_X, a.gx));
+    // nohy musi zustat na louce: mezi lesem a spodnim okrajem
+    a.gy = Math.max(0.505 - a.yFrac, Math.min(0.965 - a.yFrac, a.gy));
+  }
 }
 
 /* Rozehrana cinnost, kterou nejde prerusit otockou (klip, sed, leh). */
@@ -742,14 +864,9 @@ function crowded(a) {
 /* Plynule zastaveni pres rest masinerii; drzi se, dokud to traffic() kazdy
    snimek prodluzuje. Kratke holdUntil po uvolneni samo dobehne a tvor jde. */
 function holdStill(a) {
-  if (!canStop(a)) {
-    // bez klipu stani by zastaveni zmrazilo krok — radsi se otoci
-    if (sceneTime > (a.meetCd || 0) && a.face === a.dir) {
-      a.meetCd = sceneTime + MEET_CD_S;
-      if (a.route) a.route.dir = -a.route.dir; else a.dir = -a.dir;
-    }
-    return;
-  }
+  // bez klipu stani by zastaveni zmrazilo krok; takovy tvor jde dal a mine se
+  // uhnutim (viz traffic), nikdy se neotaci
+  if (!canStop(a)) return;
   if (a.hold !== 'queue') {
     a.hold = 'queue';
     a.fade = motionCfg(a.motion).rest.fade;
@@ -757,41 +874,24 @@ function holdStill(a) {
   } else {
     a.holdUntil = Math.max(a.holdUntil, sceneTime + 0.8);
   }
+  if (!a.blocked) a.blockedAt = sceneTime;
   a.blocked = true;   // co dela pri delsim cekani, vybira planovac (wait)
 }
 
 function traffic() {
   const walkers = actors.filter(a => a.motion === 'walk' && !a.leaving);
+  separate(walkers);
   for (let i = 0; i < walkers.length; i++) {
     for (let j = i + 1; j < walkers.length; j++) {
       const a = walkers[i], b = walkers[j];
-      if (Math.abs(a.yFrac - b.yFrac) > LANE_TOL) continue;
+      if (a.dir !== b.dir || Math.abs(footY(a) - footY(b)) > LANE_TOL) continue;
       const gap = b.xFrac - a.xFrac;
       if (Math.abs(gap) > 0.5) continue;         // pres okraj se srazky neresi
       const len = (bodyLenFrac(a) + bodyLenFrac(b)) / 2;
-      if (a.dir === b.dir) {
-        // dojizdeni: zastavi ten vzadu (hystereze proti cukani stop-start)
-        const back = (gap > 0) === (a.dir > 0) ? a : b;
-        if (!back.exiting
-            && Math.abs(gap) < len * (back.blocked ? RESUME_AT : STOP_AT)) {
-          holdStill(back);
-        }
-      } else if ((gap > 0) === (a.dir > 0) && Math.abs(gap) < len * MEET_AT) {
-        // jdou proti sobe: otoci se submisivnejsi; tvor na trase se otaci
-        // podel trasy (route.dir), odchazejici se nechava dojit ven.
-        // Tvor v rozpracovane otocce (face != dir) nebo v cooldownu se
-        // nevybira — viz MEET_CD_S.
-        // tvor v rozehrane cinnosti (lezi, sedi, skace) se neotaci —
-        // pirueta vleze; stojici se otoci, jen kdyz druhy nemuze
-        const pick = [a, b].filter(x => !x.exiting && !busy(x) && x.face === x.dir
-                                     && sceneTime > (x.meetCd || 0))
-          .sort((x, y) => (x.plan && x.plan.act ? 1 : 0) - (y.plan && y.plan.act ? 1 : 0)
-                       || (x.route ? 1 : 0) - (y.route ? 1 : 0)
-                       || bodyLenFrac(x) - bodyLenFrac(y))[0];
-        if (!pick) continue;
-        pick.meetCd = sceneTime + MEET_CD_S;
-        if (pick.route) pick.route.dir = -pick.route.dir;
-        else pick.dir = -pick.dir;
+      // dojizdeni: zastavi ten vzadu (hystereze proti cukani stop-start)
+      const back = (gap > 0) === (a.dir > 0) ? a : b;
+      if (!back.exiting && Math.abs(gap) < len * (back.blocked ? RESUME_AT : STOP_AT)) {
+        holdStill(back);
       }
     }
   }
@@ -904,8 +1004,19 @@ function update(dt) {
   swimTraffic();
   for (const a of actors) {
     const cfg = motionCfg(a.motion);
-    // krmeni: chodec bez trasy v okruhu k jidlu zamiri; u jidla postoji
-    // (stavajici rest maserie) a pak se vrati k driftu
+    if (a.motion === 'bird') { updateBird(a, dt); continue; }
+    if (a.motion === 'butterfly') { updateButterfly(a, dt); continue; }
+    if (a.motion === 'hover' || a.motion === 'twinkle') { updateHover(a, dt); continue; }
+    a.yOff = toward(a.yOff || 0, a.gy || 0, OFF_RATE_Y * dt);
+    a.xOff = toward(a.xOff || 0, a.gx || 0, OFF_RATE_X * dt);
+    // dojedl: soustem ubylo, a kdyz je posledni, jidlo zmizi
+    if (a.eating && sceneTime >= a.eating.until) {
+      const f = a.eating.f;
+      a.eating = null;
+      if (--f.left <= 0) f.gone = true;
+    }
+    // krmeni: chodec v okruhu k jidlu zamiri; u jidla se nají (rest maserie
+    // + klip pastvy) a pak se vrati k driftu
     if (a.feed) {
       const f = a.feed;
       // klesajici jidlo (akvarium) se dohani i do hloubky, lezici staci v x
@@ -918,13 +1029,16 @@ function update(dt) {
       } else if (busyHere) {
         // kdo sedi nebo lezi, nejdriv vstane; za jidlem se otoci az pak
         if (!a.plan.act.cut) Logic.interrupt(a.plan.act);
+      } else if (got && !f.sink && f.taken >= f.bites) {
+        a.feed = null;       // zbytek uz sezrali jini, zustane jen u palcive nenajedeny
       } else if (got) {
         const R = motionCfg(a.motion).rest;
         if (canStop(a) && !a.hold) {
           a.hold = 'food';
           a.fade = R.fade;
-          a.holdUntil = sceneTime + span(R.stand);
+          a.holdUntil = sceneTime + (f.sink ? span(R.stand) : span(R.feed || [3.5, 6]));
         }
+        if (!f.sink) { f.taken++; a.eating = { f, until: a.holdUntil || sceneTime + 4 }; }
         // plavec u jidla nezastavuje, jen si kousne; po par kousnutich je jidlo
         // snezene a ostatni se vraci do svych hloubek
         if (f.sink && --f.left <= 0) f.gone = true;
@@ -936,6 +1050,7 @@ function update(dt) {
     // obcasna otocka (viz turnEvery): u chodce bez trasy jediny zdroj zmeny
     // smeru mimo kolize, u plavce to, proc neplave po pravitku od okraje
     // k okraji. Kdo se prave otaci, novou otocku nezacina.
+    updatePerch(a, dt);
     const every = turnEvery(a.motion);
     if (every && !a.route && !a.exiting && !a.hold && !(a.plan && a.plan.act) && !a.feed
         && a.face === a.dir && sceneTime > a.turnAt) {
@@ -1021,10 +1136,12 @@ function dropFood(x) {
   }
   const fit = bandsFor(cfg.motion || 'walk');
   const band = fit.find(b => b.lane !== 'far') || fit[0];
+  const bites = cfg.bites || 4;
   foods.push({
     x: xx,
     y: band.y0 + (0.3 + Math.random() * 0.4) * (band.y1 - band.y0),
     born: sceneTime, claimed: false, gone: false,
+    bites, left: bites, taken: 0,        // kolik soust je, kolik zbyva a kolik si jich uz kdo vzal
   });
 }
 
@@ -1033,8 +1150,12 @@ function dropFood(x) {
 function claimFood(f, motion) {
   f.claimed = true;
   for (const a of actors) {
-    if (a.motion !== motion || a.route || a.exiting || a.leaving) continue;
-    if (Math.abs(a.xFrac - f.x) < FEED_RADIUS) a.feed = f;
+    if (a.motion !== motion || a.exiting || a.leaving || a.eating) continue;
+    if (Math.abs(a.xFrac - f.x) < (foodCfg().radius || FEED_RADIUS)) {
+      // chodec na trase se vzdá trasy: jde k jidlu a pak už bloumá po pásu
+      if (a.route) a.route = null;
+      a.feed = f;
+    }
   }
 }
 
@@ -1123,6 +1244,94 @@ function drawFlakes(c, f, s, alpha) {
   c.restore();
 }
 
+/* Jidlo na zemi podle `food.look` ve scene: trs kapradi (default), jablka, seno,
+   cukrovi. S kazdym soustem ubude: jablek/cukrovi je `left` kusu, kapradi
+   a seno se zmensuji. */
+/* Flak masa na kosti pro dinosaury; s kazdym soustem ho ubude, kost zustava. */
+function drawMeat(c, x, y, s, alpha, share) {
+  const m = 0.35 + 0.65 * share;
+  c.save();
+  c.globalAlpha = alpha;
+  const ell = (fill, cx, cy, rx, ry, rot = 0) => {
+    c.fillStyle = fill;
+    c.beginPath(); c.ellipse(cx, cy, rx, ry, rot, 0, Math.PI * 2); c.fill();
+  };
+  c.translate(x, y);
+  ell('rgba(24, 20, 10, 0.28)', -s * 0.1, 0, s * 0.8, s * 0.13);
+
+  // kost vlevo: drik a kloub ze dvou hlavic
+  const bone = '#f1ead8', boneEdge = '#c9bc9c';
+  for (const [col, wd, r] of [[boneEdge, 0.2, 0.15], [bone, 0.14, 0.12]]) {
+    c.strokeStyle = col;
+    c.lineCap = 'round';
+    c.lineWidth = s * wd;
+    c.beginPath(); c.moveTo(-s * 0.05, -s * 0.28); c.lineTo(-s * 0.72, -s * 0.16); c.stroke();
+    c.fillStyle = col;
+    c.beginPath(); c.arc(-s * 0.8, -s * 0.27, s * r, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(-s * 0.76, -s * 0.05, s * r, 0, Math.PI * 2); c.fill();
+  }
+
+  // flak vpravo: opeceny povrch, krcek ke kosti, nahore naříznutá plocha
+  const mx = s * 0.28, my = -s * 0.4;
+  const g = c.createRadialGradient(mx - s * 0.12 * m, my - s * 0.12 * m, s * 0.05,
+                                   mx, my, s * 0.55 * m);
+  g.addColorStop(0, '#c97a3e');
+  g.addColorStop(1, '#7a3818');
+  ell(g, mx - s * 0.32 * m, my + s * 0.1 * m, s * 0.24 * m, s * 0.17 * m, -0.2);
+  ell(g, mx, my, s * 0.52 * m, s * 0.44 * m, -0.35);
+  const fx = mx + s * 0.14 * m, fy = my - s * 0.08 * m;
+  ell('#f4dcb2', fx, fy, s * 0.33 * m, s * 0.3 * m, -0.35);
+  ell('#e0605a', fx, fy, s * 0.26 * m, s * 0.23 * m, -0.35);
+  ell('#ec8a80', fx - s * 0.06 * m, fy - s * 0.06 * m, s * 0.12 * m, s * 0.08 * m, -0.35);
+  ell(bone, fx + s * 0.02 * m, fy + s * 0.02 * m, s * 0.06 * m, s * 0.055 * m);
+  ell('rgba(255, 240, 220, 0.35)', mx - s * 0.22 * m, my + s * 0.12 * m,
+      s * 0.12 * m, s * 0.05 * m, -0.6);
+  c.restore();
+}
+
+function drawFoodItem(c, look, x, y, s, alpha, share) {
+  if (look === 'fern') { drawFern(c, x, y, s * (0.45 + 0.55 * share), alpha); return; }
+  if (look === 'meat') { drawMeat(c, x, y, s, alpha, share); return; }
+  c.save();
+  c.globalAlpha = alpha;
+  const n = Math.max(1, Math.ceil(share * 4 - 1e-6));
+  if (look === 'hay') {
+    c.strokeStyle = '#d8b04a';
+    c.lineCap = 'round';
+    c.lineWidth = Math.max(1, s * 0.04);
+    for (let i = 0; i < 26 * share + 3; i++) {
+      const u = (i * 0.618) % 1;
+      c.strokeStyle = i % 3 ? '#d8b04a' : '#b98f34';
+      c.beginPath();
+      c.moveTo(x + (u - 0.5) * s * 1.1, y);
+      c.lineTo(x + (u - 0.5) * s * 1.5 + Math.sin(i) * s * 0.15, y - s * (0.25 + 0.45 * ((i * 0.37) % 1)) * (0.6 + 0.4 * share));
+      c.stroke();
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const px = x + (i - (n - 1) / 2) * s * 0.55, py = y - (i % 2) * s * 0.12;
+      if (look === 'apples') {
+        c.fillStyle = i % 2 ? '#c8372d' : '#d9503a';
+        c.beginPath(); c.arc(px, py - s * 0.28, s * 0.28, 0, Math.PI * 2); c.fill();
+        c.fillStyle = 'rgba(255,255,255,0.35)';
+        c.beginPath(); c.arc(px - s * 0.09, py - s * 0.36, s * 0.08, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#4a3220'; c.lineWidth = Math.max(1, s * 0.04);
+        c.beginPath(); c.moveTo(px, py - s * 0.55); c.lineTo(px + s * 0.04, py - s * 0.68); c.stroke();
+      } else {      // sweets
+        const cols = ['#e0457b', '#3d9be0', '#f2c230', '#58b857'];
+        c.fillStyle = cols[i % 4];
+        c.beginPath(); c.ellipse(px, py - s * 0.2, s * 0.24, s * 0.15, 0.3 * (i - 1), 0, Math.PI * 2); c.fill();
+        c.fillStyle = cols[(i + 1) % 4];
+        c.beginPath(); c.moveTo(px - s * 0.24, py - s * 0.2); c.lineTo(px - s * 0.4, py - s * 0.33);
+        c.lineTo(px - s * 0.4, py - s * 0.07); c.closePath(); c.fill();
+        c.beginPath(); c.moveTo(px + s * 0.24, py - s * 0.2); c.lineTo(px + s * 0.4, py - s * 0.33);
+        c.lineTo(px + s * 0.4, py - s * 0.07); c.closePath(); c.fill();
+      }
+    }
+  }
+  c.restore();
+}
+
 function drawFoods() {
   const fcfg = foodCfg();
   for (const f of foods) {
@@ -1136,7 +1345,8 @@ function drawFoods() {
     const t = Math.min(1, age / FEED_FALL_S);
     const y = (f.y - 0.4 * (1 - t * t)) * H;       // pad shora se zrychlenim
     const fade = Math.min(1, (FEED_FALL_S + FEED_LIFE_S - age) / 2);
-    drawFern(fxCtx, f.x * W, y, W * 0.035 * depthScale(f.y), Math.max(0, fade));
+    drawFoodItem(fxCtx, fcfg.look || 'fern', f.x * W, y, W * 0.035 * depthScale(f.y),
+                 Math.max(0, fade), f.left / f.bites);
   }
 }
 
@@ -1144,14 +1354,14 @@ function drawFoods() {
    jmenem z fotky, sleduje tvora ~TAG_S sekund, pismo skalovane s hloubkou. */
 function drawTags() {
   for (const a of actors) {
-    if (!a.tagUntil || sceneTime >= a.tagUntil || !a.who || a.leaving) continue;
-    const scale = depthScale(a.yFrac);
+    if (!a.tagUntil || sceneTime >= a.tagUntil || !a.who || a.leaving || a.hidden) continue;
+    const scale = depthScale(footY(a));
     const s = W * sizeFrac(a) * scale / a.m3.sizePx;
-    const top = a.yFrac * H - a.m3.height * s;
+    const top = footY(a) * H - a.m3.height * s;
     const alpha = Math.max(0, Math.min(1, (a.tagUntil - sceneTime) / 0.5,
                                        (sceneTime - a.born) / 0.5));
     const fs = Math.max(12, Math.round(17 * scale));
-    const x = a.xFrac * W;
+    const x = footX(a) * W;
     const cy = Math.max(fs, top - fs * 1.2);
     fxCtx.save();
     fxCtx.globalAlpha = alpha * 0.9;
@@ -1181,13 +1391,13 @@ function drawZzz() {
   for (const a of actors) {
     const act = a.plan && a.plan.act;
     if (!act || !/^sleep/.test(act.phase) || a.leaving) continue;
-    const scale = depthScale(a.yFrac);
+    const scale = depthScale(footY(a));
     const s = W * sizeFrac(a) * scale / a.m3.sizePx;
     const len = a.m3.length * s;
     const base = act.phase === 'sleepIn' ? 1 - Math.max(0, act.until - sceneTime) / act.fade
                : act.phase === 'sleepOut' ? Math.max(0, act.until - sceneTime) / act.fade : 1;
-    const x0 = a.xFrac * W + a.face * len * 0.3;
-    const y0 = a.yFrac * H - a.m3.height * s * 0.45;
+    const x0 = footX(a) * W + a.face * len * 0.3;
+    const y0 = footY(a) * H - a.m3.height * s * 0.45;
     const fs = Math.max(12, Math.round(24 * scale));
     fxCtx.save();
     fxCtx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
@@ -1256,22 +1466,245 @@ function drawBackdrop(dt) {
   }
 }
 
+/* Ptáci (motion 'bird'): vybarvený pták přiletí z okraje, usedne na volné místo
+   na větvi (`backdrop.perches`), chvíli sedí a rozhlíží se a odletí; po pauze
+   znovu. Dvojrozměrní ptáci z krajiny sedí na týchž místech, proto si místo
+   předem zabere (`backdrop.claim`) — a bere jen to, které je právě volné.
+   Křídla se skládají a rozkládají samy, protože sezení (Perch) a let (Fly) jsou
+   dva klipy téhož modelu a prolínají se vahou. */
+const BIRD_IN = 3.4, BIRD_OUT = 2.8;
+
+function birdCurve(sx, sy, cx, cy, ex, ey, e) {
+  const k = 1 - e;
+  return [k * k * sx + 2 * k * e * cx + e * e * ex, k * k * sy + 2 * k * e * cy + e * e * ey,
+          2 * k * (cx - sx) + 2 * e * (ex - cx), 2 * k * (cy - sy) + 2 * e * (ey - cy)];
+}
+
+function freePerch(a) {
+  const spots = backdrop && backdrop.perches ? backdrop.perches(sceneTime) : [];
+  const free = spots.map((p, i) => ({ ...p, i }))
+    .filter(p => p.free && !actors.some(b => b !== a && b.bird && b.bird.spot === p.i));
+  return free.length ? free[Math.floor(Math.random() * free.length)] : null;
+}
+
+function updateBird(a, dt) {
+  const b = a.bird || (a.bird = { phase: 'wait', t: 0, wait: a.lookFirst ? 0.4 : 1 + Math.random() * 6 });
+  b.t += dt;
+  const k = aspect();
+  let pitch = 0, flap = 1;
+  if (b.phase === 'wait') {
+    a.hidden = true;
+    if (b.t >= b.wait) {
+      const sp = freePerch(a);
+      if (!sp) { b.t = b.wait - 1.5; }
+      else {
+        const left = sp.x < 0.5 ? Math.random() < 0.7 : Math.random() < 0.3;
+        Object.assign(b, { phase: 'in', t: 0, spot: sp.i, at: sp, sit: 14 + Math.random() * 18,
+                           from: { x: left ? -0.08 : 1.08, y: 0.10 + Math.random() * 0.22 },
+                           to: { x: Math.random() < 0.5 ? -0.08 : 1.08, y: 0.05 + Math.random() * 0.2 } });
+        backdrop.claim(sp.i, sceneTime + BIRD_IN + b.sit + BIRD_OUT + 1);
+        a.hidden = false;
+      }
+    }
+  }
+  if (b.phase === 'in') {
+    const p = Math.min(1, b.t / BIRD_IN);
+    const e = 1 - Math.pow(1 - p, 2.2);
+    const f = b.from, t = b.at;
+    const [x, y, dx, dy] = birdCurve(f.x, f.y, f.x + (t.x - f.x) * 0.55, Math.min(f.y, t.y) - 0.12, t.x, t.y, e);
+    a.xFrac = x; a.yFrac = y;
+    if (Math.abs(dx) > 1e-4) a.dir = dx > 0 ? 1 : -1;
+    pitch = Math.atan2(-dy * k, Math.abs(dx));
+    const land = Math.max(0, (p - 0.8) / 0.2);
+    flap = 1 + land * 0.6;
+    pitch += land * 0.5;
+    if (p >= 1) { b.phase = 'sit'; b.t = 0; }
+  } else if (b.phase === 'sit') {
+    a.xFrac = b.at.x; a.yFrac = b.at.y;
+    a.dir = b.at.face;
+    if (b.t >= b.sit) { b.phase = 'out'; b.t = 0; }
+  } else if (b.phase === 'out') {
+    const p = Math.min(1, b.t / BIRD_OUT);
+    const t = b.at, o = b.to;
+    const [x, y, dx, dy] = birdCurve(t.x, t.y, t.x + (o.x - t.x) * 0.4, Math.min(t.y, o.y) - 0.10, o.x, o.y, p * p);
+    a.xFrac = x; a.yFrac = y;
+    if (Math.abs(dx) > 1e-4) a.dir = dx > 0 ? 1 : -1;
+    pitch = Math.atan2(-dy * k, Math.abs(dx));
+    flap = 1.5 - 0.4 * p;
+    if (p >= 1) {
+      b.phase = 'wait'; b.t = 0; b.wait = 8 + Math.random() * 18; a.hidden = true;
+    }
+  }
+  a.face = toward(a.face, a.dir, dt / 0.3);
+  const sitting = b.phase === 'sit' || b.phase === 'wait';
+  a.mix = toward(a.mix, sitting ? 1 : (b.phase === 'in' && b.t > BIRD_IN - 0.35 ? 0.5 : 0), dt / 0.35);
+  Scene3D.blendMix(a.m3, { stand: a.mix });
+  Scene3D.speed(a.m3, flap);
+  a.bank = Math.max(-0.6, Math.min(0.7, pitch * 0.8));
+}
+
+/* Motýlek (motion 'butterfly'): poletuje po louce od cíle k cíli a občas si
+   sedne na „květ" (klip Rest). Kreslí se pořád zepředu, takže se jen mírně
+   nakláněním do směru letu. Nový vybarvený vlétne zleva. */
+function startButterfly(a) {
+  const left = !!a.lookFirst;
+  return { x: left ? -0.08 : 0.15 + Math.random() * 0.7, y: left ? 0.55 : 0.5 + Math.random() * 0.3,
+           vx: 0, vy: 0, tx: 0.2, ty: 0.6, until: 0, t: 0, phase: 'fly', land: false };
+}
+
+/* Volné místo k přistání daného druhu (`backdrop.perches`); `near` = {x, y, dx, dy}
+   omezí výběr na dosah (kobylka skáče jen do okolí) a bere nejbližší. */
+function freeSpot(a, kind, near) {
+  const spots = backdrop && backdrop.perches ? backdrop.perches(sceneTime) : [];
+  const ok = spots.map((p, i) => ({ ...p, i }))
+    .filter(p => p.kind === kind && p.free && p.x > 0.05 && p.x < 0.95
+      && (!near || (Math.abs(p.x - near.x) < near.dx && Math.abs(p.y - near.y) < near.dy)));
+  if (!ok.length) return null;
+  if (near) return ok.reduce((m, p) => Math.abs(p.x - near.x) < Math.abs(m.x - near.x) ? p : m);
+  return ok[Math.floor(Math.random() * ok.length)];
+}
+
+function releasePerch(b) {
+  if (b.spot != null) { backdrop.claim(b.spot, 0); b.spot = null; }
+}
+
+function updateButterfly(a, dt) {
+  const b = a.bf || (a.bf = startButterfly(a));
+  b.t += dt;
+  const cfg = motionCfg(a.motion);
+  if (b.phase === 'rest') {
+    b.vx += (0 - b.vx) * Math.min(1, dt * 3);
+    b.vy += (0 - b.vy) * Math.min(1, dt * 3);
+    if (b.t > b.until) { releasePerch(b); b.phase = 'fly'; b.t = 0; b.until = 0; }
+  } else {
+    const dist = Math.hypot(b.tx - b.x, (b.ty - b.y) * aspect());
+    if (b.until === 0 || b.t > b.until || dist < 0.025) {
+      if (b.land && dist < 0.04) {
+        b.phase = 'rest'; b.t = 0; b.until = 4 + Math.random() * 6; b.land = false;
+        if (b.spot != null) backdrop.claim(b.spot, sceneTime + b.until + 2);
+      } else {
+        releasePerch(b);
+        b.land = Math.random() < 0.3;
+        // krajina s místy k přistání (`backdrop.perches`): sedá se jen na květ, jinak náhodně
+        const spot = b.land ? freeSpot(a, 'flower') : null;
+        if (spot) {
+          b.spot = spot.i; b.tx = spot.x; b.ty = spot.y - 0.012;
+          backdrop.claim(spot.i, sceneTime + 40);
+        } else {
+          if (b.land && backdrop && backdrop.perches) b.land = false;
+          b.tx = 0.08 + Math.random() * 0.84;
+          // `vSpread`: nepřistávající let se drží kolem aktuální výšky (vodorovný let)
+          b.ty = b.land ? 0.62 + Math.random() * 0.22
+            : cfg.vSpread ? Math.max(0.46, Math.min(0.82, b.y + (Math.random() - 0.5) * cfg.vSpread))
+            : 0.46 + Math.random() * 0.36;
+        }
+        b.t = 0; b.until = spot ? 9 : 3 + Math.random() * 4;
+      }
+    }
+    const sp = cfg.baseSpeed || 0.07;
+    const dx = b.tx - b.x, dy = (b.ty - b.y) * aspect();
+    const d = Math.hypot(dx, dy) || 1;
+    b.vx += (dx / d * sp - b.vx) * Math.min(1, dt * 1.4);
+    b.vy += (dy / d * sp / aspect() - b.vy) * Math.min(1, dt * 1.4);
+  }
+  b.x += b.vx * dt;
+  b.y += b.vy * dt;
+  a.xFrac = b.x;
+  a.yFrac = b.y + (b.phase === 'rest' ? 0 : Math.sin(sceneTime * 6 + a.bob) * 0.006);
+  a.dir = b.vx >= 0 ? 1 : -1;
+  a.face = a.dir;
+  a.mix = toward(a.mix, b.phase === 'rest' ? 1 : 0, dt / 0.5);
+  Scene3D.blendMix(a.m3, { stand: a.mix });
+  Scene3D.speed(a.m3, b.phase === 'rest' ? 1 : 1 + Math.min(0.5, Math.hypot(b.vx, b.vy) * 4));
+  // z boku `bank` naklání nos: nahoru, když tvor stoupá
+  a.bank = cfg.side
+    ? Math.max(-0.25, Math.min(0.25, 0.5 * Math.atan2(-b.vy * aspect(), Math.abs(b.vx) + 0.02)))
+    : Math.max(-0.5, Math.min(0.5, -b.vx * 4));
+}
+
+/* Vznášející se doplněk (motion 'hover' = postava, 'twinkle' = hvězda): přiletí
+   shora na volné místo z `motions.<typ>.spots` v definici scény (třeba nad
+   chlévek), tam se pomalu houpe a mírně se natáčí. Když je míst málo, bere
+   náhodný bod v `area`. Odlétá se scénou. */
+function pickHoverSpot(a, cfg) {
+  const taken = actors.filter(b => b !== a && b.hov).map(b => b.hov.spot);
+  const free = (cfg.spots || []).filter(s => !taken.includes(s));
+  if (free.length) return free[0];
+  const ar = cfg.area || { x: [0.2, 0.8], y: [0.15, 0.4] };
+  return { x: ar.x[0] + Math.random() * (ar.x[1] - ar.x[0]),
+           y: ar.y[0] + Math.random() * (ar.y[1] - ar.y[0]) };
+}
+
+function updateHover(a, dt) {
+  const cfg = motionCfg(a.motion);
+  const h = a.hov || (a.hov = { spot: pickHoverSpot(a, cfg), t: 0, ph: Math.random() * 6.28,
+                                x: a.lookFirst ? -0.08 : Math.random(), y: -0.1 });
+  h.t += dt;
+  const sx = h.spot.x + Math.sin(h.t * 0.35 + h.ph) * 0.012;
+  const sy = h.spot.y + Math.sin(h.t * 0.8 + h.ph) * (cfg.bob || 0.012);
+  const k = 1 - Math.exp(-dt * 0.9);
+  h.x += (sx - h.x) * k;
+  h.y += (sy - h.y) * k;
+  a.xFrac = h.x;
+  a.yFrac = h.y;
+  a.dir = 1;
+  a.face = 1;
+  a.pulse = 1 + (cfg.pulse || 0) * Math.sin(h.t * 2.3 + h.ph);
+  a.bank = Math.sin(h.t * 0.6 + h.ph) * 0.06;
+  Scene3D.speed(a.m3, 1);
+}
+
+/* Chodec se dívá tam, kam jde. Z rychlosti na obrazovce se odvodí, o kolik se
+   má natočit k divákovi (nahoru po obrazovce = od diváka): cestou z dálky
+   dopředu jde zvíře čelem, ne bokem. Rychlost svisle na obrazovce je kvůli
+   perspektivě zkrácená, `headingK` ji zpět zvětší. Textura je bokorys a ze
+   šikmého pohledu se roztahuje, ale chodec na takové cestě je malý, takže to
+   nevadí. Zastavený tvor drží poslední natočení. */
+function heading(a, dt) {
+  if (a.motion !== 'walk' || !(dt > 0)) return;
+  const cfg = motionCfg(a.motion);
+  const base = typeof cfg.turn === 'number' ? cfg.turn : 0.34;
+  const x = footX(a), y = footY(a);
+  if (a.tilt === undefined) a.tilt = base;
+  if (a.perch && a.perch.phase === 'sit') {        // na listu sedí bokem, ne čelem po skoku
+    a.tilt = toward(a.tilt, base, dt * 1.6);
+    return;
+  }
+  if (a.hx === undefined || Math.abs(x - a.hx) > 0.3) {
+    a.hx = x; a.hy = y; a.vx = 0; a.vy = 0;
+    return;
+  }
+  const k = Math.min(1, dt * 4);
+  a.vx += ((x - a.hx) / dt - a.vx) * k;
+  a.vy += ((y - a.hy) * aspect() / dt - a.vy) * k;
+  a.hx = x; a.hy = y;
+  if (Math.hypot(a.vx, a.vy) < 0.012) return;
+  const comp = Math.atan2(a.vy * (cfg.headingK || 2.2), Math.abs(a.vx));
+  const t = Math.min(1, Math.abs(comp) / 0.35);
+  const goal = comp > base || comp < 0 ? base + (comp - base) * t : base;
+  a.tilt = toward(a.tilt, Math.max(-1.2, Math.min(1.45, goal)), dt * 1.6);
+}
+
 function draw(dt) {
   drawBackdrop(dt);
 
   // hloubku resi WebGL vrstva pres `depth`, tady uz poradi nerozhoduje
   for (const a of actors) {
-    const scale = depthScale(a.yFrac);
+    const fy = footY(a);
+    const scale = depthScale(fy);
     const age = sceneTime - a.born;
     let pop = age < 0.9 ? 0.72 + 0.28 * Math.min(1, age / 0.9) : 1;
     // odchod pri prepnuti sceny: zmenseni do ztracena, obraceny "pop"
     if (a.leaving) pop *= Math.max(0, 1 - (sceneTime - a.leaving) / LEAVE_S);
-    const x = a.xFrac * W, y = a.yFrac * H;
+    // kobylka na listu: `lift` je výška listu nad patou stébla, hloubka zůstává podle paty
+    const x = footX(a) * W, y = (fy - (a.perch ? a.perch.lift : 0)) * H;
+    heading(a, dt);
 
     // u 3D tvora je yFrac primo cara, na ktere stoji nohama
     const s = W * sizeFrac(a) * scale / a.m3.sizePx;
-    Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop,
-                          depth: a.yFrac * 4000 - 2000 });
+    Scene3D.place(a.m3, { x, y, face: a.face, scale: s * pop * (a.pulse || 1), turn: a.tilt,
+                          hidden: a.hidden, bank: a.bank,
+                          depth: fy * 4000 - 2000 });
   }
 
   Scene3D.render(dt);
@@ -1335,7 +1768,7 @@ async function loadModel(item, opts) {
   const mo = ((sceneDef && sceneDef.motions) || {})[spec.motion] || {};
   const m3 = await Scene3D.spawn({
     id: item.id, glb: spec.glb, motion: spec.motion, clip, breaks, gaits: ['run'],
-    turn: mo.turn, bank: mo.bank,
+    turn: mo.turn, bank: mo.bank, side: mo.side, bump: spec.bump, material: spec.material,
     texture: item.texture || (item.url || `/catch/${item.id}/`) + 'texture.png',
   });
   return addActor({ m3, id: item.id, key: spec.key, strideRate: spec.strideRate,
@@ -1707,6 +2140,8 @@ window.DinoScene = {
     rateScale: a.band.rateScale || 1,
     blocked: !!a.blocked,
     hold: a.hold || null,
+    perch: a.perch ? a.perch.phase : (a.bf && a.bf.spot != null ? 'flower' : null),
+    lift: a.perch ? +a.perch.lift.toFixed(3) : null,
     act: a.plan && a.plan.act ? a.plan.act.name : null,
     phase: a.plan && a.plan.act ? a.plan.act.phase : null,
     offered: a.acts ? a.acts.names : [],
@@ -1717,7 +2152,8 @@ window.DinoScene = {
     route: a.route ? a.route.path.name || '' : null,
     ambient: a.ambient,
     exiting: !!a.exiting, feeding: !!a.feed,
-    x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), dir: a.dir,
+    x: +a.xFrac.toFixed(3), y: +a.yFrac.toFixed(3), fy: +footY(a).toFixed(3),
+    tilt: a.tilt === undefined ? null : +a.tilt.toFixed(2), len: +bodyFrac(a).toFixed(3), dir: a.dir,
     // tempo za plne chuze (bez zastavek), at se da merit bez sahani do kosti
     speedPx: +(a.speed * W).toFixed(1),
     bodiesPerS: a.natural ? +(a.natural * a.rate * a.speedMul).toFixed(4) : null,

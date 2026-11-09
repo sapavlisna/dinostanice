@@ -1,6 +1,6 @@
 {
   "label": "Les",
-  "subtitle": "Lesní mýtina se zvířátky — zatím s krajinou křídové laguny.",
+  "subtitle": "Lesní mýtina plná zvířátek — od zajíce po koně.",
   "order": 4,
   "nouns": ["zvíře", "zvířata", "zvířat"],
   "accusative": "zvířátko",
@@ -9,20 +9,30 @@
   "feedBusy": "Zvířátka ještě žvýkají — počkej chvilku, než hodíš další porci! 🦌",
   "creatures": [
     {
-      "key": "alpaca",
-      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
-      "label": "Alpaka",
-      "glb": "alpaca.glb",
-      "motion": "walk",
-      "stride_rate": [0.3, 0.45]
-    },
-    {
       "key": "deer",
       "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
       "label": "Srnka",
       "glb": "deer.glb",
       "motion": "walk",
-      "stride_rate": [0.3, 0.45]
+      "stride_rate": [0.3, 0.45],
+      "paint": {
+        "base": [178, 112, 62],
+        "belly": [240, 222, 190],
+        "belly_at": 0.5,
+        "legs": [138, 88, 52],
+        "legs_at": 0.72,
+        "muzzle": [214, 190, 150],
+        "muzzle_len": 0.09,
+        "marks": [
+          {
+            "type": "spots",
+            "color": [252, 242, 222],
+            "n": 38,
+            "r": [1.6, 2.8],
+            "region": [0.2, 0.75, 0.3, 0.52]
+          }
+        ]
+      }
     },
     {
       "key": "fox",
@@ -30,7 +40,18 @@
       "label": "Liška",
       "glb": "fox.glb",
       "motion": "walk",
-      "stride_rate": [0.35, 0.5]
+      "stride_rate": [0.35, 0.5],
+      "paint": {
+        "base": [226, 112, 36],
+        "belly": [250, 240, 226],
+        "belly_at": 0.52,
+        "legs": [52, 36, 30],
+        "legs_at": 0.74,
+        "muzzle": [250, 240, 226],
+        "muzzle_len": 0.1,
+        "tail_tip": [255, 252, 246],
+        "tail_len": 0.12
+      }
     },
     {
       "key": "horse",
@@ -38,7 +59,27 @@
       "label": "Kůň",
       "glb": "horse.glb",
       "motion": "walk",
-      "stride_rate": [0.3, 0.45]
+      "stride_rate": [0.3, 0.45],
+      "paint": {
+        "base": [142, 84, 50],
+        "belly": [124, 74, 44],
+        "belly_at": 0.5,
+        "legs": [44, 32, 28],
+        "legs_at": 0.68,
+        "muzzle": [96, 60, 40],
+        "muzzle_len": 0.07,
+        "back": [112, 66, 40],
+        "back_to": 0.3,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [90, 56, 38],
+            "size_mm": 25,
+            "threshold": 0.9,
+            "alpha": 0.5
+          }
+        ]
+      }
     },
     {
       "key": "shiba_inu",
@@ -46,7 +87,20 @@
       "label": "Pejsek",
       "glb": "shiba_inu.glb",
       "motion": "walk",
-      "stride_rate": [0.35, 0.5]
+      "stride_rate": [0.35, 0.5],
+      "paint": {
+        "base": [224, 152, 72],
+        "back": [190, 112, 52],
+        "back_to": 0.35,
+        "belly": [250, 236, 210],
+        "belly_at": 0.52,
+        "legs": [248, 232, 204],
+        "legs_at": 0.74,
+        "muzzle": [250, 236, 210],
+        "muzzle_len": 0.12,
+        "tail_tip": [250, 236, 210],
+        "tail_len": 0.1
+      }
     },
     {
       "key": "stag",
@@ -55,7 +109,20 @@
       "glb": "stag.glb",
       "motion": "walk",
       "eye_bias": {"forward": 0.8, "down": 0.75},
-      "stride_rate": [0.3, 0.45]
+      "stride_rate": [0.3, 0.45],
+      "paint": {
+        "base": [112, 74, 46],
+        "back": [82, 54, 36],
+        "back_to": 0.4,
+        "belly": [192, 162, 126],
+        "belly_at": 0.52,
+        "legs": [78, 52, 34],
+        "legs_at": 0.72,
+        "muzzle": [150, 122, 92],
+        "muzzle_len": 0.08,
+        "antler": [226, 206, 166],
+        "antler_from": 0.6
+      }
     },
     {
       "key": "wolf",
@@ -63,7 +130,20 @@
       "label": "Vlk",
       "glb": "wolf.glb",
       "motion": "walk",
-      "stride_rate": [0.35, 0.5]
+      "stride_rate": [0.35, 0.5],
+      "paint": {
+        "base": [138, 138, 144],
+        "back": [84, 84, 92],
+        "back_to": 0.4,
+        "belly": [218, 214, 206],
+        "belly_at": 0.52,
+        "legs": [112, 106, 100],
+        "legs_at": 0.72,
+        "muzzle": [208, 202, 194],
+        "muzzle_len": 0.1,
+        "tail_tip": [48, 48, 54],
+        "tail_len": 0.12
+      }
     },
     {
       "key": "zajic",
@@ -76,6 +156,103 @@
       "stride_rate": [0.35, 0.5],
       "activities": {
         "run": {"weight": 1.4}
+      },
+      "paint": {
+        "base": [182, 148, 108],
+        "belly": [246, 240, 228],
+        "belly_at": 0.55,
+        "legs": [194, 164, 124],
+        "legs_at": 0.8,
+        "muzzle": [238, 228, 208],
+        "muzzle_len": 0.1
+      }
+    },
+    {
+      "key": "bird",
+      "label": "Ptáček",
+      "glb": "bird.glb",
+      "motion": "bird",
+      "poses": ["Perch"],
+      "paint": {
+        "base": [96, 142, 172],
+        "back": [66, 98, 140],
+        "back_to": 0.4,
+        "belly": [250, 214, 70],
+        "belly_at": 0.5,
+        "legs": [120, 90, 70],
+        "legs_at": 0.86,
+        "muzzle": [250, 176, 48],
+        "muzzle_len": 0.08,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [40, 70, 110],
+            "size_mm": 9,
+            "threshold": 0.6,
+            "region": [0.1, 0.7, 0.2, 0.6],
+            "alpha": 0.7
+          }
+        ]
+      },
+      "extra": true
+    },
+    {
+      "key": "butterfly",
+      "label": "Motýlek",
+      "glb": "butterfly.glb",
+      "motion": "butterfly",
+      "anim": "Fly",
+      "time": 0.27,
+      "axes": [0, 1, 2],
+      "flip": [1, -1, 1],
+      "extra": true,
+      "paint": {
+        "base": [242, 150, 36],
+        "marks": [
+          {
+            "type": "patches",
+            "color": [70, 36, 24],
+            "size_mm": 10,
+            "threshold": 0.8,
+            "alpha": 0.8
+          },
+          {
+            "type": "spots",
+            "color": [252, 248, 240],
+            "n": 14,
+            "r": [1.2, 2.6],
+            "alpha": 0.95
+          }
+        ]
+      }
+    }
+  ],
+  "parked": [
+    {
+      "key": "alpaca",
+      "clip_for": {"run": "Gallop", "look": "2", "eat": "Eating", "play": "Headbutt", "lie": null},
+      "label": "Alpaka",
+      "glb": "alpaca.glb",
+      "motion": "walk",
+      "stride_rate": [0.3, 0.45],
+      "paint": {
+        "base": [236, 224, 202],
+        "belly": [252, 246, 234],
+        "belly_at": 0.5,
+        "legs": [210, 190, 165],
+        "legs_at": 0.74,
+        "muzzle": [120, 88, 66],
+        "muzzle_len": 0.08,
+        "marks": [
+          {
+            "type": "patches",
+            "color": [160, 112, 74],
+            "size_mm": 22,
+            "threshold": 0.6,
+            "region": [0.15, 0.85, 0.3, 0.7],
+            "alpha": 0.9
+          }
+        ]
       }
     }
   ]

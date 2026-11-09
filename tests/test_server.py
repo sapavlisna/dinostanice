@@ -492,6 +492,52 @@ def test_kid_sees_and_deletes_only_own_catches(client):
     assert ids(client.get("/api/rigs")) == [other]
 
 
+def test_kid_resends_old_catch_to_new_station(admin):
+    """Dite prijde za dva dny k jine stanici a posle tam, co nakreslilo minule.
+    Ukonceni stanice zvirata deti archivuje; poslat jde jen do spravne krajiny."""
+    client = admin
+    old = upload(client, model_photo_jpg(), s="aaa", device=DEV_A).json()["id"]
+    fish_id, fish_dir = store.new_catch("clownfish")
+    server.os.makedirs(fish_dir, exist_ok=True)
+    open(server.os.path.join(fish_dir, "model.json"), "w").write("{}")
+    store.write_meta(fish_id, creature="clownfish", label="Klaun", motion="swim",
+                     session="aaa", owner=DEV_A)
+
+    assert client.delete("/api/stations/aaa").status_code == 200
+    mine = lambda s: {m["creature"]: m for m in
+                      client.get(f"/api/mine?s={s}&device={DEV_A}").json()}
+    lib = mine("bbb")
+    assert set(lib) == {"trex3d", "clownfish"}
+    assert lib["trex3d"]["fits"] and not lib["trex3d"]["here"]
+    assert not lib["clownfish"]["fits"]
+    assert client.get(f"/api/mine?s=bbb&device={DEV_B}").json() == []
+
+    r = client.post("/api/mine/send", json={"s": "bbb", "device": DEV_A, "id": fish_id})
+    assert r.status_code == 409
+    r = client.post("/api/mine/send", json={"s": "bbb", "device": DEV_B, "id": old})
+    assert r.status_code == 404
+    with client.websocket_connect("/ws?s=bbb") as ws:
+        r = client.post("/api/mine/send", json={"s": "bbb", "device": DEV_A, "id": old})
+        assert r.status_code == 200, r.text
+        assert ws.receive_json()["type"] == "add"
+    assert [m["id"] for m in client.get("/api/rigs?s=bbb").json()] == [old]
+    assert mine("bbb")["trex3d"]["here"]
+    r = client.post("/api/mine/send", json={"s": "bbb", "device": DEV_A, "id": old})
+    assert r.status_code == 409
+
+    # ze ziveho zvirete na jine televizi vznikne kopie, original tam zustane
+    r = client.post("/api/mine/send", json={"s": "ccc", "device": DEV_A, "id": old})
+    assert r.status_code == 200 and r.json()["id"] != old
+    assert [m["id"] for m in client.get("/api/rigs?s=bbb").json()] == [old]
+    assert len(mine("ccc")) == 2
+
+    # odebrani z televize = zpatky do archivu, pak teprve nadobro
+    assert client.delete(f"/api/rigs/{old}?device={DEV_A}").status_code == 200
+    assert not mine("bbb")["trex3d"]["here"]
+    assert client.delete(f"/api/rigs/{old}?device={DEV_A}").status_code == 200
+    assert store.find_catch(old) == (None, False)
+
+
 def test_catch_without_owner_is_nobodys(client):
     """Stare ulovky (bez `owner`) ani nevalidni device nesmi nikomu dat pravo."""
     cid = upload(client, model_photo_jpg(), device="kratke").json()["id"]

@@ -134,8 +134,8 @@ po jedné lince.
 se zastávkami a otočkami tam, kde je autor chce. Zbytek bloumá po pásech
 postaru, ať má scéna obojí.
 
-Z mobilu se dá **krmit**: tlačítko na stránce pro přidání shodí do scény trs
-kapradí a chodci v okolí k němu zamíří, poží a jdou dál. Krmení má cooldown,
+Z mobilu se dá **krmit**: tlačítko na stránce pro přidání shodí do scény žrádlo
+podle krajiny (dinosaurům flák masa, v lese jablka, rybám vločky) a chodci v okolí k němu zamíří, poží a jdou dál. Krmení má cooldown,
 ať děti scénu nezasypou.
 
 ## Ladění chůze
@@ -242,12 +242,21 @@ Podrobnosti a kontrakty mezi částmi jsou v [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Co je v katalogu
 
-Patnáct šablon ve dvou krajinách. **Křídová laguna** (značky 8–15):
+Pět krajin (každá je složka `scenes/<klíč>/`). **Křídová laguna** (značky 8–15):
 Tyrannosaurus, Velociraptor, Triceratops, Stegosaurus, Parasaurolophus
-a Apatosaurus chodí po břehu, drak a ptakoještěr létají nad lagunou.
-**Akvárium** (16–22): klaunská rybka, žralok, čtverzubec, mečoun, perutýn,
-manta a axolotl. Scéna přijme jen tvory své krajiny — kdo patří jinam, počká
-na přepnutí.
+a Apatosaurus chodí po břehu, drak a ptakoještěr létají nad lagunou (stejná
+sada má i noční variantu). **Akvárium** (16–22): klaunská rybka, žralok,
+čtverzubec, mečoun, perutýn, manta a axolotl. **Les**: srnka, liška, kůň,
+pejsek, jelen, vlk a zajíc na louce s cestičkou a se dvěma kmeny, na které
+sedají ptáci. Ptáček a motýlek nemají vlastní list — jejich okénko je v rohu
+listu každého zvířete a uloží se, jen když ho dítě vybarví. **Betlém**: osel,
+vůl, ovce, velbloud a koza u chlévku pod hvězdou. Scéna přijme jen tvory své
+krajiny — kdo patří jinam, počká na přepnutí.
+
+**Mikulášská** je zasněžená náves za soumraku (vánoční strom, kostel, lucerny,
+padající sníh) s třemi postavami: Mikuláš, anděl a čert. Jejich modely
+nejsou stažené, staví je `tools/make_mikulas.py` (nízkopolygonové humanoidy
+s kostrou a klipy chůze, běhu, mávání a rozhlížení, viz `scenes/mikulas/POZNAMKY.md`).
 
 Modely jsou hotové rigované GLB (`data/models_src/*.glb`, většinou CC0 od
 Quaternia; ptakoještěr a axolotl přišli bez kostry a pod CC-BY, tak ji mají
@@ -293,6 +302,7 @@ python tools/model_export3d.py         # modely pro prohlížeč + ukázkové te
 python tools/model_paint_demo.py       # kontrola bez tiskárny: snímky z úhlů
 python tools/make_pteranodon.py        # ptakoještěr: kostra a let z holé geometrie
 python tools/make_axolotl.py           # axolotl: kostra, plavání a póza předlohy
+python tools/make_mikulas.py          # Mikuláš, anděl a čert: modely s kostrou a klipy
 ```
 
 Létající tvor se kreslí **shora** a natočený tak, aby rozpětí křídel leželo po

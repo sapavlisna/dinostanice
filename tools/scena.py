@@ -179,8 +179,9 @@ def check_model(path, entry, warnings=None):
                         f"nenabídne; klipy doplní tools/blender_clips.py, jinak clip_for")
     names = [n.get("name", "") for n in model.g.get("nodes", [])]
     # stejné pravidlo jako feetOf() ve web/scene3d.js: chodidla, jinak špičky nohou
-    if motion == "walk" and not any(re.search(r"foot|toe|paw|hoof", n, re.I)
-                                    or re.search(r"leg.*_end$", n, re.I) for n in names):
+    if motion == "walk" and "stride_rate" not in entry and not any(
+            re.search(r"foot|toe|paw|hoof", n, re.I) or re.search(r"leg.*_end$", n, re.I)
+            for n in names):
         problems.append("chodec nemá kosti nohou (foot/toe/paw/hoof ani špičku *Leg*_end) "
                         "— scéna nezměří krok a nohy budou klouzat; zvaž motion swim/fly "
                         "nebo stride_rate")

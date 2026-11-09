@@ -65,6 +65,7 @@
 
 export default {
   backdrop: async () => (await import('/web/backdrops/cretaceous.js')).create('day'),
+  food: { look: 'meat', bites: 4 },
   lighting: {
     hemi: { sky: 0xcfe2ff, ground: 0x5c5b3a, intensity: 1.05 },
     // slunce je na malovane obloze vpravo nahore, at stiny sedi

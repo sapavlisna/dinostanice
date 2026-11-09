@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12161c">
+<title>Malovat zvíře</title>
+<link rel="stylesheet" href="/web/common.css">
+<style>
+  html, body { overscroll-behavior: none; }
+  body { max-width: none; padding: 0; -webkit-user-select: none; user-select: none; }
+
+  #picker { max-width: 560px; margin: 0 auto; padding: 20px 16px calc(28px + env(safe-area-inset-bottom)); }
+  #picker h1 { font-size: 25px; margin: 4px 0 2px; }
+  #picker .lead { color: var(--muted); margin: 0 0 18px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .pick {
+    border: 1px solid var(--line); background: var(--card); border-radius: 16px;
+    padding: 8px; text-align: center; font-weight: 600; font-size: 15px;
+  }
+  .pick img { width: 100%; aspect-ratio: 297 / 210; object-fit: contain; background: #fff; border-radius: 10px; display: block; margin-bottom: 8px; }
+  .back { display: inline-block; margin-top: 22px; }
+
+  #editor { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; flex: none; }
+  .bar.top { padding-top: calc(8px + env(safe-area-inset-top)); }
+  .bar.bottom { flex-direction: column; align-items: stretch; padding-bottom: calc(8px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+  .ib {
+    width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card); font-size: 20px; flex: none; display: grid; place-items: center; padding: 0;
+  }
+  .ib.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .grow { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .done { height: 44px; padding: 0 16px; border-radius: 12px; border: none; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 16px; flex: none; }
+
+  #view { flex: 1; position: relative; overflow: hidden; touch-action: none; background: #0b0e12; }
+  #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; box-shadow: 0 0 0 1px #000; will-change: transform; }
+  #world canvas, #world img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+  #tpl { mix-blend-mode: multiply; pointer-events: none; }
+
+  .palette { display: grid; grid-template-rows: repeat(2, 36px); grid-auto-flow: column; grid-auto-columns: 36px; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none; }
+  .palette::-webkit-scrollbar { display: none; }
+  .sw { width: 36px; height: 36px; border-radius: 50%; border: 3px solid transparent; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); padding: 0; }
+  .sw.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+  .tools { display: flex; align-items: center; gap: 8px; }
+  .tools .sp { flex: 1; }
+  .dot { display: block; background: currentColor; border-radius: 50%; }
+
+  #dlg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; padding: 16px; }
+  #dlg .box { width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+  #dlg img { width: 100%; border-radius: 10px; background: #fff; display: block; margin-bottom: 12px; }
+  #dlg label { display: block; margin: 4px 0 8px; font-size: 15px; color: var(--muted); }
+  #dlg .row { display: flex; gap: 10px; margin-top: 14px; }
+  #dlg .row .btn { flex: 1; padding: 14px 10px; font-size: 17px; }
+  #msg { margin-top: 14px; font-size: 16px; }
+  #msg .ok { color: var(--ok); font-weight: 700; }
+  #msg .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+
+<main id="picker">
+  <h1 id="title">Namaluj si zvíře</h1>
+  <p class="lead">Vyber, koho chceš vybarvit. Malovat se dá prstem, zoomovat dvěma prsty.</p>
+  <div class="grid" id="grid"></div>
+  <div id="pickMsg" class="hint"></div>
+  <a class="back" id="backLink" href="/pridat">← Zpět</a>
+</main>
+
+<div id="editor" class="hidden">
+  <div class="bar top">
+    <button class="ib" id="exit" type="button" aria-label="Jiné zvíře">←</button>
+    <div class="grow" id="what"></div>
+    <button class="ib" id="undo" type="button" aria-label="Zpět">↶</button>
+    <button class="ib" id="clear" type="button" aria-label="Smazat vše">🗑</button>
+    <button class="done" id="done" type="button">Hotovo ✓</button>
+  </div>
+  <div id="view">
+    <div id="world">
+      <canvas id="paint"></canvas>
+      <img id="tpl" alt="">
+    </div>
+  </div>
+  <div class="bar bottom">
+    <div class="palette" id="palette"></div>
+    <div class="tools">
+      <button class="ib size on" data-size="12" type="button" aria-label="Tenký štětec"><i class="dot" style="width:6px;height:6px"></i></button>
+      <button class="ib size" data-size="30" type="button" aria-label="Střední štětec"><i class="dot" style="width:13px;height:13px"></i></button>
+      <button class="ib size" data-size="64" type="button" aria-label="Tlustý štětec"><i class="dot" style="width:22px;height:22px"></i></button>
+      <button class="ib" id="eraser" type="button" aria-label="Guma">🧽</button>
+      <span class="sp"></span>
+      <button class="ib" id="zoomOut" type="button" aria-label="Oddálit">−</button>
+      <button class="ib" id="zoomIn" type="button" aria-label="Přiblížit">+</button>
+      <button class="ib" id="fit" type="button" aria-label="Celý obrázek">⤢</button>
+    </div>
+  </div>
+</div>
+
+<div id="dlg" class="hidden">
+  <div class="box">
+    <img id="shot" alt="Hotový obrázek">
+    <div id="ask">
+      <label for="name">Jak se jmenuješ? (nemusíš vyplňovat)</label>
+      <input id="name" type="text" maxlength="40" autocomplete="off" placeholder="třeba Anička">
+      <div class="row">
+        <button class="btn ghost" id="keep" type="button">Domalovat</button>
+        <button class="btn primary" id="send" type="button">Odeslat</button>
+      </div>
+    </div>
+    <div id="msg"></div>
+    <div class="row hidden" id="after">
+      <button class="btn ghost" id="again" type="button">Další zvíře</button>
+      <a class="btn primary" id="home" href="/pridat">Hotovo</a>
+    </div>
+  </div>
+</div>
+
+<script src="/web/common.js"></script>
+<script>
+"use strict";
+
+// Plátno má poměr listu A4 naležato. Obrázek se po odeslání chová jako vyfocený
+// list: stejná předloha, černé rohové značky a barvy pod čarami.
+const W = 2000, H = 1414;
+const MM = W / 297;
+const STATION = SID || "tv";
+const DEVICE = deviceId();
+const COLORS = [
+  ["červená", "#e53935"], ["oranžová", "#fb8c00"], ["žlutá", "#fdd835"],
+  ["limetková", "#c0ca33"], ["světle zelená", "#7cb342"], ["tmavě zelená", "#2e7d32"],
+  ["tyrkysová", "#26c6da"], ["světle modrá", "#64b5f6"], ["modrá", "#1e66d0"],
+  ["námořnická", "#283593"], ["fialová", "#8e44ad"], ["růžová", "#f06292"], ["purpurová", "#d81b60"],
+  ["tmavě červená", "#b71c1c"], ["tmavě oranžová", "#e65100"], ["zlatá", "#ffb300"],
+  ["béžová", "#f2c9a0"], ["písková", "#c8a27a"], ["hnědá", "#795548"], ["tmavě hnědá", "#4e342e"],
+  ["světle šedá", "#cfd8dc"], ["šedá", "#9e9e9e"], ["tmavě šedá", "#555555"],
+  ["černá", "#212121"], ["bílá", "#ffffff"], ["světle růžová", "#f8bbd0"],
+];
+
+const paint = $("paint");
+paint.width = W; paint.height = H;
+const pctx = paint.getContext("2d");
+const world = $("world"), view = $("view"), tpl = $("tpl");
+world.style.width = W + "px"; world.style.height = H + "px";
+
+// Rohové značky a jejich okolí zůstávají bílé, jinak by je list nerozpoznal.
+const allowed = new Path2D();
+allowed.rect(0, 0, W, H);
+for (const [x, y] of [[9, 9], [272, 9], [272, 185], [9, 185]]) {
+  allowed.rect((x - 3) * MM, (y - 3) * MM, 22 * MM, 22 * MM);
+}
+
+let strokes = [];
+let color = COLORS[0][1], size = 12, erasing = false;
+let current = null;
+let scene = null, creature = null;
+
+// --- Vykreslení tahů ---------------------------------------------------------
+
+function brush(s) { return s.erase ? s.size * 1.8 : s.size; }
+
+function setup(ctx, s) {
+  ctx.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
+  ctx.strokeStyle = ctx.fillStyle = s.color;
+  ctx.lineWidth = brush(s);
+  ctx.lineCap = ctx.lineJoin = "round";
+}
+
+function segment(s, from) {
+  pctx.save();
+  pctx.clip(allowed, "evenodd");
+  setup(pctx, s);
+  const p = s.pts;
+  if (p.length === 1) {
+    pctx.beginPath();
+    pctx.arc(p[0][0], p[0][1], brush(s) / 2, 0, Math.PI * 2);
+    pctx.fill();
+  } else {
+    pctx.beginPath();
+    pctx.moveTo(p[from][0], p[from][1]);
+    for (let i = from + 1; i < p.length; i++) pctx.lineTo(p[i][0], p[i][1]);
+    pctx.stroke();
+  }
+  pctx.restore();
+}
+
+function redraw() {
+  pctx.clearRect(0, 0, W, H);
+  for (const s of strokes) segment(s, 0);
+}
+
+// --- Zoom a posun ------------------------------------------------------------
+
+let sc = 1, tx = 0, ty = 0, fitScale = 1;
+
+function apply() {
+  const vw = view.clientWidth, vh = view.clientHeight;
+  const w = W * sc, h = H * sc;
+  tx = w <= vw ? (vw - w) / 2 : Math.min(0, Math.max(vw - w, tx));
+  ty = h <= vh ? (vh - h) / 2 : Math.min(0, Math.max(vh - h, ty));
+  world.style.transform = `translate(${tx}px, ${ty}px) scale(${sc})`;
+}
+
+function fit() {
+  fitScale = Math.min(view.clientWidth / W, view.clientHeight / H) * 0.98;
+  sc = fitScale;
+  apply();
+}
+
+function zoomAt(cx, cy, factor) {
+  const next = Math.min(fitScale * 10, Math.max(fitScale, sc * factor));
+  const wx = (cx - tx) / sc, wy = (cy - ty) / sc;
+  sc = next;
+  tx = cx - wx * sc;
+  ty = cy - wy * sc;
+  apply();
+}
+
+function local(e) {
+  const r = view.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+function toCanvas(e) {
+  const [x, y] = local(e);
+  return [(x - tx) / sc, (y - ty) / sc];
+}
+
+const mid = () => [view.clientWidth / 2, view.clientHeight / 2];
+$("zoomIn").onclick = () => zoomAt(...mid(), 1.6);
+$("zoomOut").onclick = () => zoomAt(...mid(), 1 / 1.6);
+$("fit").onclick = fit;
+window.addEventListener("resize", () => {
+  const was = sc <= fitScale * 1.001;
+  fitScale = Math.min(view.clientWidth / W, view.clientHeight / H) * 0.98;
+  if (was) sc = fitScale;
+  apply();
+});
+view.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const [x, y] = local(e);
+  zoomAt(x, y, Math.exp(-e.deltaY * 0.0015));
+}, { passive: false });
+view.addEventListener("contextmenu", (e) => e.preventDefault());
+
+// --- Prst / myš --------------------------------------------------------------
+
+const ptrs = new Map();
+let gesture = null, panning = false, locked = false;
+
+function startGesture() {
+  const [a, b] = [...ptrs.values()];
+  const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  const m = [(a.x + b.x) / 2, (a.y + b.y) / 2];
+  gesture = { d, sc, wx: (m[0] - tx) / sc, wy: (m[1] - ty) / sc };
+}
+
+view.addEventListener("pointerdown", (e) => {
+  view.setPointerCapture(e.pointerId);
+  const [x, y] = local(e);
+  ptrs.set(e.pointerId, { x, y });
+  if (ptrs.size >= 2) {
+    if (current) { strokes.pop(); current = null; redraw(); }
+    locked = true;
+    startGesture();
+    return;
+  }
+  if (e.pointerType === "mouse" && e.button !== 0) { panning = true; return; }
+  if (locked) return;
+  const s = { color, size, erase: erasing, pts: [toCanvas(e)] };
+  strokes.push(s);
+  current = s;
+  segment(s, 0);
+});
+
+view.addEventListener("pointermove", (e) => {
+  const p = ptrs.get(e.pointerId);
+  if (!p) return;
+  const [x, y] = local(e);
+  const dx = x - p.x, dy = y - p.y;
+  p.x = x; p.y = y;
+  if (gesture && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    sc = Math.min(fitScale * 10, Math.max(fitScale, gesture.sc * d / gesture.d));
+    tx = mx - gesture.wx * sc;
+    ty = my - gesture.wy * sc;
+    apply();
+  } else if (panning) {
+    tx += dx; ty += dy;
+    apply();
+  } else if (current) {
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    const from = current.pts.length - 1;
+    for (const ev of evs.length ? evs : [e]) current.pts.push(toCanvas(ev));
+    segment(current, from);
+  }
+});
+
+function release(e) {
+  if (!ptrs.delete(e.pointerId)) return;
+  if (current) current = null;
+  if (ptrs.size < 2) gesture = null;
+  if (ptrs.size === 0) { locked = false; panning = false; }
+}
+view.addEventListener("pointerup", release);
+view.addEventListener("pointercancel", release);
+
+// --- Nástroje ----------------------------------------------------------------
+
+function buildPalette() {
+  const box = $("palette");
+  box.replaceChildren();
+  for (const [name, hex] of COLORS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "sw" + (hex === color ? " on" : "");
+    b.style.background = hex;
+    b.setAttribute("aria-label", name);
+    b.onclick = () => {
+      color = hex;
+      erasing = false;
+      $("eraser").classList.remove("on");
+      box.querySelectorAll(".sw").forEach((x) => x.classList.toggle("on", x === b));
+    };
+    box.append(b);
+  }
+}
+
+document.querySelectorAll(".size").forEach((b) => {
+  b.onclick = () => {
+    size = Number(b.dataset.size);
+    document.querySelectorAll(".size").forEach((x) => x.classList.toggle("on", x === b));
+  };
+});
+
+$("eraser").onclick = () => {
+  erasing = !erasing;
+  $("eraser").classList.toggle("on", erasing);
+  if (erasing) document.querySelectorAll(".sw").forEach((x) => x.classList.remove("on"));
+};
+
+$("undo").onclick = () => { strokes.pop(); redraw(); };
+$("clear").onclick = () => {
+  if (strokes.length && confirm("Smazat celý obrázek?")) { strokes = []; redraw(); }
+};
+
+// --- Výběr zvířete -----------------------------------------------------------
+
+function pickCreature(item) {
+  creature = item;
+  strokes = [];
+  current = null;
+  redraw();
+  tpl.src = item.template;
+  $("what").textContent = item.label;
+  $("picker").classList.add("hidden");
+  $("editor").classList.remove("hidden");
+  fit();
+}
+
+$("exit").onclick = () => {
+  if (strokes.length && !confirm("Zahodit rozmalovaný obrázek?")) return;
+  $("editor").classList.add("hidden");
+  $("picker").classList.remove("hidden");
+};
+
+async function loadPicker() {
+  $("backLink").href = withS("/pridat");
+  $("home").href = withS("/pridat");
+  const r = await api("/api/scene/active?s=" + encodeURIComponent(STATION));
+  if (r.status === 404) {
+    $("pickMsg").textContent = "Tahle stanice už neběží. Požádej dospělého o nový QR kód.";
+    return;
+  }
+  const t = await api("/api/templates?scene=" + encodeURIComponent(r.ok ? r.data.scene : ""));
+  const list = t.ok ? t.data : [];
+  if (!list.length) $("pickMsg").textContent = "Nepodařilo se načíst zvířata.";
+  const box = $("grid");
+  for (const item of list) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pick";
+    const img = document.createElement("img");
+    img.src = item.template;
+    img.alt = "";
+    const name = document.createElement("span");
+    name.textContent = item.label;
+    b.append(img, name);
+    b.onclick = () => pickCreature(item);
+    box.append(b);
+  }
+}
+
+// --- Odeslání ----------------------------------------------------------------
+
+let shot = null;
+
+async function render() {
+  await tpl.decode().catch(() => {});
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff";
+  g.fillRect(0, 0, W, H);
+  g.drawImage(paint, 0, 0);
+  g.globalCompositeOperation = "multiply";
+  g.drawImage(tpl, 0, 0, W, H);
+  return new Promise((res) => c.toBlob(res, "image/jpeg", 0.92));
+}
+
+$("done").onclick = async () => {
+  if (!strokes.length && !confirm("Obrázek je ještě prázdný. Opravdu ho poslat?")) return;
+  shot = await render();
+  if (!shot) return;
+  const url = URL.createObjectURL(shot);
+  $("shot").onload = () => URL.revokeObjectURL(url);
+  $("shot").src = url;
+  $("msg").replaceChildren();
+  $("ask").classList.remove("hidden");
+  $("after").classList.add("hidden");
+  $("send").disabled = false;
+  $("dlg").classList.remove("hidden");
+};
+
+$("keep").onclick = () => $("dlg").classList.add("hidden");
+
+function say(kind, text) {
+  const d = document.createElement("div");
+  d.className = kind;
+  d.textContent = text;
+  $("msg").replaceChildren(d);
+}
+
+$("send").onclick = async () => {
+  if (!shot) return;
+  $("send").disabled = $("keep").disabled = true;
+  say("", "Oživuji " + (scene ? scene.accusative : "zvíře") + "…");
+
+  const body = new FormData();
+  body.append("photo", shot, "photo.jpg");
+  body.append("name", $("name").value.trim());
+  body.append("s", STATION);
+  body.append("device", DEVICE);
+
+  let res, data;
+  try {
+    res = await fetch("/api/upload", { method: "POST", body });
+    data = await res.json();
+  } catch (e) {
+    $("send").disabled = $("keep").disabled = false;
+    say("bad", "Nepodařilo se spojit se stanicí. Zkontroluj wifi a zkus to znovu.");
+    return;
+  }
+  $("keep").disabled = false;
+  if (!res.ok || !data || !data.ok) {
+    $("send").disabled = false;
+    say("bad", (data && data.error ? data.error : "něco se pokazilo") + ".");
+    return;
+  }
+  const who = data.name ? data.name + ", tvůj " + data.label : "Tvůj " + data.label;
+  say("ok", who + " vyrazil do krajiny — sleduj levý kraj televize!");
+  $("ask").classList.add("hidden");
+  $("after").classList.remove("hidden");
+  shot = null;
+};
+
+$("again").onclick = () => {
+  $("dlg").classList.add("hidden");
+  $("editor").classList.add("hidden");
+  $("picker").classList.remove("hidden");
+};
+
+buildPalette();
+loadScenes().then(async (list) => {
+  const r = await api("/api/scene/active?s=" + encodeURIComponent(STATION));
+  if (r.ok) scene = list.find((s) => s.key === r.data.scene) || null;
+});
+loadPicker();
+</script>
+</body>
+</html>

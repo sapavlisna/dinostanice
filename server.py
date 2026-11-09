@@ -81,7 +81,7 @@ if _leftover:
 PROCESS_SEM = asyncio.Semaphore(MAX_CONCURRENT)
 
 class RevalidatedFiles(StaticFiles):
-    """Skripty a styly stranek: prohlizec si je smi drzet, ale pred pouzitim
+    """Skripty, styly a modely: prohlizec si je smi drzet, ale pred pouzitim
     se zepta (ETag -> 304). Bez toho televize po nasazeni klidne hodiny bezi
     se starym modulem vedle nove stranky."""
 
@@ -94,8 +94,8 @@ class RevalidatedFiles(StaticFiles):
 app = FastAPI(title="DinoStanice")
 app.mount("/catch", StaticFiles(directory=store.CATCH_ROOT), name="catch")
 app.mount("/web", RevalidatedFiles(directory=WEB_DIR), name="web")
-app.mount("/models3d", StaticFiles(directory=MODELS3D_DIR), name="models3d")
-app.mount("/templates", StaticFiles(directory=TEMPLATES_DIR), name="templates")
+app.mount("/models3d", RevalidatedFiles(directory=MODELS3D_DIR), name="models3d")
+app.mount("/templates", RevalidatedFiles(directory=TEMPLATES_DIR), name="templates")
 
 # Registr stanic a strazce kodu se zakladaji az pri prvnim pouziti, ne pri
 # importu: testy si cesty presmeruji do tmp_path a import nesmi sahat na
@@ -400,13 +400,43 @@ def _process_model_sheet(spec, warped, markers, data, name, session, owner=""):
     try:
         capture3d.save_catch(out_dir, warped, shape, spec, name or spec.label)
         photo = store.save_photo(catch_id, data)
-        return store.write_meta(catch_id, creature=spec.key, label=spec.label,
+        meta = store.write_meta(catch_id, creature=spec.key, label=spec.label,
                                 motion=spec.motion, name=name, coverage=coverage,
                                 markers=markers, photo=photo, session=session,
                                 owner=owner)
     except Exception:
         store.delete_catch(catch_id)
         raise
+    meta["extras"] = _process_extras(shape, warped, markers, name, session, owner)
+    return meta
+
+
+def _process_extras(shape, warped, markers, name, session, owner):
+    """Vybarvena okenka doplnku (ptacek, motylek) v rohu listu jsou samostatne
+    ulovky. Nevybarvene se neukladaji; kdyz nektery selze, hlavni zvire
+    zustane — doplnek je navic."""
+    out = []
+    try:
+        found = capture3d.extra_sheets(warped, shape)
+    except Exception:
+        log.exception("okenka doplňků se nepodařilo přečíst")
+        return out
+    for item in found:
+        if item["coverage"] < capture3d.EXTRA_MIN_COVERAGE:
+            continue
+        espec = BY_KEY3D[item["key"]]
+        eid, edir = store.new_catch(espec.key)
+        try:
+            capture3d.save_extra_catch(edir, item["sheet"], item["shape"], espec,
+                                       name or espec.label)
+            out.append(store.write_meta(eid, creature=espec.key, label=espec.label,
+                                        motion=espec.motion, name=name,
+                                        coverage=item["coverage"], markers=markers,
+                                        session=session, owner=owner))
+        except Exception:
+            log.exception("doplněk %s se nepodařilo uložit", espec.key)
+            store.delete_catch(eid)
+    return out
 
 
 def _capture_advice(bgr, err):
@@ -475,6 +505,14 @@ def tv_page(token: str):
     return _page("scene.html", "Scéna zatím není nasazená.")
 
 
+@app.post("/api/clientlog")
+async def api_clientlog(request: Request):
+    """Diagnostika prohlizecu televizi: chyby a fps, ktere jinak nikdo nevidi."""
+    body = (await request.body())[:4000].decode("utf-8", "replace")
+    log.info("clientlog %s | %s", request.headers.get("user-agent", "?"), body)
+    return {"ok": True}
+
+
 @app.get("/api/tv/{token}")
 def api_tv(token: str):
     """Tajny odkaz televize -> stanice. Jen tudy se scena ke stanici dostane."""
@@ -491,6 +529,14 @@ async def upload_page(s: str = ""):
     if st is not None:
         await touch_session(st.id)
     return _page("upload.html", "Stránka pro přidání zatím není nasazená.")
+
+
+@app.get("/malovat")
+async def paint_page(s: str = ""):
+    st = station_or_none(s)
+    if st is not None:
+        await touch_session(st.id)
+    return _page("malovat.html", "Malování zatím není nasazené.")
 
 
 @app.get("/dino3d")
@@ -719,7 +765,7 @@ def api_templates(scene: str = ""):
         accept = sc.catalogue if sc else scene
     out = []
     for spec in CATALOGUE3D:
-        if accept is not None and spec.scene != accept:
+        if spec.extra or (accept is not None and spec.scene != accept):
             continue
         name = f"{spec.key}.svg"
         if os.path.exists(os.path.join(TEMPLATES_DIR, name)):
@@ -856,9 +902,10 @@ async def api_upload(photo: UploadFile = File(...), name: str = Form(""),
              meta["id"], meta["creature"], sid,
              meta.get("markers"), meta.get("coverage", 0.0), meta.get("took_ms"))
     await touch_session(sid)     # uspesny upload = aktivita (a budicek)
-    await hub.broadcast(sid, {"type": "add", "url": meta["url"], "id": meta["id"],
-                              "label": meta["label"], "name": meta["name"],
-                              "creature": meta["creature"]})
+    for m in [meta, *meta.get("extras", [])]:
+        await hub.broadcast(sid, {"type": "add", "url": m["url"], "id": m["id"],
+                                  "label": m["label"], "name": m["name"],
+                                  "creature": m["creature"]})
     return {"ok": True, **meta}
 
 
@@ -879,11 +926,74 @@ def api_rigs(s: str = "", scene: str = "", mine: str = ""):
     return out
 
 
+@app.get("/api/mine")
+def api_mine(s: str = "", device: str = ""):
+    """Vsechna zvirata jednoho mobilu napric stanicemi i archivem — kazdy
+    obrazek jednou. `here` = uz bezi na teto televizi, `fits` = patri do
+    jeji krajiny (jen takove jde poslat znovu)."""
+    st = station_or_none(s)
+    if st is None:
+        return gone()
+    if not DEVICE_RE.match(device or ""):
+        return []
+    accept = _accepts(st)
+    live = [m for m in store.list_catches() if m.get("owner") == device]
+    by_origin = {}
+    # prednost ma kopie na teto televizi, jinak ta nejnovejsi
+    on_tv = lambda m: not m.get("archived") and m.get("session") == st.id
+    rank = lambda m: (on_tv(m), m.get("created", ""))
+    for m in store.list_archive(owner=device) + live:
+        o = store.origin_of(m)
+        if o not in by_origin or rank(m) >= rank(by_origin[o]):
+            by_origin[o] = m
+    out = [{**m, "here": on_tv(m), "fits": _catch_scene(m) == accept}
+           for m in by_origin.values()]
+    out.sort(key=lambda m: m.get("created", ""), reverse=True)
+    return out
+
+
+@app.post("/api/mine/send")
+async def api_mine_send(request: Request):
+    """Poslat svoje starsi zvire znovu na televizi."""
+    body = await _json_body(request)
+    st = station_or_none(body.get("s"))
+    if st is None:
+        return gone()
+    device = body.get("device") or ""
+    try:
+        meta, _ = store.find_catch(body.get("id") or "")
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    if not meta or not DEVICE_RE.match(device) or meta.get("owner") != device:
+        return JSONResponse({"ok": False, "error": "tohle zvíře tu není"},
+                            status_code=404)
+    if _catch_scene(meta) != _accepts(st):
+        sc = scenes.BY_KEY[scenes.clean_scene(st.scene)]
+        return JSONResponse({"ok": False, "error": f"{meta['label']} sem nepatří — "
+                                                   f"na televizi teď běží {sc.label}."},
+                            status_code=409)
+    origin = store.origin_of(meta)
+    if any(store.origin_of(m) == origin for m in store.list_catches(session=st.id)):
+        return JSONResponse({"ok": False, "error": "tohle zvíře už na televizi je"},
+                            status_code=409)
+    new = await run_in_threadpool(store.resend_catch, meta["id"], st.id)
+    if new is None:
+        return JSONResponse({"ok": False, "error": "zvíře se nepodařilo poslat, "
+                                                   "zkus to znovu"}, status_code=500)
+    log.info("úlovek %s poslán znovu jako %s do stanice %s", meta["id"], new["id"], st.id)
+    await touch_session(st.id)
+    await hub.broadcast(st.id, {"type": "add", "url": new["url"], "id": new["id"],
+                                "label": new["label"], "name": new["name"],
+                                "creature": new["creature"]})
+    return {"ok": True, **new}
+
+
 @app.delete("/api/rigs/{catch_id}")
 async def api_delete(request: Request, catch_id: str, device: str = ""):
-    """Smazat smi admin, nebo mobil, ktery ulovek poslal."""
+    """Smazat smi admin, nebo mobil, ktery ulovek poslal. Mobil zvire z televize
+    jen odebere do archivu (pujde poslat znovu); z archivu ho smaze nadobro."""
     try:
-        meta = store.read_meta(catch_id)
+        meta, archived = store.find_catch(catch_id)
     except ValueError as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     if not meta:
@@ -891,11 +1001,19 @@ async def api_delete(request: Request, catch_id: str, device: str = ""):
                             status_code=404)
     own = bool(device) and meta.get("owner") == device
     st = station_or_none(meta.get("session"))
+    if archived:
+        if not own:
+            return JSONResponse({"ok": False, "error": "smazat můžeš jen svoje zvíře"},
+                                status_code=403)
+        store.trash_archived(catch_id)
+        log.info("úlovek %s smazán z archivu vlastníkem", catch_id)
+        return {"ok": True, "id": catch_id}
     if not (own or (st is not None and may_manage(current_admin(request), st))):
         return JSONResponse({"ok": False, "error": "smazat můžeš jen svoje zvíře"},
                             status_code=403)
     try:
-        removed = store.delete_catch(catch_id)
+        removed = (store.archive_catch(catch_id) if own
+                   else store.delete_catch(catch_id))
     except OSError:
         log.exception("odstavení úlovku %s selhalo", catch_id)
         return JSONResponse({"ok": False, "error": "úlovek se nepodařilo smazat, "
@@ -941,7 +1059,10 @@ async def api_scene_settings_set(request: Request):
 async def _clear_catches(sid):
     deleted = 0
     for meta in store.list_catches(session=sid):
-        if store.delete_catch(meta["id"]):
+        # zvire ditete z televize mizi, ale mobil ho muze poslat znovu
+        done = (store.archive_catch(meta["id"]) if meta.get("owner")
+                else store.delete_catch(meta["id"]))
+        if done:
             deleted += 1
     leftover = await run_in_threadpool(store.purge_deleted)
     if leftover:
